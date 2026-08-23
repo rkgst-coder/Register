@@ -444,6 +444,9 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <div class="lock-alt" id="lockBioWrap" style="display:none">
       <a id="lockBio">Use Face ID / Touch ID</a>
     </div>
+    <div class="lock-alt" id="lockSyncWrap" style="display:none">
+      <a id="lockSync">Already using Register elsewhere? Connect sync first</a>
+    </div>
     <div class="lock-alt" id="lockResetWrap" style="display:none">
       <a id="lockReset">Forgotten passphrase?</a>
     </div>
@@ -826,7 +829,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 <!-- ========== SYNC SETTINGS ========== -->
 <div class="ov" id="syncOv">
   <div class="ov-card" style="max-width:440px">
-    <div class="ov-head"><h2>Cloud sync</h2><button class="ov-close" id="syncOvClose" aria-label="Close">✕</button></div>
+    <div class="ov-head"><h2>Settings</h2><button class="ov-close" id="syncOvClose" aria-label="Close">✕</button></div>
     <p style="font-size:12px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5">
       Your Apps Script Web App URL and token. Everything is encrypted in this browser before it is sent —
       the Sheet only ever holds ciphertext.</p>
@@ -839,7 +842,36 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <button class="btn ghost" id="syncOff" style="flex:1">Disconnect</button>
     </div>
     <div class="lock-err" id="syncMsg" style="color:var(--ink-soft)"></div>
-    <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px;
+    <p style="font-size:11px;color:var(--ink-faint);margin:10px 0 0;line-height:1.5">
+      To change the <b>token</b> itself, edit <code>SECRET</code> on line 1 of your
+      <code>Code.gs</code>, redeploy a new version, then update it here. It cannot be
+      changed from the app alone.</p>
+
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Change passphrase</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
+      Re-encrypts every record with the new key and pushes them all up. Your other
+      devices will ask for the new passphrase next time they open.</p>
+    <div class="field" style="margin-bottom:10px"><label for="ppCur">Current passphrase</label>
+      <input type="password" id="ppCur" autocomplete="current-password"></div>
+    <div class="field" style="margin-bottom:10px"><label for="ppNew">New passphrase</label>
+      <input type="password" id="ppNew" autocomplete="new-password"></div>
+    <div class="field" style="margin-bottom:12px"><label for="ppNew2">Confirm new</label>
+      <input type="password" id="ppNew2" autocomplete="new-password"></div>
+    <button class="btn" id="ppChange" style="width:100%">Change passphrase</button>
+    <div class="lock-err" id="ppMsg" style="color:var(--ink-soft)"></div>
+
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Financial section code</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
+      Code for the hidden Financial page. Stored encrypted with everything else, so once
+      you change it here it is no longer readable in the page source.</p>
+    <div class="field" style="margin-bottom:10px"><label for="vcNew">New code</label>
+      <input type="password" id="vcNew" autocomplete="off"></div>
+    <button class="btn ghost" id="vcChange" style="width:100%">Update code</button>
+    <div class="lock-err" id="vcMsg" style="color:var(--ink-soft)"></div>
+
+    <div style="border-top:1px solid var(--line);margin-top:18px;padding-top:14px;
       font-size:11.5px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace">
       <div>Last sync: <span id="lastSyncTxt">never</span></div>
       <div style="margin-top:4px">Records: <span id="recCount">0</span></div>
@@ -953,19 +985,69 @@ async function decryptStr(payload){
   return dec.decode(pt);
 }
 
-/* Local salt + verifier. The verifier is an encrypted known string; if it
-   decrypts cleanly the passphrase is right. Stored locally only — never
-   uploaded next to the ciphertext, so it can't be brute-forced from the Sheet. */
+/* ---------------------------------------------------------------------------
+   Salt + verifier.
+   The salt must be the SAME on every device, otherwise the same passphrase
+   would derive a different key on each one and no device could read another's
+   data. So the salt lives in the Sheet (a "Meta" tab) and is mirrored locally
+   for offline use. Neither value is secret: a salt is public by design, and
+   the verifier is just a known string encrypted with your key. Your protection
+   is the passphrase itself plus 250k PBKDF2 iterations.
+   ------------------------------------------------------------------------- */
 function getSalt(){
   let s = localStorage.getItem(LS+'salt');
   if(!s){ s = b64(crypto.getRandomValues(new Uint8Array(16))); localStorage.setItem(LS+'salt', s); }
   return s;
 }
-async function setVerifier(){ localStorage.setItem(LS+'verify', await encryptStr('REGISTER_OK')); }
+function setSalt(s){ localStorage.setItem(LS+'salt', s); }
+async function setVerifier(){
+  const v = await encryptStr('REGISTER_OK');
+  localStorage.setItem(LS+'verify', v);
+  return v;
+}
 async function checkVerifier(){
   const v = localStorage.getItem(LS+'verify');
   if(!v) return null;                        // no passphrase set on this device yet
   try{ return (await decryptStr(v)) === 'REGISTER_OK'; }catch(e){ return false; }
+}
+
+/* Pull the shared salt/verifier down from the Sheet. Called before the lock
+   screen so a brand-new device can unlock with the passphrase you already use. */
+async function fetchMeta(){
+  if(!cloudOn() || !online) return null;
+  try{
+    const r = await fetch(cloud.url + '?action=meta&token=' + encodeURIComponent(cloud.token));
+    const d = await r.json();
+    if(d.error || !d.meta) return null;
+    return d.meta.salt ? d.meta : null;
+  }catch(e){ return null; }
+}
+async function uploadMeta(){
+  if(!cloudOn() || !online) return false;
+  try{
+    const r = await fetch(cloud.url, {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'setmeta', token:cloud.token,
+        meta:{ salt: localStorage.getItem(LS+'salt'), verifier: localStorage.getItem(LS+'verify') } })
+    });
+    const d = await r.json();
+    return !!d.ok;
+  }catch(e){ return false; }
+}
+/* Adopt the Sheet's salt/verifier as authoritative on this device. */
+async function adoptMeta(meta){
+  if(!meta || !meta.salt) return false;
+  const localSalt = localStorage.getItem(LS+'salt');
+  if(localSalt && localSalt !== meta.salt){
+    // This device had its own passphrase; the Sheet wins so sync works.
+    cryptoKey = null;
+    localStorage.removeItem(LS+'recs');
+    localStorage.removeItem(LS+'bioKey');
+    localStorage.removeItem(LS+'bioId');
+  }
+  setSalt(meta.salt);
+  if(meta.verifier) localStorage.setItem(LS+'verify', meta.verifier);
+  return true;
 }
 
 /* ============================================================================
@@ -1086,9 +1168,10 @@ async function pullCloud(){
   }
 }
 
-async function pushCloud(){
+async function pushCloud(force){
   if(!cloudOn() || !online) return;
-  const dirty = Object.values(records).filter(r => r.updatedAt > lastSync);
+  const dirty = force ? Object.values(records)
+                      : Object.values(records).filter(r => r.updatedAt > lastSync);
   if(!dirty.length) return;
   setStatus('syncing','Syncing…');
   try{
@@ -2081,8 +2164,22 @@ function renderAll(){
    CHANGE THE ACCESS CODE HERE. This is a visibility screen, not security —
    the value below is readable in the page source by anyone who looks.
    ========================================================================== */
-const VAULT_PASSWORD = 'Admin123';
+const DEFAULT_VAULT_CODE = 'Admin123';
 let financeUnlocked = false, tapCount = 0, tapTimer = null;
+
+/* The live code is kept in an encrypted settings record, so it can be changed
+   in-app and is never visible in this file. DEFAULT_VAULT_CODE is only the
+   starting value until you change it in Settings. */
+function settingsRec(){
+  let s = records['__settings__'];
+  if(!s){
+    s = { id:'__settings__', type:'settings', vaultCode:DEFAULT_VAULT_CODE,
+          createdAt:nowMs(), updatedAt:nowMs(), deleted:false };
+    records['__settings__'] = s;
+  }
+  return s;
+}
+function vaultCode(){ return settingsRec().vaultCode || DEFAULT_VAULT_CODE; }
 
 $('secretTrigger').addEventListener('click', ()=>{
   tapCount++;
@@ -2096,7 +2193,7 @@ $('secretTrigger').addEventListener('click', ()=>{
   }
 });
 function tryVault(){
-  if($('vaultInput').value === VAULT_PASSWORD){
+  if($('vaultInput').value === vaultCode()){
     financeUnlocked = true;
     $('financeTab').style.display='';
     $('vaultOv').classList.remove('open');
@@ -2137,6 +2234,29 @@ $('syncSave').addEventListener('click', async ()=>{
   if(!url || !token){ $('syncMsg').textContent = 'Both fields are required.'; return; }
   cloud = { url, token }; saveCloudCfg();
   $('syncMsg').textContent = 'Connecting…';
+
+  const meta = await fetchMeta();
+
+  // Pre-unlock path: adopt the shared salt, then let the user enter their passphrase.
+  if(!cryptoKey){
+    if(meta){
+      await adoptMeta(meta);
+      $('syncMsg').textContent = 'Connected. Now enter your existing passphrase.';
+      $('syncOv').classList.remove('open');
+      initLock();
+    } else {
+      $('syncMsg').textContent = 'Connected — no data there yet. Create a passphrase to start.';
+      setTimeout(()=> $('syncOv').classList.remove('open'), 1200);
+    }
+    return;
+  }
+
+  // Already unlocked: reconcile salts, then sync.
+  if(meta && meta.salt !== localStorage.getItem(LS+'salt')){
+    $('syncMsg').textContent = 'That Sheet uses a different passphrase. Lock and unlock with it.';
+    return;
+  }
+  if(!meta) await uploadMeta();
   const ok = await pullCloud();
   $('syncMsg').textContent = ok ? 'Connected and synced.' : 'Could not reach that URL.';
   if(ok){ await pushCloud(); setTimeout(()=> $('syncOv').classList.remove('open'), 800); }
@@ -2148,6 +2268,58 @@ $('syncOff').addEventListener('click', ()=>{
   setStatus('','Local only'); $('syncMsg').textContent='Disconnected.';
 });
 $('syncNowBtn').addEventListener('click', async ()=>{ await pullCloud(); await pushCloud(); toast('Synced.'); });
+
+/* ---------- change passphrase ---------- */
+$('ppChange').addEventListener('click', async ()=>{
+  const cur = $('ppCur').value, nw = $('ppNew').value, nw2 = $('ppNew2').value;
+  const msg = $('ppMsg');
+  msg.style.color = 'var(--seal)';
+  if(!cur || !nw){ msg.textContent = 'Fill in every field.'; return; }
+  if(nw !== nw2){ msg.textContent = "New passphrases don't match."; return; }
+
+  // verify the current one against the existing salt
+  msg.style.color='var(--ink-soft)'; msg.textContent = 'Verifying…';
+  const testKey = await deriveKey(cur, getSalt());
+  const saved = cryptoKey;
+  cryptoKey = testKey;
+  const ok = await checkVerifier();
+  if(!ok){
+    cryptoKey = saved;
+    msg.style.color='var(--seal)'; msg.textContent = 'Current passphrase is wrong.';
+    return;
+  }
+
+  msg.textContent = 'Re-encrypting everything…';
+  // fresh salt + key, then rewrite every record under the new key
+  const newSalt = b64(crypto.getRandomValues(new Uint8Array(16)));
+  cryptoKey = await deriveKey(nw, newSalt);
+  setSalt(newSalt);
+  await setVerifier();
+  await persistLocal();               // local cache re-encrypted
+  await uploadMeta();                 // share the new salt with other devices
+  await pushCloud(true);              // force-push every record re-encrypted
+
+  $('ppCur').value = $('ppNew').value = $('ppNew2').value = '';
+  // biometric key material is stale now — re-enrol on next unlock
+  localStorage.removeItem(LS+'bioKey'); localStorage.removeItem(LS+'bioId');
+  localStorage.removeItem(LS+'bioAsked');
+  msg.style.color='var(--forest)';
+  msg.textContent = 'Done. Write the new one down.';
+  toast('Passphrase changed and everything re-encrypted.');
+});
+
+/* ---------- change financial code ---------- */
+$('vcChange').addEventListener('click', ()=>{
+  const v = $('vcNew').value.trim();
+  const msg = $('vcMsg');
+  if(!v){ msg.style.color='var(--seal)'; msg.textContent='Enter a code.'; return; }
+  const s = settingsRec();
+  s.vaultCode = v;
+  put(s, true);
+  $('vcNew').value = '';
+  msg.style.color='var(--forest)'; msg.textContent='Code updated.';
+  toast('Financial code updated.');
+});
 
 /* backup: plain JSON, unencrypted, for your own safekeeping */
 $('backupBtn').addEventListener('click', ()=>{
@@ -2301,7 +2473,10 @@ async function initLock(){
     $('lockConfirm').style.display=''; $('lockStrength').style.display='';
     $('lockBtn').textContent = 'Create';
     $('lockBioWrap').style.display='none'; $('lockResetWrap').style.display='none';
+    // On a brand-new device, offer to pull the shared salt from the Sheet first.
+    $('lockSyncWrap').style.display = cloudOn() ? 'none' : '';
   } else {
+    $('lockSyncWrap').style.display='none';
     $('lockTitle').textContent = 'Unlock Register';
     $('lockSub').textContent = 'Enter your passphrase.';
     $('lockConfirm').style.display='none'; $('lockStrength').style.display='none';
@@ -2320,6 +2495,7 @@ async function afterUnlock(){
   loadCloudCfg();
   showView('tasks');
   resetIdle();
+  if(cloudOn() && !(await fetchMeta())) await uploadMeta();
   await pullCloud();
   await pushCloud();
   // offer biometrics once, after a successful passphrase unlock
@@ -2340,16 +2516,13 @@ async function submitLock(){
   $('lockBtn').disabled = true; $('lockBtn').textContent='Working…';
 
   if(lockMode==='set'){
-    if(pass.length < 10){
-      $('lockErr').textContent='Use at least 10 characters.';
-      $('lockBtn').disabled=false; $('lockBtn').textContent='Create'; return;
-    }
     if(pass !== $('lockConfirm').value){
       $('lockErr').textContent="Passphrases don't match.";
       $('lockBtn').disabled=false; $('lockBtn').textContent='Create'; return;
     }
     cryptoKey = await deriveKey(pass, getSalt());
     await setVerifier();
+    await uploadMeta();          // share the salt so other devices can decrypt
     $('lockBtn').disabled=false; $('lockBtn').textContent='Create';
     await afterUnlock();
     toast('Passphrase set. Write it down somewhere safe.');
@@ -2377,6 +2550,12 @@ $('lockBio').addEventListener('click', async ()=>{
   const ok = await bioUnlock();
   if(ok) await afterUnlock();
   else $('lockErr').textContent='Biometric unlock failed — use your passphrase.';
+});
+$('lockSync').addEventListener('click', ()=>{
+  $('syncUrl').value = cloud.url; $('syncToken').value = cloud.token;
+  $('syncMsg').textContent = 'Connect, then enter the passphrase you already use.';
+  $('syncOv').classList.add('open');
+  setTimeout(()=> $('syncUrl').focus(), 40);
 });
 $('lockReset').addEventListener('click', ()=>{
   const warn = 'This DESTROYS all encrypted data on this device permanently.\n\n' +
@@ -2413,12 +2592,23 @@ function tickClock(){
 tickClock(); setInterval(tickClock, 30000);
 syncFinTypeUI();
 
+/* Startup: if this device is already pointed at a Sheet, adopt its salt before
+   the lock screen so the same passphrase works everywhere. */
+async function boot(){
+  loadCloudCfg();
+  if(cloudOn()){
+    const meta = await fetchMeta();
+    if(meta) await adoptMeta(meta);
+  }
+  initLock();
+}
+
 /* service worker: offline shell */
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=> navigator.serviceWorker.register('sw.js').catch(()=>{}));
 }
 
-initLock();
+boot();
 </script>
 </body>
 </html>

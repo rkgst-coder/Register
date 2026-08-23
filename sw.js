@@ -2,7 +2,7 @@
    works with no network. Data itself lives in localStorage (encrypted) and
    syncs to the Sheet when a connection is available.
    Bump CACHE when you deploy a new index.html. */
-const CACHE = 'register-v14';
+const CACHE = 'register-v15';
 const SHELL = [
   './', './index.html', './manifest.json',
   './icon-192.png', './icon-512.png', './icon-180.png'
