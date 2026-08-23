@@ -1,0 +1,2424 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Register</title>
+<meta name="description" content="Personal task, note and ledger register.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1C2B39">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Register">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   THEME TOKENS
+   ============================================================ */
+:root{
+  --paper:#F2EEE3; --card:#FBF9F2;
+  --ink:#1C2B39; --ink-soft:#48586b; --ink-faint:#8a92a0;
+  --brass:#93731F; --brass-soft:#c9ab5b;
+  --seal:#7C2A28; --forest:#3c5a44;
+  --line:#D3CBB5; --line-strong:#b7ac8e;
+  --shadow:0 1px 2px rgba(28,43,57,.06),0 4px 14px rgba(28,43,57,.06);
+  --cat-work:#1B4B8F; --cat-personal:#9C2963; --cat-finance:#B8860B; --cat-errands:#B45309;
+  --pos:#2E7D50; --neg:#A6362F;
+  --field-bg:#ffffff;
+}
+html[data-theme="dark"]{
+  --paper:#14181D; --card:#1D232B;
+  --ink:#E8E4DA; --ink-soft:#A9B2BD; --ink-faint:#77818E;
+  --brass:#D4AF52; --brass-soft:#8a7333;
+  --seal:#D9736E; --forest:#6FAF86;
+  --line:#2C343E; --line-strong:#3C4652;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25);
+  --cat-work:#4A82D8; --cat-personal:#D96BA3; --cat-finance:#D4AF52; --cat-errands:#D98A45;
+  --pos:#6FBF8C; --neg:#E08A83;
+  --field-bg:#161B21;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:radial-gradient(1200px 600px at 10% -10%,rgba(147,115,31,.06),transparent),var(--paper);
+  color:var(--ink);font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased;
+  min-height:100vh;padding:22px 16px calc(80px + env(safe-area-inset-bottom));
+  transition:background-color .25s ease,color .25s ease;
+}
+.wrap{max-width:1080px;margin:0 auto}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+input,select,textarea,button{font-family:inherit}
+input,select,textarea{background:var(--field-bg);color:var(--ink)}
+
+/* ============================================================
+   SHARED PRIMITIVES
+   ============================================================ */
+.btn{
+  font-family:'IBM Plex Mono',monospace;font-size:12.5px;letter-spacing:.03em;
+  padding:11px 17px;border-radius:2px;border:1px solid var(--ink);
+  background:var(--ink);color:var(--paper);cursor:pointer;white-space:nowrap;
+  transition:opacity .2s,transform .1s,background-color .15s,border-color .15s;
+}
+.btn:hover{opacity:.88}
+.btn:active{transform:scale(.97)}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line-strong)}
+.btn.ghost:hover{border-color:var(--ink)}
+.btn.small{padding:7px 11px;font-size:11px}
+.btn.danger{background:var(--seal);border-color:var(--seal);color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+.icon-btn{
+  background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:14px;
+  padding:5px;border-radius:3px;line-height:1;
+}
+.icon-btn:hover{color:var(--ink);background:rgba(128,128,128,.12)}
+.spacer{flex:1}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label,.flabel{
+  font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;
+  letter-spacing:.07em;color:var(--ink-faint)
+}
+.field input,.field select,.field textarea{
+  font-size:14px;padding:9px 10px;border:1px solid var(--line-strong);border-radius:2px;outline:none;
+}
+.field input:focus,.field select:focus,.field textarea:focus{
+  border-color:var(--brass);box-shadow:0 0 0 3px rgba(147,115,31,.12)
+}
+.empty{padding:44px 20px;text-align:center;color:var(--ink-faint);font-size:13px}
+.empty b{display:block;color:var(--ink-soft);font-family:'Source Serif 4',serif;font-size:17px;margin-bottom:6px}
+
+/* ============================================================
+   HEADER / COVER
+   ============================================================ */
+.cover{
+  border:1px solid var(--line-strong);background:var(--card);border-radius:2px;
+  padding:24px 26px 20px;box-shadow:var(--shadow);position:relative;overflow:hidden;
+}
+.cover::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;
+  background:linear-gradient(180deg,var(--brass),var(--seal))}
+.cover-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--brass);font-weight:500}
+h1{font-family:'Source Serif 4',serif;font-weight:700;font-size:clamp(26px,4vw,36px);
+  margin:2px 0 6px;letter-spacing:-.01em}
+.sub{color:var(--ink-soft);font-size:13.5px;max-width:56ch;line-height:1.5}
+.datebox{font-family:'IBM Plex Mono',monospace;text-align:right;font-size:12px;color:var(--ink-soft);
+  border:1px solid var(--line);border-radius:2px;padding:8px 12px;background:rgba(128,128,128,.06);min-width:150px}
+.datebox b{display:block;color:var(--ink);font-size:14px;margin-bottom:2px}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:18px;
+  border:1px solid var(--line);background:var(--line);border-radius:2px;overflow:hidden}
+.stat{background:var(--card);padding:12px 14px}
+.stat .n{font-family:'Source Serif 4',serif;font-size:23px;font-weight:700;line-height:1}
+.stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin-top:4px}
+.progress-outer{height:6px;background:var(--line);border-radius:3px;margin-top:13px;overflow:hidden}
+.progress-inner{height:100%;background:linear-gradient(90deg,var(--forest),var(--brass));width:0%;transition:width .4s}
+
+/* add row */
+.add-row{margin-top:18px;display:flex;gap:8px}
+.add-row input{flex:1;font-size:15px;padding:13px 14px;border:1px solid var(--line-strong);
+  border-radius:2px;outline:none}
+.add-row input:focus{border-color:var(--brass);box-shadow:0 0 0 3px rgba(147,115,31,.12)}
+.add-hint{font-size:11px;color:var(--ink-faint);margin-top:6px;font-family:'IBM Plex Mono',monospace}
+.add-hint code{background:rgba(128,128,128,.14);padding:1px 5px;border-radius:3px}
+
+/* ============================================================
+   NAV
+   ============================================================ */
+.view-switch{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.view-tab{
+  font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.03em;
+  padding:9px 15px;border-radius:20px;border:1px solid var(--line-strong);
+  background:var(--card);color:var(--ink-soft);cursor:pointer;transition:all .15s
+}
+.view-tab.active{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+.cloud-status{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint);
+  display:flex;align-items:center;gap:6px;padding:0 4px}
+.cloud-dot{width:7px;height:7px;border-radius:50%;background:var(--ink-faint);flex:none}
+.cloud-status.connected .cloud-dot{background:var(--forest)}
+.cloud-status.error .cloud-dot{background:var(--seal)}
+.cloud-status.syncing .cloud-dot{background:var(--brass);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.hbtn{font-size:14px;padding:9px 11px;line-height:1;border-radius:2px;
+  border:1px solid var(--line-strong);background:var(--card);color:var(--ink-soft);cursor:pointer}
+.hbtn:hover{color:var(--brass);border-color:var(--brass)}
+.secret-trigger{cursor:default;user-select:none;-webkit-user-select:none}
+
+/* ============================================================
+   TOOLBAR / TABS
+   ============================================================ */
+.tabs{display:flex;gap:4px;margin-top:22px;overflow-x:auto;padding-bottom:2px}
+.tab{font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:9px 13px 8px;
+  border:1px solid var(--line-strong);border-bottom:none;background:rgba(128,128,128,.09);
+  color:var(--ink-soft);cursor:pointer;border-radius:3px 3px 0 0;white-space:nowrap}
+.tab.active{background:var(--card);color:var(--ink);font-weight:600;position:relative;top:1px}
+.tab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  border:1px solid var(--line-strong);background:var(--card);padding:10px 12px;border-radius:0 2px 2px 2px}
+.toolbar select,.toolbar input{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:7px 9px;
+  border:1px solid var(--line-strong);border-radius:2px}
+.toolbar input[type=search]{flex:1;min-width:130px}
+
+/* ============================================================
+   TASKS
+   ============================================================ */
+.list{margin-top:2px;border:1px solid var(--line-strong);border-top:none;background:var(--card)}
+.task{display:flex;gap:11px;padding:13px 15px 13px 12px;border-bottom:1px solid var(--line);
+  border-left:3px solid transparent;align-items:flex-start;cursor:pointer;transition:background-color .15s}
+.task:last-child{border-bottom:none}
+.task:hover{background:rgba(128,128,128,.05)}
+.task.done{opacity:.55}
+.task.overdue{background:rgba(166,54,47,.07)}
+.task.prio-High{border-left-color:var(--seal)}
+.task.prio-Medium{border-left-color:var(--brass)}
+.task.prio-Low{border-left-color:#4A6FA5}
+.task.dragging{opacity:.4}
+.check{width:20px;height:20px;border:2px solid var(--ink-soft);border-radius:50%;flex:none;margin-top:1px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;background:var(--field-bg)}
+.check.checked{background:var(--forest);border-color:var(--forest);color:#fff;font-size:12px}
+.check.inprog{border-color:var(--brass);border-style:dashed}
+.task-main{flex:1;min-width:0}
+.task-title-row{display:flex;align-items:flex-start;gap:7px;flex-wrap:wrap}
+.task-title{font-size:14.5px;font-weight:500;flex:1;min-width:110px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.task.done .task-title{text-decoration:line-through}
+.stamp{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 7px;border-radius:9px;color:#fff;font-weight:600;flex:none}
+.meta{display:flex;gap:9px;margin-top:5px;flex-wrap:wrap}
+.meta span{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);
+  display:flex;align-items:center;gap:4px}
+.meta .duewarn{color:var(--seal);font-weight:600}
+.subprog{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint)}
+
+/* kanban */
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:2px}
+.kanban-col{border:1px solid var(--line-strong);background:var(--card);border-radius:2px;
+  overflow:hidden;display:flex;flex-direction:column}
+.kanban-col.dragover{outline:2px dashed var(--brass);outline-offset:-3px}
+.kanban-head{padding:10px 14px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;
+  color:#fff;letter-spacing:.03em;text-transform:uppercase;display:flex;justify-content:space-between;flex:none}
+.kanban-body{min-height:60px;max-height:520px;overflow-y:auto}
+.kanban-empty{padding:18px 14px;font-size:12px;color:var(--ink-faint);font-style:italic;text-align:center}
+@media(max-width:900px){.kanban{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:540px){.kanban{grid-template-columns:1fr}.kanban-body{max-height:320px}}
+
+/* collapsible sections */
+.section-toggle{margin-top:14px;display:flex;align-items:center;gap:8px;cursor:pointer;
+  font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);
+  padding:10px 14px;border:1px solid var(--line-strong);border-radius:2px;background:var(--card)}
+.section-toggle:hover{border-color:var(--brass)}
+.section-toggle .chev{transition:transform .15s;display:inline-block}
+.section-toggle.open .chev{transform:rotate(90deg)}
+.section-body{display:none;margin-top:2px;border:1px solid var(--line-strong);border-top:none;background:var(--card)}
+.section-body.open{display:block}
+
+/* ============================================================
+   MODALS (shared shell)
+   ============================================================ */
+.ov{position:fixed;inset:0;z-index:900;background:rgba(10,14,18,.55);
+  display:none;align-items:center;justify-content:center;padding:20px}
+.ov.open{display:flex}
+.ov-card{max-width:720px;width:100%;max-height:88vh;overflow-y:auto;background:var(--card);
+  border:1px solid var(--line-strong);border-radius:3px;box-shadow:0 10px 40px rgba(0,0,0,.35);
+  padding:24px 26px;position:relative}
+.ov-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;
+  background:linear-gradient(180deg,var(--brass),var(--seal))}
+.ov-card.narrow{max-width:400px;text-align:center}
+.ov-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.ov-head h2{font-family:'Source Serif 4',serif;font-size:20px;margin:0;flex:1}
+.ov-close{background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:21px;padding:2px 5px}
+.ov-close:hover{color:var(--ink)}
+@media(max-width:640px){
+  .ov{padding:0}
+  .ov-card{max-width:100%;height:100%;max-height:100%;border-radius:0;padding:20px}
+}
+
+/* task edit modal: horizontal field row */
+.edit-title{width:100%;font-family:'Source Serif 4',serif;font-weight:600;font-size:21px;
+  border:none;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);
+  outline:none;padding:6px 0;margin-bottom:18px}
+.edit-title:focus{border-bottom-color:var(--brass)}
+.edit-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+@media(max-width:640px){.edit-grid{grid-template-columns:repeat(2,1fr)}}
+.edit-notes{width:100%;min-height:100px;font-size:14px;line-height:1.6;padding:11px;
+  border:1px solid var(--line-strong);border-radius:2px;outline:none;resize:vertical}
+.edit-foot{display:flex;gap:8px;align-items:center;margin-top:18px;flex-wrap:wrap;
+  border-top:1px solid var(--line);padding-top:14px}
+.saved-flag{opacity:0;transition:opacity .3s;color:var(--forest);font-weight:600;
+  font-family:'IBM Plex Mono',monospace;font-size:11px}
+.saved-flag.show{opacity:1}
+
+/* subtasks */
+.sub-wrap{margin:16px 0}
+.sub-item{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line)}
+.sub-item:last-of-type{border-bottom:none}
+.sub-check{width:17px;height:17px;border:2px solid var(--ink-soft);border-radius:3px;flex:none;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;background:var(--field-bg)}
+.sub-check.on{background:var(--forest);border-color:var(--forest);color:#fff}
+.sub-text{flex:1;font-size:13.5px}
+.sub-item.on .sub-text{text-decoration:line-through;color:var(--ink-faint)}
+.sub-add{display:flex;gap:7px;margin-top:9px}
+.sub-add input{flex:1;font-size:13px;padding:8px 9px;border:1px solid var(--line-strong);border-radius:2px;outline:none}
+
+/* ============================================================
+   NOTES
+   ============================================================ */
+.notes-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.notes-toolbar input,.notes-toolbar select{font-family:'IBM Plex Mono',monospace;font-size:12px;
+  padding:9px 10px;border:1px solid var(--line-strong);border-radius:2px}
+.notes-board{margin-top:18px;columns:270px;column-gap:15px}
+.note-card{break-inside:avoid;margin-bottom:15px;border-radius:2px;border:1px solid var(--line-strong);
+  box-shadow:var(--shadow);padding:15px 15px 11px;position:relative;display:flex;flex-direction:column;
+  cursor:pointer;transition:transform .12s,box-shadow .12s}
+.note-card:hover{transform:translateY(-2px);box-shadow:0 2px 4px rgba(0,0,0,.08),0 8px 20px rgba(0,0,0,.1)}
+.note-card::before{content:"";position:absolute;top:-6px;left:18px;width:22px;height:12px;
+  background:rgba(128,128,128,.3);border-radius:2px;transform:rotate(-3deg)}
+.note-card.pinned::before{background:var(--seal);opacity:.85}
+.note-c1{background:#FBF9F2}.note-c2{background:#F3E7C9}.note-c3{background:#EFE1E6}
+.note-c4{background:#DCE7DD}.note-c5{background:#DDE6EF}
+html[data-theme="dark"] .note-c1{background:#242B33}
+html[data-theme="dark"] .note-c2{background:#332E1E}
+html[data-theme="dark"] .note-c3{background:#33232B}
+html[data-theme="dark"] .note-c4{background:#1F2E25}
+html[data-theme="dark"] .note-c5{background:#1F2A36}
+.note-top{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px}
+.note-title{font-family:'Source Serif 4',serif;font-weight:600;font-size:15.5px;line-height:1.35;
+  flex:1;word-break:break-word}
+.note-title.untitled{color:var(--ink-faint);font-style:italic;font-weight:400}
+.note-foot{display:flex;justify-content:space-between;align-items:center;margin-top:9px;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-faint)}
+.note-swatch{width:19px;height:19px;border-radius:50%;cursor:pointer;border:1px solid rgba(128,128,128,.4)}
+.note-swatches{display:flex;gap:7px;margin-bottom:12px}
+.note-body{width:100%;min-height:300px;font-size:15px;line-height:1.7;padding:14px;
+  border:1px solid var(--line-strong);border-radius:2px;outline:none;resize:vertical}
+.md-preview{min-height:300px;padding:14px;border:1px solid var(--line-strong);border-radius:2px;
+  font-size:15px;line-height:1.7;overflow-wrap:break-word}
+.md-preview h1,.md-preview h2,.md-preview h3{font-family:'Source Serif 4',serif;margin:.7em 0 .35em}
+.md-preview h1{font-size:1.4em}.md-preview h2{font-size:1.22em}.md-preview h3{font-size:1.08em}
+.md-preview code{background:rgba(128,128,128,.16);padding:1px 5px;border-radius:3px;
+  font-family:'IBM Plex Mono',monospace;font-size:.88em}
+.md-preview pre{background:rgba(128,128,128,.13);padding:11px;border-radius:3px;overflow-x:auto}
+.md-preview ul,.md-preview ol{padding-left:1.4em;margin:.5em 0}
+.md-preview a{color:var(--brass)}
+.md-preview blockquote{border-left:3px solid var(--brass-soft);margin:.6em 0;padding-left:12px;color:var(--ink-soft)}
+
+/* ============================================================
+   KEY DATES
+   ============================================================ */
+.inline-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.inline-form input,.inline-form select{font-size:14px;padding:10px 11px;
+  border:1px solid var(--line-strong);border-radius:2px;outline:none}
+.inline-form .grow{flex:2;min-width:160px}
+.rows{margin-top:18px;border:1px solid var(--line-strong);background:var(--card);border-radius:2px}
+.date-row{display:flex;align-items:center;gap:13px;padding:13px 15px;border-bottom:1px solid var(--line);
+  border-left:3px solid var(--line-strong)}
+.date-row:last-child{border-bottom:none}
+.date-row.soon{border-left-color:var(--brass);background:rgba(147,115,31,.06)}
+.date-row.imminent{border-left-color:var(--seal);background:rgba(166,54,47,.07)}
+.date-countdown{font-family:'Source Serif 4',serif;font-weight:700;font-size:19px;line-height:1;
+  min-width:62px;text-align:center;flex:none}
+.date-countdown small{display:block;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:400;
+  color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+.date-main{flex:1;min-width:0}
+.dm-label{font-size:14.5px;font-weight:500}
+.dm-when{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);margin-top:3px}
+.pill{font-family:'IBM Plex Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;
+  padding:2px 7px;border-radius:9px;background:rgba(128,128,128,.18);color:var(--ink-soft);flex:none}
+
+/* ============================================================
+   FINANCIAL
+   ============================================================ */
+.fin-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:18px;
+  border:1px solid var(--line);background:var(--line);border-radius:2px;overflow:hidden}
+.fin-stat{background:var(--card);padding:13px 15px}
+.fin-stat .n{font-family:'Source Serif 4',serif;font-size:21px;font-weight:700;line-height:1}
+.fin-stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin-top:5px}
+.n.pos{color:var(--pos)}.n.neg{color:var(--neg)}
+.month-nav{display:flex;align-items:center;gap:10px}
+.month-nav b{font-family:'IBM Plex Mono',monospace;font-size:13px;min-width:110px;text-align:center}
+.fin-panel{margin-top:18px;border:1px solid var(--line-strong);background:var(--card);padding:16px;border-radius:2px}
+.fin-panel h3{font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--ink-faint);margin:0 0 13px;font-weight:500}
+.bar-row{margin-bottom:12px}.bar-row:last-child{margin-bottom:0}
+.bar-label{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px;
+  font-family:'IBM Plex Mono',monospace}
+.bar-track{height:9px;background:var(--line);border-radius:5px;overflow:hidden}
+.bar-fill{height:100%;border-radius:5px;transition:width .4s}
+.bar-fill.over{background:var(--neg)!important}
+.fin-row{display:flex;align-items:center;gap:11px;padding:12px 15px;border-bottom:1px solid var(--line);
+  border-left:3px solid transparent;cursor:pointer}
+.fin-row:last-child{border-bottom:none}
+.fin-row:hover{background:rgba(128,128,128,.05)}
+.fin-row.income{border-left-color:var(--pos)}
+.fin-row.expense{border-left-color:var(--neg)}
+.fin-row.lent{border-left-color:#3F4F8C}
+.fin-row.borrowed{border-left-color:#96502c}
+.fin-row.settled{opacity:.5}
+.fr-desc{flex:1;font-size:14px;min-width:0}
+.fr-date{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);flex:none;min-width:52px}
+.fr-amt{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;flex:none}
+.fr-amt.pos{color:var(--pos)}.fr-amt.neg{color:var(--neg)}
+.fr-amt.neutral{color:var(--ink-soft)}
+
+/* ============================================================
+   REVIEW
+   ============================================================ */
+.review-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:18px}
+.review-card{border:1px solid var(--line-strong);background:var(--card);border-radius:2px;overflow:hidden}
+.review-head{padding:11px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.05em;color:#fff}
+.review-item{padding:10px 14px;border-bottom:1px solid var(--line);font-size:13.5px}
+.review-item:last-child{border-bottom:none}
+.review-item small{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;
+  color:var(--ink-faint);margin-top:3px}
+
+/* ============================================================
+   SEARCH / TRASH / LOCK
+   ============================================================ */
+.search-ov{position:fixed;inset:0;z-index:950;background:rgba(10,14,18,.6);
+  display:none;align-items:flex-start;justify-content:center;padding:70px 20px 20px}
+.search-ov.open{display:flex}
+.search-card{max-width:640px;width:100%;background:var(--card);border:1px solid var(--line-strong);
+  border-radius:3px;box-shadow:0 10px 40px rgba(0,0,0,.4);overflow:hidden}
+.search-card input{width:100%;font-size:17px;padding:17px 20px;border:none;
+  border-bottom:1px solid var(--line);outline:none}
+.search-results{max-height:52vh;overflow-y:auto}
+.sr-item{padding:12px 20px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:11px;align-items:center}
+.sr-item:hover,.sr-item.sel{background:rgba(147,115,31,.13)}
+.sr-item:last-child{border-bottom:none}
+.sr-kind{font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.06em;
+  padding:2px 7px;border-radius:9px;background:rgba(128,128,128,.2);color:var(--ink-soft);flex:none}
+.sr-text{flex:1;font-size:14px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+#lockScreen{position:fixed;inset:0;z-index:999;background:var(--paper);
+  display:flex;align-items:center;justify-content:center;padding:20px}
+#lockScreen.hidden{display:none}
+.lock-card{max-width:360px;width:100%;background:var(--card);border:1px solid var(--line-strong);
+  border-radius:2px;box-shadow:var(--shadow);padding:28px 26px;text-align:center;position:relative;overflow:hidden}
+.lock-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;
+  background:linear-gradient(180deg,var(--brass),var(--seal))}
+.lock-seal{width:44px;height:44px;border-radius:50%;border:2px solid var(--seal);color:var(--seal);
+  display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:20px}
+.lock-card h2{font-family:'Source Serif 4',serif;font-size:20px;margin:0 0 6px}
+.lock-card p{font-size:12.5px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5}
+.lock-card input{width:100%;font-family:'IBM Plex Mono',monospace;font-size:16px;letter-spacing:.12em;
+  text-align:center;padding:12px;border:1px solid var(--line-strong);border-radius:2px;outline:none;margin-bottom:10px}
+.lock-card input:focus{border-color:var(--brass);box-shadow:0 0 0 3px rgba(147,115,31,.13)}
+.lock-card .btn{width:100%}
+.lock-err{font-size:11.5px;color:var(--seal);margin-top:10px;min-height:16px;font-family:'IBM Plex Mono',monospace}
+.lock-alt{margin-top:13px;font-size:11.5px;color:var(--ink-faint)}
+.lock-alt a{color:var(--ink-soft);text-decoration:underline;cursor:pointer}
+.shake{animation:shake .35s}
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
+.strength{height:4px;border-radius:2px;background:var(--line);margin:-4px 0 10px;overflow:hidden}
+.strength i{display:block;height:100%;width:0;transition:width .3s,background-color .3s}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;z-index:1200;
+  background:var(--ink);color:var(--paper);padding:12px 18px;border-radius:3px;font-size:13px;
+  box-shadow:0 6px 24px rgba(0,0,0,.3);display:flex;align-items:center;gap:14px;opacity:0;
+  pointer-events:none;transition:opacity .25s,transform .25s}
+.toast.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(-4px)}
+.toast button{background:none;border:none;color:var(--brass-soft);font-weight:600;cursor:pointer;
+  font-family:'IBM Plex Mono',monospace;font-size:12px}
+.offline-badge{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 7px;border-radius:9px;
+  background:var(--seal);color:#fff}
+</style>
+</head>
+<body>
+
+<!-- ========== LOCK SCREEN ========== -->
+<div id="lockScreen">
+  <div class="lock-card" id="lockCard">
+    <div class="lock-seal">🔒</div>
+    <h2 id="lockTitle">Unlock Register</h2>
+    <p id="lockSub">Enter your passphrase.</p>
+    <input type="password" id="lockInput" placeholder="Passphrase" autocomplete="current-password" aria-label="Passphrase">
+    <div class="strength" id="lockStrength" style="display:none"><i></i></div>
+    <input type="password" id="lockConfirm" placeholder="Confirm passphrase" autocomplete="new-password"
+           aria-label="Confirm passphrase" style="display:none">
+    <button class="btn" id="lockBtn">Unlock</button>
+    <div class="lock-err" id="lockErr" role="alert"></div>
+    <div class="lock-alt" id="lockBioWrap" style="display:none">
+      <a id="lockBio">Use Face ID / Touch ID</a>
+    </div>
+    <div class="lock-alt" id="lockResetWrap" style="display:none">
+      <a id="lockReset">Forgotten passphrase?</a>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="mainApp" style="display:none">
+
+  <!-- ========== NAV ========== -->
+  <div class="view-switch">
+    <button class="view-tab active" data-view="tasks">📋 Tasks</button>
+    <button class="view-tab" data-view="notes">🗒 Notes</button>
+    <button class="view-tab" data-view="dates">📅 Dates</button>
+    <button class="view-tab" data-view="review">📊 Review</button>
+    <button class="view-tab" data-view="finance" id="financeTab" style="display:none">💰 Financial</button>
+    <div class="spacer"></div>
+    <span class="offline-badge" id="offlineBadge" style="display:none">offline</span>
+    <div class="cloud-status" id="cloudStatus"><span class="cloud-dot"></span><span id="cloudStatusText">Local only</span></div>
+    <button class="hbtn" id="searchBtn" title="Search (press /)" aria-label="Search everything">🔍</button>
+    <button class="hbtn" id="themeBtn" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
+    <button class="hbtn" id="syncBtn" title="Sync settings" aria-label="Sync settings">⚙</button>
+    <button class="hbtn" id="lockNowBtn" title="Lock now" aria-label="Lock the app now">🔒</button>
+  </div>
+
+  <!-- ========== TASKS ========== -->
+  <div id="taskView">
+    <div class="cover">
+      <div class="cover-top">
+        <div>
+          <!-- SECRET TRIGGER: 3 taps in 2s reveals the Financial section -->
+          <div class="eyebrow secret-trigger" id="secretTrigger">Daily Task Ledger</div>
+          <h1>Register</h1>
+          <div class="sub">Type a task and it files itself. Add <code>#work</code>, <code>!high</code> or
+            <code>@tomorrow</code> to set things directly and skip the prompts.</div>
+        </div>
+        <div class="datebox" id="todayBox"></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="n" id="statActive">0</div><div class="l">Active</div></div>
+        <div class="stat"><div class="n" id="statToday">0</div><div class="l">Won today</div></div>
+        <div class="stat"><div class="n" id="statOverdue">0</div><div class="l">Overdue</div></div>
+        <div class="stat"><div class="n" id="statTotal">0</div><div class="l">Total</div></div>
+      </div>
+      <div class="progress-outer"><div class="progress-inner" id="progressBar"></div></div>
+      <div class="add-row">
+        <input type="text" id="taskInput" placeholder="e.g. Draft ITC letter #work !high @tomorrow"
+               autocomplete="off" aria-label="New task">
+        <button class="btn" id="addBtn">File</button>
+      </div>
+      <div class="add-hint" id="addHint">
+        <code>#work</code> <code>#personal</code> <code>#finance</code> <code>#errands</code> ·
+        <code>!high</code> <code>!low</code> · <code>@today</code> <code>@tomorrow</code>
+        <code>@3d</code> <code>@2026-09-15</code>
+      </div>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+    <div class="toolbar">
+      <select id="statusFilter" aria-label="Status filter">
+        <option value="all">Active + In progress</option>
+        <option value="inprogress">In progress only</option>
+      </select>
+      <select id="sortBy" aria-label="Sort order">
+        <option value="priority">Sort: Priority</option>
+        <option value="due">Sort: Due date</option>
+        <option value="created">Sort: Newest</option>
+      </select>
+      <input type="search" id="taskSearch" placeholder="Filter tasks…" aria-label="Filter tasks">
+      <div class="spacer"></div>
+      <button class="btn ghost small" id="templatesBtn">⧉ Templates</button>
+      <button class="btn ghost small" id="syncNowBtn">🔄 Sync</button>
+      <button class="btn ghost small" id="backupBtn">Backup</button>
+      <button class="btn ghost small" id="restoreBtn">Restore</button>
+      <input type="file" id="restoreFile" accept="application/json" style="display:none">
+    </div>
+    <div class="list" id="list"></div>
+
+    <div class="section-toggle" id="doneToggle">
+      <span class="chev">▸</span><span id="doneLabel">Completed tasks</span>
+    </div>
+    <div class="section-body" id="doneList"></div>
+
+    <div class="section-toggle" id="trashToggle">
+      <span class="chev">▸</span><span id="trashLabel">Trash</span>
+    </div>
+    <div class="section-body" id="trashList"></div>
+  </div>
+
+  <!-- ========== NOTES ========== -->
+  <div id="notesView" style="display:none">
+    <div class="cover">
+      <div class="cover-top"><div>
+        <div class="eyebrow">Quick Capture</div><h1>Notes</h1>
+        <div class="sub">Paste anything urgent. Markdown is supported — headings, <b>bold</b>, lists, links and code.</div>
+      </div></div>
+      <div class="notes-toolbar">
+        <input type="search" id="notesSearch" placeholder="Search notes…" aria-label="Search notes">
+        <select id="notesSort" aria-label="Sort notes">
+          <option value="pinned">Pinned first</option>
+          <option value="recent">Recently edited</option>
+          <option value="created">Newest</option>
+        </select>
+        <div class="spacer"></div>
+        <button class="btn ghost small" id="pasteNoteBtn">📋 Paste</button>
+        <button class="btn" id="newNoteBtn">+ New note</button>
+      </div>
+    </div>
+    <div class="notes-board" id="notesBoard"></div>
+  </div>
+
+  <!-- ========== KEY DATES ========== -->
+  <div id="datesView" style="display:none">
+    <div class="cover">
+      <div class="cover-top"><div>
+        <div class="eyebrow">Countdown</div><h1>Key Dates</h1>
+        <div class="sub">Renewals, premiums, birthdays, deadlines — sorted by what's next.</div>
+      </div></div>
+      <div class="inline-form">
+        <input type="text" class="grow" id="dateLabel" placeholder="e.g. Car insurance renewal" aria-label="Date label">
+        <input type="date" id="dateWhen" aria-label="Date">
+        <select id="dateRepeat" aria-label="Repeat">
+          <option value="once">One-off</option><option value="yearly">Every year</option>
+          <option value="monthly">Every month</option>
+        </select>
+        <button class="btn" id="addDateBtn">Add</button>
+      </div>
+    </div>
+    <div class="rows" id="datesList"></div>
+  </div>
+
+  <!-- ========== WEEKLY REVIEW ========== -->
+  <div id="reviewView" style="display:none">
+    <div class="cover">
+      <div class="cover-top">
+        <div>
+          <div class="eyebrow">Last 7 days</div><h1>Weekly Review</h1>
+          <div class="sub">What got done, what slipped, and what you took on.</div>
+        </div>
+        <div class="datebox" id="reviewRange"></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="n" id="rvDone">0</div><div class="l">Completed</div></div>
+        <div class="stat"><div class="n" id="rvSlipped">0</div><div class="l">Slipped</div></div>
+        <div class="stat"><div class="n" id="rvAdded">0</div><div class="l">Added</div></div>
+        <div class="stat"><div class="n" id="rvRate">0%</div><div class="l">Completion</div></div>
+      </div>
+    </div>
+    <div class="review-grid" id="reviewGrid"></div>
+  </div>
+
+  <!-- ========== FINANCIAL (hidden) ========== -->
+  <div id="financeView" style="display:none">
+    <div class="cover">
+      <div class="cover-top">
+        <div>
+          <div class="eyebrow">Private Ledger</div><h1>Financial</h1>
+          <div class="sub">Money in, money out, and udhaar — what you've lent and what you owe.</div>
+        </div>
+        <div class="month-nav">
+          <button class="hbtn" id="monthPrev" aria-label="Previous month">‹</button>
+          <b id="monthLabel"></b>
+          <button class="hbtn" id="monthNext" aria-label="Next month">›</button>
+        </div>
+      </div>
+      <div class="fin-summary">
+        <div class="fin-stat"><div class="n pos" id="finIn">₹0</div><div class="l">In</div></div>
+        <div class="fin-stat"><div class="n neg" id="finOut">₹0</div><div class="l">Out</div></div>
+        <div class="fin-stat"><div class="n" id="finNet">₹0</div><div class="l">Net</div></div>
+        <div class="fin-stat"><div class="n" id="finUdhaar">₹0</div><div class="l">Udhaar (net)</div></div>
+      </div>
+      <div class="inline-form">
+        <input type="text" class="grow" id="finDesc" placeholder="What was it for?" aria-label="Description">
+        <input type="number" id="finAmt" placeholder="₹ amount" step="0.01" aria-label="Amount">
+        <select id="finType" aria-label="Type">
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+          <option value="lent">Udhaar diya (lent)</option>
+          <option value="borrowed">Udhaar liya (borrowed)</option>
+        </select>
+        <input type="text" id="finWho" placeholder="Person (udhaar)" aria-label="Person" style="display:none">
+        <select id="finCat" aria-label="Category">
+          <option value="">Category (optional)</option>
+          <option>Household</option><option>Bills</option><option>Travel</option><option>Food</option>
+          <option>Health</option><option>Education</option><option>Investment</option><option>Salary</option>
+          <option>Other</option>
+        </select>
+        <input type="date" id="finDate" aria-label="Date (optional)">
+        <label style="font-size:12px;display:flex;align-items:center;gap:5px;color:var(--ink-soft)">
+          <input type="checkbox" id="finRecur" style="width:auto"> monthly
+        </label>
+        <button class="btn" id="finAddBtn">Record</button>
+      </div>
+    </div>
+
+    <div class="fin-panel">
+      <h3>Spending by category — budgets</h3>
+      <div id="finBars"></div>
+      <div class="inline-form" style="margin-top:14px">
+        <select id="budgetCat" aria-label="Budget category">
+          <option>Household</option><option>Bills</option><option>Travel</option><option>Food</option>
+          <option>Health</option><option>Education</option><option>Investment</option><option>Other</option>
+        </select>
+        <input type="number" id="budgetAmt" placeholder="Monthly cap ₹" aria-label="Budget amount">
+        <button class="btn ghost small" id="budgetSetBtn">Set budget</button>
+        <div class="spacer"></div>
+        <button class="btn ghost small" id="finCsvBtn">⤓ Export CSV</button>
+      </div>
+    </div>
+
+    <div class="fin-panel" id="udhaarPanel" style="display:none">
+      <h3>Outstanding udhaar</h3>
+      <div id="udhaarList"></div>
+    </div>
+
+    <div class="rows" id="finLedger"></div>
+  </div>
+</div>
+
+<!-- ========== TASK EDIT MODAL ========== -->
+<div class="ov" id="taskOv">
+  <div class="ov-card">
+    <div class="ov-head">
+      <h2 style="flex:none;font-size:16px;color:var(--ink-faint)">Edit task</h2>
+      <div class="spacer"></div>
+      <span class="saved-flag" id="taskSaved">saved ✓</span>
+      <button class="ov-close" id="taskOvClose" aria-label="Close">✕</button>
+    </div>
+    <input type="text" class="edit-title" id="etTitle" placeholder="Task title" aria-label="Task title">
+    <div class="edit-grid">
+      <div class="field"><label for="etCat">Category</label><select id="etCat"></select></div>
+      <div class="field"><label for="etPrio">Priority</label><select id="etPrio"></select></div>
+      <div class="field"><label for="etDue">Due date</label><input type="date" id="etDue"></div>
+      <div class="field"><label for="etRepeat">Recurring</label><select id="etRepeat">
+        <option value="none">None</option><option value="daily">Daily</option>
+        <option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+      </select></div>
+    </div>
+    <div class="sub-wrap">
+      <div class="flabel" style="margin-bottom:7px">Subtasks <span id="etSubCount"></span></div>
+      <div id="etSubs"></div>
+      <div class="sub-add">
+        <input type="text" id="etSubInput" placeholder="Add a step…" aria-label="New subtask">
+        <button class="btn ghost small" id="etSubAdd">Add</button>
+      </div>
+    </div>
+    <div class="field"><label for="etNotes">Notes</label>
+      <textarea class="edit-notes" id="etNotes" placeholder="Any detail worth keeping…"></textarea></div>
+    <div class="edit-foot">
+      <button class="btn ghost small" id="etRecat">↻ Re-file with AI</button>
+      <button class="btn ghost small" id="etSaveTemplate">⧉ Save as template</button>
+      <div class="spacer"></div>
+      <button class="btn ghost small danger" id="etDelete">Delete</button>
+      <button class="btn small" id="etDone">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== NOTE MODAL ========== -->
+<div class="ov" id="noteOv">
+  <div class="ov-card">
+    <div class="ov-head">
+      <input type="text" class="edit-title" id="enTitle" placeholder="Untitled note"
+             style="margin-bottom:0" aria-label="Note title">
+      <span class="saved-flag" id="noteSaved">saved ✓</span>
+      <button class="ov-close" id="noteOvClose" aria-label="Close">✕</button>
+    </div>
+    <div class="note-swatches" id="enSwatches"></div>
+    <textarea class="note-body" id="enBody" placeholder="Paste or type here… markdown supported"></textarea>
+    <div class="md-preview" id="enPreview" style="display:none"></div>
+    <div class="edit-foot">
+      <span id="enTime" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint)"></span>
+      <div class="spacer"></div>
+      <button class="btn ghost small" id="enPreviewBtn">👁 Preview</button>
+      <button class="btn ghost small" id="enToTask">→ Make task</button>
+      <button class="btn ghost small" id="enCopy">⧉ Copy</button>
+      <button class="btn ghost small" id="enPin">📌 Pin</button>
+      <button class="btn ghost small danger" id="enDelete">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== DATE EDIT MODAL ========== -->
+<div class="ov" id="dateOv">
+  <div class="ov-card narrow" style="text-align:left">
+    <div class="ov-head"><h2>Edit date</h2><button class="ov-close" id="dateOvClose" aria-label="Close">✕</button></div>
+    <div class="field" style="margin-bottom:12px"><label for="edLabel">Label</label>
+      <input type="text" id="edLabel"></div>
+    <div class="edit-grid" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label for="edWhen">Date</label><input type="date" id="edWhen"></div>
+      <div class="field"><label for="edRepeat">Repeat</label><select id="edRepeat">
+        <option value="once">One-off</option><option value="yearly">Yearly</option>
+        <option value="monthly">Monthly</option></select></div>
+    </div>
+    <div class="edit-foot">
+      <button class="btn ghost small danger" id="edDelete">Delete</button>
+      <div class="spacer"></div>
+      <button class="btn small" id="edSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== FINANCE EDIT MODAL ========== -->
+<div class="ov" id="finOv">
+  <div class="ov-card" style="max-width:560px">
+    <div class="ov-head"><h2>Edit entry</h2><button class="ov-close" id="finOvClose" aria-label="Close">✕</button></div>
+    <div class="field" style="margin-bottom:12px"><label for="efDesc">Description</label>
+      <input type="text" id="efDesc"></div>
+    <div class="edit-grid" style="grid-template-columns:repeat(2,1fr)">
+      <div class="field"><label for="efAmt">Amount ₹</label><input type="number" id="efAmt" step="0.01"></div>
+      <div class="field"><label for="efType">Type</label><select id="efType">
+        <option value="expense">Expense</option><option value="income">Income</option>
+        <option value="lent">Udhaar diya (lent)</option><option value="borrowed">Udhaar liya (borrowed)</option>
+      </select></div>
+      <div class="field"><label for="efCat">Category</label><select id="efCat">
+        <option value="">— none —</option>
+        <option>Household</option><option>Bills</option><option>Travel</option><option>Food</option>
+        <option>Health</option><option>Education</option><option>Investment</option><option>Salary</option>
+        <option>Other</option></select></div>
+      <div class="field"><label for="efDate">Date</label><input type="date" id="efDate"></div>
+      <div class="field"><label for="efWho">Person</label><input type="text" id="efWho" placeholder="For udhaar"></div>
+      <div class="field"><label for="efSettled">Settled?</label><select id="efSettled">
+        <option value="no">Outstanding</option><option value="yes">Settled</option></select></div>
+    </div>
+    <div class="edit-foot">
+      <button class="btn ghost small danger" id="efDelete">Delete</button>
+      <div class="spacer"></div>
+      <button class="btn small" id="efSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== TEMPLATES MODAL ========== -->
+<div class="ov" id="tplOv">
+  <div class="ov-card" style="max-width:520px">
+    <div class="ov-head"><h2>Task templates</h2><button class="ov-close" id="tplOvClose" aria-label="Close">✕</button></div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 14px">
+      Click a template to file it as a new task, with its subtasks attached.</p>
+    <div id="tplList"></div>
+  </div>
+</div>
+
+<!-- ========== DUE DATE PICKER ========== -->
+<div class="ov" id="dueOv">
+  <div class="ov-card narrow">
+    <h2 style="font-family:'Source Serif 4',serif;font-size:19px;margin:0 0 4px">When's it due?</h2>
+    <p id="dueTaskName" style="font-size:12.5px;color:var(--ink-soft);font-style:italic;margin:0 0 16px"></p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:16px">
+      <button class="btn ghost small due-opt" data-days="0">Today</button>
+      <button class="btn ghost small due-opt" data-days="1">Tomorrow</button>
+      <button class="btn ghost small due-opt" data-days="2">2 days</button>
+      <button class="btn ghost small due-opt" data-days="3">3 days</button>
+      <button class="btn ghost small due-opt" data-days="7">A week</button>
+      <button class="btn ghost small due-opt" data-none="1">No date</button>
+    </div>
+    <div style="border-top:1px solid var(--line);padding-top:13px;display:flex;gap:8px">
+      <input type="date" id="dueCustom" style="flex:1;padding:9px;border:1px solid var(--line-strong);border-radius:2px">
+      <button class="btn small" id="dueCustomBtn">Use</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== VAULT ========== -->
+<div class="ov" id="vaultOv" style="z-index:960">
+  <div class="ov-card narrow" id="vaultCard">
+    <div style="width:46px;height:46px;border-radius:50%;border:2px solid var(--brass);color:var(--brass);
+      display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:20px">🔐</div>
+    <h2 style="font-family:'Source Serif 4',serif;font-size:19px;margin:0 0 4px">Restricted</h2>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 18px">Enter the access code.</p>
+    <input type="password" id="vaultInput" placeholder="••••••••" autocomplete="off"
+      style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:15px;letter-spacing:.15em;text-align:center;
+      padding:12px;border:1px solid var(--line-strong);border-radius:2px;outline:none;margin-bottom:12px" aria-label="Access code">
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="vaultOk" style="flex:1">Unlock</button>
+      <button class="btn ghost" id="vaultCancel" style="flex:1">Cancel</button>
+    </div>
+    <div class="lock-err" id="vaultErr" role="alert"></div>
+  </div>
+</div>
+
+<!-- ========== SYNC SETTINGS ========== -->
+<div class="ov" id="syncOv">
+  <div class="ov-card" style="max-width:440px">
+    <div class="ov-head"><h2>Cloud sync</h2><button class="ov-close" id="syncOvClose" aria-label="Close">✕</button></div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5">
+      Your Apps Script Web App URL and token. Everything is encrypted in this browser before it is sent —
+      the Sheet only ever holds ciphertext.</p>
+    <div class="field" style="margin-bottom:12px"><label for="syncUrl">Web App URL</label>
+      <input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/…/exec"></div>
+    <div class="field" style="margin-bottom:14px"><label for="syncToken">Token</label>
+      <input type="password" id="syncToken" placeholder="Your secret token"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="syncSave" style="flex:1">Connect</button>
+      <button class="btn ghost" id="syncOff" style="flex:1">Disconnect</button>
+    </div>
+    <div class="lock-err" id="syncMsg" style="color:var(--ink-soft)"></div>
+    <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px;
+      font-size:11.5px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace">
+      <div>Last sync: <span id="lastSyncTxt">never</span></div>
+      <div style="margin-top:4px">Records: <span id="recCount">0</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== GLOBAL SEARCH ========== -->
+<div class="search-ov" id="searchOv">
+  <div class="search-card">
+    <input type="text" id="searchInput" placeholder="Search tasks, notes, dates, ledger…" aria-label="Global search">
+    <div class="search-results" id="searchResults"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastAction" style="display:none"></button></div>
+
+<script>
+/* ============================================================================
+   REGISTER — core
+   Data model: every item is a record
+     { id, type, updatedAt, deleted, ...fields }
+   type: task | note | date | fin | template | budget | settings
+   Records are encrypted individually (AES-GCM) before leaving the browser.
+   The Sheet stores one ROW per record, so no single cell can overflow.
+   ========================================================================== */
+
+'use strict';
+
+const LS = 'reg_';                       // localStorage namespace
+const PBKDF2_ITERS = 250000;             // key-stretching cost
+let cryptoKey = null;                    // CryptoKey, in memory only
+let records = {};                        // id -> record (decrypted)
+let cloud = { url:'', token:'' };
+let lastSync = 0;
+let online = navigator.onLine;
+
+/* ---------- small helpers ---------- */
+const $ = id => document.getElementById(id);
+const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+// Local-calendar date string. NEVER use toISOString() for dates — in IST (UTC+5:30)
+// it rolls back to the previous day and makes "today" behave as yesterday.
+function isoLocal(d){
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+const todayISO = () => isoLocal(new Date());
+const isoMonth = d => isoLocal(d).slice(0,7);
+const nowMs = () => Date.now();
+function esc(s){ const d=document.createElement('div'); d.textContent = s==null?'':String(s); return d.innerHTML; }
+function fmtDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso+'T00:00:00');
+  if(isNaN(d)) return '';
+  return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+}
+function fmtMoney(n){ return '₹' + Math.abs(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2}); }
+function timeAgo(ts){
+  if(!ts) return 'never';
+  const m = Math.round((Date.now()-ts)/60000);
+  if(m<1) return 'just now';
+  if(m<60) return m+'m ago';
+  const h = Math.round(m/60);
+  if(h<24) return h+'h ago';
+  return Math.round(h/24)+'d ago';
+}
+
+/* ---------- toast + undo ---------- */
+let toastTimer = null, undoFn = null;
+function toast(msg, actionLabel, action){
+  clearTimeout(toastTimer);
+  $('toastMsg').textContent = msg;
+  const btn = $('toastAction');
+  if(actionLabel){
+    btn.style.display=''; btn.textContent = actionLabel; undoFn = action;
+  } else { btn.style.display='none'; undoFn = null; }
+  $('toast').classList.add('show');
+  toastTimer = setTimeout(()=> $('toast').classList.remove('show'), 6000);
+}
+$('toastAction').addEventListener('click', ()=>{
+  if(undoFn) undoFn();
+  $('toast').classList.remove('show');
+});
+
+/* ============================================================================
+   ENCRYPTION  (AES-GCM 256, key derived from the passphrase via PBKDF2)
+   ========================================================================== */
+const enc = new TextEncoder(), dec = new TextDecoder();
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+
+async function deriveKey(passphrase, saltB64){
+  const salt = unb64(saltB64);
+  const base = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt, iterations:PBKDF2_ITERS, hash:'SHA-256' },
+    base, { name:'AES-GCM', length:256 }, true, ['encrypt','decrypt']
+  );
+}
+async function encryptStr(plain){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, cryptoKey, enc.encode(plain));
+  const out = new Uint8Array(iv.length + ct.byteLength);
+  out.set(iv,0); out.set(new Uint8Array(ct), iv.length);
+  return b64(out);
+}
+async function decryptStr(payload){
+  const raw = unb64(payload);
+  const iv = raw.slice(0,12), ct = raw.slice(12);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, cryptoKey, ct);
+  return dec.decode(pt);
+}
+
+/* Local salt + verifier. The verifier is an encrypted known string; if it
+   decrypts cleanly the passphrase is right. Stored locally only — never
+   uploaded next to the ciphertext, so it can't be brute-forced from the Sheet. */
+function getSalt(){
+  let s = localStorage.getItem(LS+'salt');
+  if(!s){ s = b64(crypto.getRandomValues(new Uint8Array(16))); localStorage.setItem(LS+'salt', s); }
+  return s;
+}
+async function setVerifier(){ localStorage.setItem(LS+'verify', await encryptStr('REGISTER_OK')); }
+async function checkVerifier(){
+  const v = localStorage.getItem(LS+'verify');
+  if(!v) return null;                        // no passphrase set on this device yet
+  try{ return (await decryptStr(v)) === 'REGISTER_OK'; }catch(e){ return false; }
+}
+
+/* ============================================================================
+   RECORD STORE  (local cache = encrypted, decrypted into memory on unlock)
+   ========================================================================== */
+async function persistLocal(){
+  const packed = {};
+  for(const id in records){ packed[id] = await encryptStr(JSON.stringify(records[id])); }
+  localStorage.setItem(LS+'recs', JSON.stringify(packed));
+  localStorage.setItem(LS+'lastSync', String(lastSync));
+}
+async function loadLocal(){
+  records = {};
+  const raw = localStorage.getItem(LS+'recs');
+  if(!raw) return;
+  let packed;
+  try{ packed = JSON.parse(raw); }catch(e){ return; }
+  for(const id in packed){
+    try{ records[id] = JSON.parse(await decryptStr(packed[id])); }
+    catch(e){ /* record from a different passphrase — skip it */ }
+  }
+  lastSync = Number(localStorage.getItem(LS+'lastSync')||0);
+}
+
+/* All live records of a type (excludes soft-deleted). */
+function all(type){
+  return Object.values(records).filter(r => r.type===type && !r.deleted);
+}
+function trashed(){
+  return Object.values(records).filter(r => r.deleted && r.deletedAt);
+}
+function put(rec, skipRender){
+  rec.updatedAt = nowMs();
+  records[rec.id] = rec;
+  queueSave(skipRender);
+  return rec;
+}
+function softDelete(id){
+  const r = records[id];
+  if(!r) return;
+  r.deleted = true; r.deletedAt = nowMs(); r.updatedAt = nowMs();
+  queueSave();
+}
+function restore(id){
+  const r = records[id];
+  if(!r) return;
+  r.deleted = false; delete r.deletedAt; r.updatedAt = nowMs();
+  queueSave();
+}
+function purgeOldTrash(){
+  // Trash older than 30 days is dropped permanently on load.
+  const cutoff = nowMs() - 30*86400000;
+  let changed = false;
+  for(const id in records){
+    const r = records[id];
+    if(r.deleted && r.deletedAt && r.deletedAt < cutoff){ delete records[id]; changed = true; }
+  }
+  return changed;
+}
+
+let saveTimer = null;
+function queueSave(skipRender){
+  if(!skipRender) renderAll();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    await persistLocal();
+    pushCloud();
+  }, 400);
+}
+
+/* ============================================================================
+   CLOUD SYNC  (per-record rows, merged by updatedAt — newest wins)
+   ========================================================================== */
+function cloudOn(){ return !!(cloud.url && cloud.token); }
+function setStatus(state, text){
+  const el = $('cloudStatus');
+  el.className = 'cloud-status ' + state;
+  $('cloudStatusText').textContent = text;
+}
+function loadCloudCfg(){
+  try{
+    const c = JSON.parse(localStorage.getItem(LS+'cloud')||'{}');
+    cloud = { url:c.url||'', token:c.token||'' };
+  }catch(e){}
+  $('syncUrl').value = cloud.url;
+  $('syncToken').value = cloud.token;
+  setStatus(cloudOn()?'connected':'', cloudOn()?'Synced':'Local only');
+}
+function saveCloudCfg(){ localStorage.setItem(LS+'cloud', JSON.stringify(cloud)); }
+
+async function pullCloud(){
+  if(!cloudOn() || !online) return false;
+  setStatus('syncing','Syncing…');
+  try{
+    const url = cloud.url + '?action=list&token=' + encodeURIComponent(cloud.token);
+    const res = await fetch(url);
+    const data = await res.json();
+    if(data.error) throw new Error(data.error);
+    let merged = 0;
+    for(const row of (data.records||[])){
+      const local = records[row.id];
+      // newest write wins, per record
+      if(local && local.updatedAt >= row.updatedAt) continue;
+      try{
+        const rec = JSON.parse(await decryptStr(row.payload));
+        records[row.id] = rec; merged++;
+      }catch(e){ /* encrypted with a different passphrase */ }
+    }
+    lastSync = nowMs();
+    setStatus('connected','Synced');
+    if(merged){ await persistLocal(); renderAll(); }
+    updateSyncInfo();
+    return true;
+  }catch(e){
+    console.error('pull failed', e);
+    setStatus('error','Sync error');
+    return false;
+  }
+}
+
+async function pushCloud(){
+  if(!cloudOn() || !online) return;
+  const dirty = Object.values(records).filter(r => r.updatedAt > lastSync);
+  if(!dirty.length) return;
+  setStatus('syncing','Syncing…');
+  try{
+    const rows = [];
+    for(const r of dirty){
+      rows.push({ id:r.id, type:r.type, updatedAt:r.updatedAt,
+                  deleted: !!r.deleted, payload: await encryptStr(JSON.stringify(r)) });
+    }
+    const res = await fetch(cloud.url, {
+      method:'POST',
+      headers:{ 'Content-Type':'text/plain;charset=utf-8' },   // avoids CORS preflight
+      body: JSON.stringify({ action:'upsert', token:cloud.token, records:rows })
+    });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'push failed');
+    lastSync = nowMs();
+    localStorage.setItem(LS+'lastSync', String(lastSync));
+    setStatus('connected','Synced');
+    updateSyncInfo();
+  }catch(e){
+    console.error('push failed', e);
+    setStatus('error','Sync error — saved locally');
+  }
+}
+function updateSyncInfo(){
+  $('lastSyncTxt').textContent = timeAgo(lastSync);
+  $('recCount').textContent = Object.keys(records).length;
+}
+
+window.addEventListener('online', ()=>{ online=true; $('offlineBadge').style.display='none'; pullCloud(); });
+window.addEventListener('offline', ()=>{ online=false; $('offlineBadge').style.display=''; });
+if(!online) $('offlineBadge').style.display='';
+
+/* background pull, never while typing */
+setInterval(()=>{
+  const a = document.activeElement;
+  if(a && (a.tagName==='INPUT'||a.tagName==='TEXTAREA')) return;
+  pullCloud();
+}, 60000);
+
+/* ============================================================================
+   TASKS
+   ========================================================================== */
+const CATS = {
+  Work:'#1B4B8F', Personal:'#9C2963', Finance:'#B8860B', Errands:'#B45309'
+};
+const CAT_VAR = { Work:'--cat-work', Personal:'--cat-personal', Finance:'--cat-finance', Errands:'--cat-errands' };
+const PRIOS = { High:'🔴', Medium:'🟡', Low:'🔵' };
+const OLD_CAT_MAP = { Learning:'Personal', Tech:'Work', Home:'Errands' };
+let activeCat = 'All';
+
+function catColor(c){
+  const v = CAT_VAR[c];
+  return v ? getComputedStyle(document.documentElement).getPropertyValue(v).trim() || CATS[c] : CATS.Work;
+}
+function fixCat(c){ return CATS[c] ? c : (OLD_CAT_MAP[c] || 'Work'); }
+
+/* ---------- quick-add syntax: #cat !prio @date ---------- */
+function parseQuickAdd(text){
+  const out = { title:text, category:null, priority:null, dueDate:null };
+  out.title = text
+    .replace(/#(\w+)/g, (m,w)=>{
+      const c = w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
+      if(CATS[c]){ out.category = c; return ''; }
+      if(OLD_CAT_MAP[c]){ out.category = OLD_CAT_MAP[c]; return ''; }
+      return m;
+    })
+    .replace(/!(high|medium|med|low)/gi, (m,w)=>{
+      const p = w.toLowerCase();
+      out.priority = p==='high'?'High':p==='low'?'Low':'Medium';
+      return '';
+    })
+    .replace(/@(\S+)/g, (m,w)=>{
+      const d = parseDateToken(w.toLowerCase());
+      if(d){ out.dueDate = d; return ''; }
+      return m;
+    })
+    .replace(/\s{2,}/g,' ').trim();
+  return out;
+}
+function parseDateToken(tok){
+  const d = new Date(); d.setHours(0,0,0,0);
+  if(tok==='today') return isoLocal(d);
+  if(tok==='tomorrow'||tok==='tmrw'){ d.setDate(d.getDate()+1); return isoLocal(d); }
+  let m = tok.match(/^(\d+)d$/);
+  if(m){ d.setDate(d.getDate()+parseInt(m[1],10)); return isoLocal(d); }
+  m = tok.match(/^(\d+)w$/);
+  if(m){ d.setDate(d.getDate()+parseInt(m[1],10)*7); return isoLocal(d); }
+  const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const di = days.findIndex(x=>x.startsWith(tok) && tok.length>=3);
+  if(di>=0){
+    const delta = ((di - d.getDay()) + 7) % 7 || 7;
+    d.setDate(d.getDate()+delta); return isoLocal(d);
+  }
+  if(/^\d{4}-\d{2}-\d{2}$/.test(tok)) return tok;
+  return null;
+}
+
+/* ---------- AI filing (graceful when offline) ---------- */
+let aiAvailable = true;
+async function aiFile(title){
+  if(!online){ aiAvailable=false; return null; }
+  const sys = `Reply with ONLY raw JSON, no fences:
+{"category":"Work|Personal|Finance|Errands","priority":"High|Medium|Low","title":"tidied short title"}
+Work = office/professional. Finance = money, bills, tax, banking. Errands = shopping, pickups, appointments.
+Personal = family, health, home, learning, anything else.
+High if urgent/asap/today. Low if someday/eventually. Medium otherwise.`;
+  try{
+    const r = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000, system:sys,
+        messages:[{role:'user',content:title}] })
+    });
+    const d = await r.json();
+    const txt = (d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    const p = JSON.parse(txt.replace(/```json|```/g,'').trim());
+    aiAvailable = true;
+    return { category: CATS[p.category]?p.category:'Work',
+             priority: PRIOS[p.priority]?p.priority:'Medium',
+             title: p.title || title };
+  }catch(e){ aiAvailable = false; return null; }
+}
+
+/* ---------- due date picker ---------- */
+function pickDue(name){
+  return new Promise(resolve=>{
+    $('dueTaskName').textContent = '"'+name+'"';
+    $('dueCustom').value = '';
+    $('dueOv').classList.add('open');
+    const opts = [...document.querySelectorAll('.due-opt')];
+    const custom = $('dueCustomBtn');
+    function done(v){
+      $('dueOv').classList.remove('open');
+      opts.forEach(b=>b.removeEventListener('click', onOpt));
+      custom.removeEventListener('click', onCustom);
+      resolve(v);
+    }
+    function onOpt(e){
+      const b = e.currentTarget;
+      if(b.dataset.none) return done(null);
+      const d = new Date(); d.setDate(d.getDate()+parseInt(b.dataset.days,10));
+      done(isoLocal(d));
+    }
+    function onCustom(){ done($('dueCustom').value || null); }
+    opts.forEach(b=>b.addEventListener('click', onOpt));
+    custom.addEventListener('click', onCustom);
+  });
+}
+
+async function addTask(){
+  const input = $('taskInput');
+  const raw = input.value.trim();
+  if(!raw) return;
+  input.value = '';
+  const q = parseQuickAdd(raw);
+
+  let cat = q.category, prio = q.priority, title = q.title, aiUsed = false;
+  // Only call the AI for what the user didn't specify.
+  if(!cat || !prio){
+    const btn = $('addBtn'); btn.disabled = true; btn.textContent = 'Filing…';
+    const ai = await aiFile(title);
+    btn.disabled = false; btn.textContent = 'File';
+    if(ai){ cat = cat || ai.category; prio = prio || ai.priority; title = q.category||q.priority?title:ai.title; aiUsed = true; }
+    else { cat = cat || 'Work'; prio = prio || 'Medium';
+           toast('Filed offline — AI unavailable, defaulted to Work / Medium.'); }
+  }
+  const due = q.dueDate !== null ? q.dueDate : await pickDue(title);
+
+  put({ id:uid('t'), type:'task', title, category:fixCat(cat), priority:prio,
+        dueDate:due, status:'active', notes:'', repeat:'none', subs:[],
+        aiFiled:aiUsed, createdAt:nowMs(), deleted:false });
+  toast('Task filed.');
+}
+
+function cycleTask(id){
+  const t = records[id]; if(!t) return;
+  if(t.status==='active') t.status='inprogress';
+  else if(t.status==='inprogress'){
+    t.status='done'; t.completedOn = todayISO(); t.completedAt = nowMs();
+    if(t.repeat && t.repeat!=='none') spawnRepeat(t);
+  } else { t.status='active'; delete t.completedOn; delete t.completedAt; }
+  put(t);
+}
+function spawnRepeat(t){
+  const clone = { ...t, id:uid('t'), status:'active', createdAt:nowMs(),
+                  subs:(t.subs||[]).map(s=>({...s, done:false})) };
+  delete clone.completedOn; delete clone.completedAt;
+  if(t.dueDate){
+    const d = new Date(t.dueDate+'T00:00:00');
+    if(t.repeat==='daily') d.setDate(d.getDate()+1);
+    else if(t.repeat==='weekly') d.setDate(d.getDate()+7);
+    else if(t.repeat==='monthly') d.setMonth(d.getMonth()+1);
+    clone.dueDate = isoLocal(d);
+  }
+  put(clone, true);
+}
+const isOverdue = t => t.dueDate && t.status!=='done' && t.dueDate < todayISO();
+const isDueToday = t => t.dueDate === todayISO();
+
+/* ---------- task rendering ---------- */
+function taskHtml(t, showCat){
+  const od = isOverdue(t), dt = isDueToday(t);
+  const subs = t.subs||[];
+  const doneSubs = subs.filter(s=>s.done).length;
+  return `<div class="task prio-${t.priority} ${t.status==='done'?'done':''} ${od?'overdue':''}"
+       data-id="${t.id}" draggable="true">
+    <div class="check ${t.status==='done'?'checked':''} ${t.status==='inprogress'?'inprog':''}"
+         data-act="cycle" role="button" tabindex="0"
+         aria-label="${t.status==='done'?'Mark not done':'Advance status'}">${t.status==='done'?'✓':''}</div>
+    <div class="task-main">
+      <div class="task-title-row">
+        <span class="task-title">${esc(t.title)}</span>
+        ${showCat?`<span class="stamp" style="background:${catColor(t.category)}">${t.category}</span>`:''}
+      </div>
+      <div class="meta">
+        ${t.dueDate?`<span class="${od||dt?'duewarn':''}">📅 ${fmtDate(t.dueDate)}${od?' · overdue':dt?' · today':''}</span>`:''}
+        ${subs.length?`<span class="subprog">☑ ${doneSubs}/${subs.length}</span>`:''}
+        ${t.repeat&&t.repeat!=='none'?`<span>🔁 ${t.repeat}</span>`:''}
+        ${t.status==='inprogress'?'<span>◐ in progress</span>':''}
+        ${t.status==='done'&&t.completedOn?`<span>✓ ${fmtDate(t.completedOn)}</span>`:''}
+        ${t.notes?'<span>📝</span>':''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function sortTasks(list, by){
+  const rank = { High:0, Medium:1, Low:2 };
+  const c = [...list];
+  if(by==='priority') c.sort((a,b)=> rank[a.priority]-rank[b.priority] || (a.dueDate||'9999').localeCompare(b.dueDate||'9999'));
+  else if(by==='due') c.sort((a,b)=> (a.dueDate||'9999').localeCompare(b.dueDate||'9999'));
+  else c.sort((a,b)=> b.createdAt-a.createdAt);
+  return c;
+}
+
+function renderTabs(){
+  const el = $('tabs');
+  const cats = ['All', ...Object.keys(CATS)];
+  el.innerHTML = cats.map(c=>{
+    const n = c==='All' ? all('task').filter(t=>t.status!=='done').length
+                        : all('task').filter(t=>t.category===c && t.status!=='done').length;
+    const dot = c==='All' ? '' : `<span class="dot" style="background:${catColor(c)}"></span>`;
+    return `<div class="tab ${activeCat===c?'active':''}" data-cat="${c}" role="button" tabindex="0">${dot}${c} <span style="color:var(--ink-faint)">${n}</span></div>`;
+  }).join('');
+  el.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click', ()=>{ activeCat = t.dataset.cat; renderTasks(); });
+  });
+}
+
+function renderTasks(){
+  renderTabs();
+  const sf = $('statusFilter').value, by = $('sortBy').value;
+  const q = $('taskSearch').value.toLowerCase();
+  const live = all('task').filter(t=>{
+    if(t.status==='done') return false;
+    if(activeCat!=='All' && t.category!==activeCat) return false;
+    if(sf==='inprogress' && t.status!=='inprogress') return false;
+    if(q && !t.title.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const list = $('list');
+  if(activeCat==='All'){
+    list.innerHTML = `<div class="kanban">${Object.keys(CATS).map(c=>{
+      const col = sortTasks(live.filter(t=>t.category===c), by);
+      return `<div class="kanban-col" data-col="${c}">
+        <div class="kanban-head" style="background:${catColor(c)}"><span>${c}</span><span>${col.length}</span></div>
+        <div class="kanban-body">${col.length?col.map(t=>taskHtml(t,false)).join(''):'<div class="kanban-empty">Nothing here</div>'}</div>
+      </div>`;
+    }).join('')}</div>`;
+  } else {
+    const s = sortTasks(live, by);
+    list.innerHTML = s.length ? s.map(t=>taskHtml(t,false)).join('')
+      : '<div class="empty"><b>Nothing filed here</b>Add a task above.</div>';
+  }
+
+  // stats
+  const act = all('task').filter(t=>t.status!=='done');
+  $('statActive').textContent = act.length;
+  $('statToday').textContent = all('task').filter(t=>t.completedOn===todayISO()).length;
+  $('statOverdue').textContent = all('task').filter(isOverdue).length;
+  $('statTotal').textContent = all('task').length;
+  const dn = all('task').filter(t=>t.status==='done').length, tot = all('task').length;
+  $('progressBar').style.width = (tot? Math.round(dn/tot*100):0)+'%';
+
+  renderDone(); renderTrash(); wireTasks();
+}
+
+function renderDone(){
+  // Completed within 60 days; older ones are auto-archived out of view.
+  const cutoff = nowMs() - 60*86400000;
+  const done = all('task').filter(t=>t.status==='done')
+    .filter(t=> !t.completedAt || t.completedAt > cutoff)
+    .sort((a,b)=> (b.completedAt||0)-(a.completedAt||0));
+  const archived = all('task').filter(t=>t.status==='done' && t.completedAt && t.completedAt<=cutoff).length;
+  $('doneLabel').textContent = `Completed tasks (${done.length})` + (archived?` · ${archived} archived`:'');
+  $('doneList').innerHTML = done.length ? done.map(t=>taskHtml(t,true)).join('')
+    : '<div class="empty"><b>Nothing completed yet</b>Finished tasks collect here.</div>';
+}
+
+function renderTrash(){
+  const tr = trashed().sort((a,b)=> b.deletedAt-a.deletedAt);
+  $('trashLabel').textContent = `Trash (${tr.length}) · auto-clears after 30 days`;
+  $('trashList').innerHTML = tr.length ? tr.map(r=>`
+    <div class="date-row">
+      <span class="pill">${r.type}</span>
+      <div class="date-main"><div class="dm-label">${esc(r.title||r.label||r.desc||'(untitled)')}</div>
+        <div class="dm-when">deleted ${timeAgo(r.deletedAt)}</div></div>
+      <button class="btn ghost small" data-restore="${r.id}">Restore</button>
+    </div>`).join('')
+    : '<div class="empty"><b>Trash is empty</b>Deleted items rest here for 30 days.</div>';
+  $('trashList').querySelectorAll('[data-restore]').forEach(b=>{
+    b.addEventListener('click', ()=>{ restore(b.dataset.restore); toast('Restored.'); });
+  });
+}
+
+function wireTasks(){
+  document.querySelectorAll('.task').forEach(el=>{
+    const id = el.dataset.id;
+    const chk = el.querySelector('[data-act="cycle"]');
+    chk.addEventListener('click', e=>{ e.stopPropagation(); cycleTask(id); });
+    chk.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); e.stopPropagation(); cycleTask(id);} });
+    el.addEventListener('click', ()=> openTask(id));
+    el.addEventListener('dragstart', e=>{
+      e.dataTransfer.setData('text/plain', id); el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', ()=> el.classList.remove('dragging'));
+  });
+  // drag between kanban columns
+  document.querySelectorAll('.kanban-col').forEach(col=>{
+    col.addEventListener('dragover', e=>{ e.preventDefault(); col.classList.add('dragover'); });
+    col.addEventListener('dragleave', ()=> col.classList.remove('dragover'));
+    col.addEventListener('drop', e=>{
+      e.preventDefault(); col.classList.remove('dragover');
+      const id = e.dataTransfer.getData('text/plain');
+      const t = records[id];
+      if(t && t.category !== col.dataset.col){
+        t.category = col.dataset.col; put(t);
+        toast('Moved to '+col.dataset.col+'.');
+      }
+    });
+  });
+}
+
+/* ============================================================================
+   TASK EDIT MODAL
+   ========================================================================== */
+let openTaskId = null, etTimer = null;
+
+function fillSelect(el, opts, val, withIcon){
+  el.innerHTML = opts.map(o=>`<option value="${o}" ${o===val?'selected':''}>${withIcon?withIcon[o]+' ':''}${o}</option>`).join('');
+}
+function openTask(id){
+  const t = records[id]; if(!t) return;
+  openTaskId = id;
+  $('etTitle').value = t.title||'';
+  fillSelect($('etCat'), Object.keys(CATS), t.category);
+  fillSelect($('etPrio'), Object.keys(PRIOS), t.priority, PRIOS);
+  $('etDue').value = t.dueDate||'';
+  $('etRepeat').value = t.repeat||'none';
+  $('etNotes').value = t.notes||'';
+  renderSubs();
+  $('taskOv').classList.add('open');
+  setTimeout(()=> $('etTitle').focus(), 40);
+}
+function closeTask(){ $('taskOv').classList.remove('open'); openTaskId=null; renderAll(); }
+
+function etSave(){
+  const t = records[openTaskId]; if(!t) return;
+  t.title = $('etTitle').value.trim() || t.title;
+  t.category = $('etCat').value;
+  t.priority = $('etPrio').value;
+  t.dueDate = $('etDue').value || null;
+  t.repeat = $('etRepeat').value;
+  t.notes = $('etNotes').value;
+  put(t, true);
+  const f = $('taskSaved'); f.classList.add('show'); setTimeout(()=>f.classList.remove('show'), 1100);
+}
+function etQueue(){ clearTimeout(etTimer); etTimer = setTimeout(etSave, 450); }
+['etTitle','etNotes'].forEach(i=> $(i).addEventListener('input', etQueue));
+['etCat','etPrio','etDue','etRepeat'].forEach(i=> $(i).addEventListener('change', etSave));
+
+function renderSubs(){
+  const t = records[openTaskId]; if(!t) return;
+  const subs = t.subs||[];
+  $('etSubCount').textContent = subs.length ? `(${subs.filter(s=>s.done).length}/${subs.length})` : '';
+  $('etSubs').innerHTML = subs.map((s,i)=>`
+    <div class="sub-item ${s.done?'on':''}">
+      <div class="sub-check ${s.done?'on':''}" data-sub="${i}" role="button" tabindex="0"
+           aria-label="Toggle subtask">${s.done?'✓':''}</div>
+      <span class="sub-text">${esc(s.text)}</span>
+      <button class="icon-btn" data-subdel="${i}" aria-label="Remove subtask">✕</button>
+    </div>`).join('');
+  $('etSubs').querySelectorAll('[data-sub]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const i = +el.dataset.sub; t.subs[i].done = !t.subs[i].done; put(t, true); renderSubs();
+    });
+  });
+  $('etSubs').querySelectorAll('[data-subdel]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      t.subs.splice(+el.dataset.subdel,1); put(t, true); renderSubs();
+    });
+  });
+}
+function addSub(){
+  const t = records[openTaskId]; if(!t) return;
+  const v = $('etSubInput').value.trim(); if(!v) return;
+  t.subs = t.subs||[]; t.subs.push({ text:v, done:false });
+  $('etSubInput').value=''; put(t, true); renderSubs();
+}
+$('etSubAdd').addEventListener('click', addSub);
+$('etSubInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addSub(); });
+
+$('taskOvClose').addEventListener('click', closeTask);
+$('etDone').addEventListener('click', ()=>{ etSave(); closeTask(); });
+$('etDelete').addEventListener('click', ()=>{
+  const id = openTaskId, t = records[id];
+  softDelete(id); closeTask();
+  toast(`Deleted "${t.title.slice(0,28)}".`, 'Undo', ()=>{ restore(id); });
+});
+$('etRecat').addEventListener('click', async ()=>{
+  const t = records[openTaskId]; if(!t) return;
+  $('etRecat').textContent = 'Filing…';
+  const ai = await aiFile(t.title);
+  $('etRecat').textContent = '↻ Re-file with AI';
+  if(!ai){ toast('AI unavailable right now.'); return; }
+  t.category = ai.category; t.priority = ai.priority; put(t, true);
+  $('etCat').value = t.category; $('etPrio').value = t.priority;
+  toast('Re-filed.');
+});
+$('etSaveTemplate').addEventListener('click', ()=>{
+  const t = records[openTaskId]; if(!t) return;
+  put({ id:uid('tpl'), type:'template', title:t.title, category:t.category,
+        priority:t.priority, notes:t.notes||'', subs:(t.subs||[]).map(s=>({text:s.text,done:false})),
+        createdAt:nowMs(), deleted:false }, true);
+  toast('Saved as template.');
+});
+
+/* ---------- templates ---------- */
+function renderTemplates(){
+  const tpls = all('template');
+  $('tplList').innerHTML = tpls.length ? tpls.map(t=>`
+    <div class="date-row" style="border-left-color:${catColor(t.category)}">
+      <div class="date-main">
+        <div class="dm-label">${esc(t.title)}</div>
+        <div class="dm-when">${t.category} · ${t.priority}${(t.subs||[]).length?` · ${t.subs.length} steps`:''}</div>
+      </div>
+      <button class="btn small" data-use="${t.id}">Use</button>
+      <button class="icon-btn" data-tpldel="${t.id}" aria-label="Delete template">✕</button>
+    </div>`).join('')
+    : '<div class="empty"><b>No templates yet</b>Open a task and choose “Save as template”.</div>';
+  $('tplList').querySelectorAll('[data-use]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const t = records[b.dataset.use];
+      $('tplOv').classList.remove('open');
+      const due = await pickDue(t.title);
+      put({ id:uid('t'), type:'task', title:t.title, category:t.category, priority:t.priority,
+            dueDate:due, status:'active', notes:t.notes||'', repeat:'none',
+            subs:(t.subs||[]).map(s=>({text:s.text,done:false})),
+            aiFiled:false, createdAt:nowMs(), deleted:false });
+      toast('Task created from template.');
+    });
+  });
+  $('tplList').querySelectorAll('[data-tpldel]').forEach(b=>{
+    b.addEventListener('click', ()=>{ softDelete(b.dataset.tpldel); renderTemplates(); });
+  });
+}
+$('templatesBtn').addEventListener('click', ()=>{ renderTemplates(); $('tplOv').classList.add('open'); });
+$('tplOvClose').addEventListener('click', ()=> $('tplOv').classList.remove('open'));
+
+/* ============================================================================
+   NOTES  (with minimal markdown rendering)
+   ========================================================================== */
+const NOTE_COLORS = ['note-c1','note-c2','note-c3','note-c4','note-c5'];
+const NOTE_HEX = { 'note-c1':'#FBF9F2','note-c2':'#F3E7C9','note-c3':'#EFE1E6','note-c4':'#DCE7DD','note-c5':'#DDE6EF' };
+let openNoteId = null, enTimer = null, previewOn = false;
+
+function md(src){
+  // Deliberately small markdown subset — escape first, then add markup.
+  let h = esc(src);
+  h = h.replace(/```([\s\S]*?)```/g, (m,c)=>`<pre><code>${c}</code></pre>`);
+  h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  h = h.replace(/^### (.*)$/gm,'<h3>$1</h3>').replace(/^## (.*)$/gm,'<h2>$1</h2>').replace(/^# (.*)$/gm,'<h1>$1</h1>');
+  h = h.replace(/^&gt; (.*)$/gm,'<blockquote>$1</blockquote>');
+  h = h.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/\*([^*\n]+)\*/g,'<i>$1</i>');
+  h = h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  h = h.replace(/^\s*[-*] (.*)$/gm,'<li>$1</li>').replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g,'<ul>$1</ul>');
+  h = h.replace(/^\s*(\d+)\. (.*)$/gm,'<li>$2</li>');
+  h = h.replace(/\n{2,}/g,'</p><p>').replace(/\n/g,'<br>');
+  return '<p>'+h+'</p>';
+}
+
+function renderNotes(){
+  const q = $('notesSearch').value.toLowerCase();
+  const by = $('notesSort').value;
+  let list = all('note').filter(n =>
+    !q || (n.title||'').toLowerCase().includes(q) || (n.text||'').toLowerCase().includes(q));
+  if(by==='pinned') list.sort((a,b)=> (b.pinned?1:0)-(a.pinned?1:0) || b.updatedAt-a.updatedAt);
+  else if(by==='recent') list.sort((a,b)=> b.updatedAt-a.updatedAt);
+  else list.sort((a,b)=> b.createdAt-a.createdAt);
+
+  const board = $('notesBoard');
+  if(!all('note').length){
+    board.innerHTML = '<div class="empty"><b>Board is empty</b>Create a note or paste something in.</div>'; return;
+  }
+  if(!list.length){ board.innerHTML = '<div class="empty"><b>No matches</b>Nothing found for that search.</div>'; return; }
+  board.innerHTML = list.map(n=>{
+    const title = (n.title||'').trim();
+    return `<div class="note-card ${n.color} ${n.pinned?'pinned':''}" data-note="${n.id}">
+      <div class="note-top">
+        <div class="note-title ${title?'':'untitled'}">${title?esc(title):'Untitled note'}</div>
+        <button class="icon-btn" data-npin="${n.id}" aria-label="Pin note"
+          style="${n.pinned?'color:var(--seal)':''}">📌</button>
+        <button class="icon-btn" data-ndel="${n.id}" aria-label="Delete note">✕</button>
+      </div>
+      <div class="note-foot"><span>${timeAgo(n.updatedAt)}</span></div>
+    </div>`;
+  }).join('');
+  board.querySelectorAll('.note-card').forEach(c=>{
+    c.addEventListener('click', e=>{ if(e.target.closest('button')) return; openNote(c.dataset.note); });
+  });
+  board.querySelectorAll('[data-npin]').forEach(b=> b.addEventListener('click', e=>{
+    e.stopPropagation(); const n = records[b.dataset.npin]; n.pinned = !n.pinned; put(n);
+  }));
+  board.querySelectorAll('[data-ndel]').forEach(b=> b.addEventListener('click', e=>{
+    e.stopPropagation(); const id = b.dataset.ndel, n = records[id];
+    softDelete(id); toast(`Deleted "${(n.title||'note').slice(0,24)}".`, 'Undo', ()=> restore(id));
+  }));
+}
+
+function newNote(prefillText, selectTitle){
+  const text = prefillText||'';
+  const n = put({ id:uid('n'), type:'note', title:(text.split('\n')[0]||'').trim().slice(0,60),
+    text, color:NOTE_COLORS[Math.floor(Math.random()*5)], pinned:false,
+    createdAt:nowMs(), deleted:false });
+  openNote(n.id, selectTitle);
+}
+function openNote(id, selectTitle){
+  const n = records[id]; if(!n) return;
+  openNoteId = id; previewOn = false;
+  $('enTitle').value = n.title||'';
+  $('enBody').value = n.text||'';
+  $('enBody').style.display=''; $('enPreview').style.display='none';
+  $('enPreviewBtn').textContent = '👁 Preview';
+  $('enTime').textContent = 'Edited '+timeAgo(n.updatedAt);
+  $('enPin').textContent = n.pinned ? '📌 Pinned' : '📌 Pin';
+  $('enSwatches').innerHTML = NOTE_COLORS.map(c=>
+    `<div class="note-swatch" data-c="${c}" style="background:${NOTE_HEX[c]};${n.color===c?'box-shadow:0 0 0 2px var(--ink)':''}"
+      role="button" tabindex="0" aria-label="Colour"></div>`).join('');
+  $('enSwatches').querySelectorAll('[data-c]').forEach(s=> s.addEventListener('click', ()=>{
+    n.color = s.dataset.c; put(n, true); openNote(id);
+  }));
+  $('noteOv').classList.add('open');
+  setTimeout(()=>{ const t=$('enTitle'); t.focus(); if(selectTitle) t.select(); }, 40);
+}
+function enSave(){
+  const n = records[openNoteId]; if(!n) return;
+  n.title = $('enTitle').value; n.text = $('enBody').value;
+  put(n, true);
+  const f = $('noteSaved'); f.classList.add('show'); setTimeout(()=>f.classList.remove('show'),1100);
+  $('enTime').textContent = 'Edited just now';
+}
+function enQueue(){ clearTimeout(enTimer); enTimer = setTimeout(enSave, 450); }
+$('enTitle').addEventListener('input', enQueue);
+$('enBody').addEventListener('input', enQueue);
+$('noteOvClose').addEventListener('click', ()=>{ enSave(); $('noteOv').classList.remove('open'); openNoteId=null; renderAll(); });
+$('enPreviewBtn').addEventListener('click', ()=>{
+  previewOn = !previewOn;
+  $('enPreview').innerHTML = md($('enBody').value);
+  $('enPreview').style.display = previewOn?'':'none';
+  $('enBody').style.display = previewOn?'none':'';
+  $('enPreviewBtn').textContent = previewOn?'✎ Edit':'👁 Preview';
+});
+$('enPin').addEventListener('click', ()=>{
+  const n = records[openNoteId]; n.pinned = !n.pinned; put(n, true);
+  $('enPin').textContent = n.pinned?'📌 Pinned':'📌 Pin';
+});
+$('enCopy').addEventListener('click', async ()=>{
+  try{ await navigator.clipboard.writeText(records[openNoteId].text||''); toast('Copied.'); }
+  catch(e){ toast('Could not copy — select the text manually.'); }
+});
+$('enDelete').addEventListener('click', ()=>{
+  const id = openNoteId, n = records[id];
+  softDelete(id); $('noteOv').classList.remove('open'); openNoteId=null;
+  toast(`Deleted "${(n.title||'note').slice(0,24)}".`, 'Undo', ()=> restore(id));
+});
+$('enToTask').addEventListener('click', async ()=>{
+  const n = records[openNoteId]; if(!n) return;
+  const title = (n.title||n.text||'').split('\n')[0].trim().slice(0,90) || 'Follow up on note';
+  $('noteOv').classList.remove('open');
+  const ai = await aiFile(title);
+  const due = await pickDue(title);
+  put({ id:uid('t'), type:'task', title, category:ai?ai.category:'Work', priority:ai?ai.priority:'Medium',
+        dueDate:due, status:'active', notes:'From note: '+(n.title||'')+'\n\n'+(n.text||'').slice(0,500),
+        repeat:'none', subs:[], linkedNote:n.id, aiFiled:!!ai, createdAt:nowMs(), deleted:false });
+  showView('tasks');
+  toast('Task created from note.');
+});
+$('newNoteBtn').addEventListener('click', ()=> newNote('', false));
+$('pasteNoteBtn').addEventListener('click', async ()=>{
+  let txt = '';
+  try{ txt = await navigator.clipboard.readText(); }catch(e){}
+  newNote(txt, true);   // opens with the guessed title selected, ready to rename
+});
+$('notesSearch').addEventListener('input', renderNotes);
+$('notesSort').addEventListener('change', renderNotes);
+
+/* ============================================================================
+   KEY DATES
+   ========================================================================== */
+let openDateId = null;
+
+function nextOccurrence(d){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const w = new Date(d.when+'T00:00:00');
+  if(isNaN(w)) return today;
+  if(d.repeat==='yearly'){ while(w<today) w.setFullYear(w.getFullYear()+1); }
+  else if(d.repeat==='monthly'){ while(w<today) w.setMonth(w.getMonth()+1); }
+  return w;
+}
+const daysUntil = w => Math.round((w - new Date(new Date().setHours(0,0,0,0)))/86400000);
+
+function renderDates(){
+  const rows = all('date').map(d=>{
+    const w = nextOccurrence(d);
+    return { ...d, nextWhen:w, days:daysUntil(w) };
+  }).sort((a,b)=>{
+    if(a.days<0 && b.days>=0) return 1;
+    if(b.days<0 && a.days>=0) return -1;
+    return a.days-b.days;
+  });
+  $('datesList').innerHTML = rows.length ? rows.map(d=>{
+    const cls = d.days<0?'':d.days<=3?'imminent':d.days<=14?'soon':'';
+    const big = d.days<0?'—':d.days===0?'Today':d.days;
+    const unit = d.days<0?'passed':d.days===0?'':d.days===1?'day':'days';
+    return `<div class="date-row ${cls}" data-date="${d.id}" style="cursor:pointer">
+      <div class="date-countdown">${big}<small>${unit}</small></div>
+      <div class="date-main"><div class="dm-label">${esc(d.label)}</div>
+        <div class="dm-when">${d.nextWhen.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div></div>
+      ${d.repeat!=='once'?`<span class="pill">${d.repeat}</span>`:''}
+      <button class="icon-btn" data-ddel="${d.id}" aria-label="Delete date">✕</button>
+    </div>`;
+  }).join('') : '<div class="empty"><b>No dates yet</b>Add renewals, premiums or deadlines above.</div>';
+
+  $('datesList').querySelectorAll('[data-date]').forEach(r=>{
+    r.addEventListener('click', e=>{ if(e.target.closest('button')) return; openDate(r.dataset.date); });
+  });
+  $('datesList').querySelectorAll('[data-ddel]').forEach(b=> b.addEventListener('click', e=>{
+    e.stopPropagation(); const id=b.dataset.ddel, d=records[id];
+    softDelete(id); toast(`Removed "${d.label}".`, 'Undo', ()=> restore(id));
+  }));
+}
+function openDate(id){
+  const d = records[id]; if(!d) return;
+  openDateId = id;
+  $('edLabel').value = d.label; $('edWhen').value = d.when; $('edRepeat').value = d.repeat;
+  $('dateOv').classList.add('open');
+}
+$('dateOvClose').addEventListener('click', ()=> $('dateOv').classList.remove('open'));
+$('edSave').addEventListener('click', ()=>{
+  const d = records[openDateId]; if(!d) return;
+  d.label = $('edLabel').value.trim()||d.label; d.when = $('edWhen').value||d.when;
+  d.repeat = $('edRepeat').value;
+  put(d); $('dateOv').classList.remove('open'); toast('Saved.');
+});
+$('edDelete').addEventListener('click', ()=>{
+  const id = openDateId; softDelete(id); $('dateOv').classList.remove('open');
+  toast('Removed.', 'Undo', ()=> restore(id));
+});
+$('addDateBtn').addEventListener('click', ()=>{
+  const label = $('dateLabel').value.trim(), when = $('dateWhen').value;
+  if(!label || !when){ toast('Enter a label and pick a date.'); return; }
+  put({ id:uid('d'), type:'date', label, when, repeat:$('dateRepeat').value,
+        createdAt:nowMs(), deleted:false });
+  $('dateLabel').value=''; $('dateWhen').value='';
+  toast('Date added.');
+});
+$('dateLabel').addEventListener('keydown', e=>{ if(e.key==='Enter') $('addDateBtn').click(); });
+
+/* ============================================================================
+   FINANCIAL
+   ========================================================================== */
+const FIN_COLORS = { Household:'#1B4B8F', Bills:'#9C2963', Travel:'#B8860B', Food:'#B45309',
+  Health:'#2E7D50', Education:'#3F4F8C', Investment:'#6b3f5c', Salary:'#2E7D50', Other:'#77818E', '':'#77818E' };
+let finMonth = isoMonth(new Date());   // YYYY-MM
+let openFinId = null;
+
+const monthLabel = ym => new Date(ym+'-01T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+function shiftMonth(delta){
+  const d = new Date(finMonth+'-01T00:00:00');
+  d.setMonth(d.getMonth()+delta);
+  finMonth = isoMonth(d);
+  renderFinance();
+}
+$('monthPrev').addEventListener('click', ()=> shiftMonth(-1));
+$('monthNext').addEventListener('click', ()=> shiftMonth(1));
+
+// Show the "person" field only for udhaar types
+function syncFinTypeUI(){
+  const t = $('finType').value;
+  $('finWho').style.display = (t==='lent'||t==='borrowed') ? '' : 'none';
+}
+$('finType').addEventListener('change', syncFinTypeUI);
+
+function addFin(){
+  const desc = $('finDesc').value.trim();
+  const amt = parseFloat($('finAmt').value);
+  if(!desc || isNaN(amt) || amt<=0){ toast('Enter a description and a positive amount.'); return; }
+  const type = $('finType').value;
+  put({ id:uid('f'), type:'fin', desc, amount:amt, kind:type,
+        category:$('finCat').value||'',                 // optional
+        date:$('finDate').value||todayISO(),            // optional → defaults to today
+        who:$('finWho').value.trim()||'',
+        recurring: $('finRecur').checked,
+        settled:false, createdAt:nowMs(), deleted:false });
+  $('finDesc').value=''; $('finAmt').value=''; $('finWho').value=''; $('finRecur').checked=false;
+  toast('Recorded.');
+}
+$('finAddBtn').addEventListener('click', addFin);
+$('finAmt').addEventListener('keydown', e=>{ if(e.key==='Enter') addFin(); });
+$('finDesc').addEventListener('keydown', e=>{ if(e.key==='Enter') addFin(); });
+
+function budgets(){
+  const b = {};
+  all('budget').forEach(x=> b[x.category] = x.amount);
+  return b;
+}
+$('budgetSetBtn').addEventListener('click', ()=>{
+  const c = $('budgetCat').value, a = parseFloat($('budgetAmt').value);
+  if(isNaN(a) || a<0){ toast('Enter a budget amount.'); return; }
+  const existing = all('budget').find(x=>x.category===c);
+  if(existing){ existing.amount = a; put(existing); }
+  else put({ id:uid('b'), type:'budget', category:c, amount:a, createdAt:nowMs(), deleted:false });
+  $('budgetAmt').value='';
+  toast(`Budget for ${c} set to ${fmtMoney(a)}.`);
+});
+
+function renderFinance(){
+  $('monthLabel').textContent = monthLabel(finMonth);
+  const entries = all('fin');
+  const month = entries.filter(e => (e.date||'').slice(0,7)===finMonth);
+
+  const inSum  = month.filter(e=>e.kind==='income').reduce((s,e)=>s+e.amount,0);
+  const outSum = month.filter(e=>e.kind==='expense').reduce((s,e)=>s+e.amount,0);
+  const net = inSum-outSum;
+  // Udhaar is all-time, not month-bound: lent (owed to you) minus borrowed (you owe)
+  const lent = entries.filter(e=>e.kind==='lent' && !e.settled).reduce((s,e)=>s+e.amount,0);
+  const borrowed = entries.filter(e=>e.kind==='borrowed' && !e.settled).reduce((s,e)=>s+e.amount,0);
+  const udh = lent-borrowed;
+
+  $('finIn').textContent = fmtMoney(inSum);
+  $('finOut').textContent = fmtMoney(outSum);
+  const nEl = $('finNet'); nEl.textContent = (net<0?'−':'')+fmtMoney(net);
+  nEl.className = 'n '+(net<0?'neg':'pos');
+  const uEl = $('finUdhaar'); uEl.textContent = (udh<0?'−':'')+fmtMoney(udh);
+  uEl.className = 'n '+(udh<0?'neg':udh>0?'pos':'');
+  uEl.title = `${fmtMoney(lent)} owed to you · ${fmtMoney(borrowed)} you owe`;
+
+  // budget bars
+  const byCat = {};
+  month.filter(e=>e.kind==='expense').forEach(e=> byCat[e.category||'Other'] = (byCat[e.category||'Other']||0)+e.amount);
+  const bud = budgets();
+  const cats = [...new Set([...Object.keys(byCat), ...Object.keys(bud)])]
+    .sort((a,b)=> (byCat[b]||0)-(byCat[a]||0));
+  $('finBars').innerHTML = cats.length ? cats.map(c=>{
+    const spent = byCat[c]||0, cap = bud[c]||0;
+    const pct = cap ? Math.min(100, Math.round(spent/cap*100))
+                    : (Object.values(byCat)[0] ? Math.round(spent/Math.max(...Object.values(byCat))*100) : 0);
+    const over = cap && spent>cap;
+    return `<div class="bar-row">
+      <div class="bar-label"><span>${c}${over?' ⚠':''}</span>
+        <span>${fmtMoney(spent)}${cap?` / ${fmtMoney(cap)}`:''}</span></div>
+      <div class="bar-track"><div class="bar-fill ${over?'over':''}"
+        style="width:${pct}%;background:${FIN_COLORS[c]||'#77818E'}"></div></div>
+    </div>`;
+  }).join('') : '<div style="font-size:12.5px;color:var(--ink-faint);font-style:italic">Nothing spent this month yet.</div>';
+
+  // outstanding udhaar
+  const open = entries.filter(e=>(e.kind==='lent'||e.kind==='borrowed') && !e.settled);
+  $('udhaarPanel').style.display = open.length ? '' : 'none';
+  $('udhaarList').innerHTML = open.map(e=>`
+    <div class="fin-row ${e.kind}" data-fin="${e.id}">
+      <span class="fr-date">${fmtDate(e.date)}</span>
+      <span class="fr-desc">${esc(e.who||'—')} · ${esc(e.desc)}</span>
+      <span class="pill">${e.kind==='lent'?'they owe you':'you owe'}</span>
+      <span class="fr-amt ${e.kind==='lent'?'pos':'neg'}">${fmtMoney(e.amount)}</span>
+      <button class="btn ghost small" data-settle="${e.id}">Settle</button>
+    </div>`).join('');
+  $('udhaarList').querySelectorAll('[data-settle]').forEach(b=> b.addEventListener('click', e=>{
+    e.stopPropagation(); const r = records[b.dataset.settle]; r.settled = true; put(r); toast('Marked settled.');
+  }));
+  $('udhaarList').querySelectorAll('[data-fin]').forEach(r=> r.addEventListener('click', e=>{
+    if(e.target.closest('button')) return; openFin(r.dataset.fin);
+  }));
+
+  // ledger for the visible month
+  const sorted = month.sort((a,b)=> (b.date||'').localeCompare(a.date||'') || b.createdAt-a.createdAt);
+  $('finLedger').innerHTML = sorted.length ? sorted.map(e=>{
+    const sign = e.kind==='income'?'+':e.kind==='expense'?'−':'';
+    const cls = e.kind==='income'?'pos':e.kind==='expense'?'neg':'neutral';
+    return `<div class="fin-row ${e.kind} ${e.settled?'settled':''}" data-fin="${e.id}">
+      <span class="fr-date">${fmtDate(e.date)}</span>
+      <span class="fr-desc">${esc(e.desc)}${e.who?` · ${esc(e.who)}`:''}</span>
+      ${e.category?`<span class="pill">${e.category}</span>`:''}
+      ${e.recurring?'<span class="pill">monthly</span>':''}
+      <span class="fr-amt ${cls}">${sign}${fmtMoney(e.amount)}</span>
+    </div>`;
+  }).join('') : '<div class="empty"><b>Nothing this month</b>Record an entry above, or use ‹ › to change month.</div>';
+  $('finLedger').querySelectorAll('[data-fin]').forEach(r=>
+    r.addEventListener('click', ()=> openFin(r.dataset.fin)));
+}
+
+function openFin(id){
+  const e = records[id]; if(!e) return;
+  openFinId = id;
+  $('efDesc').value = e.desc; $('efAmt').value = e.amount; $('efType').value = e.kind;
+  $('efCat').value = e.category||''; $('efDate').value = e.date||'';
+  $('efWho').value = e.who||''; $('efSettled').value = e.settled?'yes':'no';
+  $('finOv').classList.add('open');
+}
+$('finOvClose').addEventListener('click', ()=> $('finOv').classList.remove('open'));
+$('efSave').addEventListener('click', ()=>{
+  const e = records[openFinId]; if(!e) return;
+  e.desc = $('efDesc').value.trim()||e.desc;
+  e.amount = parseFloat($('efAmt').value)||e.amount;
+  e.kind = $('efType').value; e.category = $('efCat').value;
+  e.date = $('efDate').value || e.date; e.who = $('efWho').value.trim();
+  e.settled = $('efSettled').value==='yes';
+  put(e); $('finOv').classList.remove('open'); toast('Saved.');
+});
+$('efDelete').addEventListener('click', ()=>{
+  const id = openFinId; softDelete(id); $('finOv').classList.remove('open');
+  toast('Entry deleted.', 'Undo', ()=> restore(id));
+});
+
+/* recurring transactions: on load, roll last month's flagged entries into this month */
+function rollRecurring(){
+  const thisM = isoMonth(new Date());
+  const rec = all('fin').filter(e=>e.recurring);
+  const seen = new Set(all('fin').map(e=> (e.recurSrc||'')+'|'+(e.date||'').slice(0,7) ));
+  let made = 0;
+  rec.forEach(e=>{
+    const src = e.recurSrc || e.id;
+    if((e.date||'').slice(0,7) === thisM) return;
+    if(seen.has(src+'|'+thisM)) return;
+    const d = new Date(e.date+'T00:00:00'); d.setMonth(new Date().getMonth()); d.setFullYear(new Date().getFullYear());
+    put({ ...e, id:uid('f'), date:isoLocal(d), recurSrc:src,
+          settled:false, createdAt:nowMs() }, true);
+    seen.add(src+'|'+thisM); made++;
+  });
+  if(made) toast(`${made} recurring entr${made===1?'y':'ies'} added for this month.`);
+}
+
+$('finCsvBtn').addEventListener('click', ()=>{
+  const rows = [['Date','Description','Type','Category','Person','Amount','Settled']];
+  all('fin').sort((a,b)=>(a.date||'').localeCompare(b.date||''))
+    .forEach(e=> rows.push([e.date, e.desc, e.kind, e.category||'', e.who||'', e.amount, e.settled?'yes':'no']));
+  const csv = rows.map(r=> r.map(c=> `"${String(c==null?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  dl(new Blob([csv],{type:'text/csv'}), 'register-ledger-'+todayISO()+'.csv');
+  toast('CSV exported.');
+});
+function dl(blob, name){
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=u; a.download=name; a.click();
+  URL.revokeObjectURL(u);
+}
+
+/* ============================================================================
+   WEEKLY REVIEW
+   ========================================================================== */
+function renderReview(){
+  const weekAgo = nowMs() - 7*86400000;
+  const tasks = all('task');
+  const done = tasks.filter(t=> t.completedAt && t.completedAt>weekAgo);
+  const added = tasks.filter(t=> t.createdAt>weekAgo);
+  const slipped = tasks.filter(t=> isOverdue(t));
+  const rate = added.length ? Math.round(done.length/(done.length+slipped.length||1)*100) : 0;
+
+  $('reviewRange').innerHTML = `<b>${new Date(weekAgo).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})} – ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</b>7 days`;
+  $('rvDone').textContent = done.length;
+  $('rvSlipped').textContent = slipped.length;
+  $('rvAdded').textContent = added.length;
+  $('rvRate').textContent = rate+'%';
+
+  const card = (title, color, items, emptyMsg) => `
+    <div class="review-card">
+      <div class="review-head" style="background:${color}">${title} (${items.length})</div>
+      ${items.length ? items.slice(0,12).map(t=>`
+        <div class="review-item">${esc(t.title)}
+          <small>${t.category}${t.dueDate?' · due '+fmtDate(t.dueDate):''}${t.completedOn?' · done '+fmtDate(t.completedOn):''}</small>
+        </div>`).join('')
+        : `<div class="review-item" style="color:var(--ink-faint);font-style:italic">${emptyMsg}</div>`}
+    </div>`;
+  $('reviewGrid').innerHTML =
+    card('Completed', 'var(--forest)', done, 'Nothing completed this week.') +
+    card('Slipped / overdue', 'var(--seal)', slipped, 'Nothing overdue — good.') +
+    card('Newly added', 'var(--cat-work)', added, 'No new tasks this week.');
+}
+
+/* ============================================================================
+   GLOBAL SEARCH
+   ========================================================================== */
+let searchSel = 0, searchHits = [];
+function openSearch(){
+  $('searchOv').classList.add('open');
+  $('searchInput').value=''; $('searchResults').innerHTML='';
+  searchHits=[]; searchSel=0;
+  setTimeout(()=> $('searchInput').focus(), 40);
+}
+function closeSearch(){ $('searchOv').classList.remove('open'); }
+function runSearch(){
+  const q = $('searchInput').value.trim().toLowerCase();
+  if(!q){ $('searchResults').innerHTML=''; searchHits=[]; return; }
+  const hits = [];
+  all('task').forEach(t=>{
+    if(t.title.toLowerCase().includes(q) || (t.notes||'').toLowerCase().includes(q))
+      hits.push({ kind:'task', id:t.id, text:t.title, sub:t.category });
+  });
+  all('note').forEach(n=>{
+    if((n.title||'').toLowerCase().includes(q) || (n.text||'').toLowerCase().includes(q))
+      hits.push({ kind:'note', id:n.id, text:n.title||'(untitled note)', sub:'note' });
+  });
+  all('date').forEach(d=>{
+    if(d.label.toLowerCase().includes(q)) hits.push({ kind:'date', id:d.id, text:d.label, sub:d.when });
+  });
+  all('fin').forEach(f=>{
+    if(f.desc.toLowerCase().includes(q) || (f.who||'').toLowerCase().includes(q))
+      hits.push({ kind:'fin', id:f.id, text:f.desc+' · '+fmtMoney(f.amount), sub:f.date });
+  });
+  searchHits = hits.slice(0,30); searchSel = 0;
+  drawSearch();
+}
+function drawSearch(){
+  $('searchResults').innerHTML = searchHits.length ? searchHits.map((h,i)=>`
+    <div class="sr-item ${i===searchSel?'sel':''}" data-i="${i}">
+      <span class="sr-kind">${h.kind}</span>
+      <span class="sr-text">${esc(h.text)}</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-faint)">${esc(h.sub||'')}</span>
+    </div>`).join('') : '<div class="empty" style="padding:28px">No matches.</div>';
+  $('searchResults').querySelectorAll('.sr-item').forEach(el=>
+    el.addEventListener('click', ()=> gotoHit(searchHits[+el.dataset.i])));
+}
+function gotoHit(h){
+  if(!h) return;
+  closeSearch();
+  if(h.kind==='task'){ showView('tasks'); openTask(h.id); }
+  else if(h.kind==='note'){ showView('notes'); openNote(h.id); }
+  else if(h.kind==='date'){ showView('dates'); openDate(h.id); }
+  else if(h.kind==='fin'){
+    if(!financeUnlocked){ toast('Unlock the Financial section first.'); return; }
+    const f = records[h.id];
+    if(f && f.date) finMonth = f.date.slice(0,7);
+    showView('finance'); openFin(h.id);
+  }
+}
+$('searchInput').addEventListener('input', runSearch);
+$('searchInput').addEventListener('keydown', e=>{
+  if(e.key==='ArrowDown'){ e.preventDefault(); searchSel=Math.min(searchSel+1, searchHits.length-1); drawSearch(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); searchSel=Math.max(searchSel-1,0); drawSearch(); }
+  else if(e.key==='Enter'){ gotoHit(searchHits[searchSel]); }
+});
+$('searchOv').addEventListener('click', e=>{ if(e.target.id==='searchOv') closeSearch(); });
+$('searchBtn').addEventListener('click', openSearch);
+
+/* ============================================================================
+   VIEWS
+   ========================================================================== */
+const VIEWS = { tasks:'taskView', notes:'notesView', dates:'datesView', review:'reviewView', finance:'financeView' };
+let currentView = 'tasks';
+function showView(v){
+  currentView = v;
+  document.querySelectorAll('.view-tab').forEach(t=> t.classList.toggle('active', t.dataset.view===v));
+  Object.keys(VIEWS).forEach(k=> $(VIEWS[k]).style.display = (k===v)?'':'none');
+  renderAll();
+}
+document.querySelectorAll('.view-tab').forEach(t=> t.addEventListener('click', ()=> showView(t.dataset.view)));
+
+function renderAll(){
+  if(currentView==='tasks') renderTasks();
+  else if(currentView==='notes') renderNotes();
+  else if(currentView==='dates') renderDates();
+  else if(currentView==='review') renderReview();
+  else if(currentView==='finance') renderFinance();
+  updateSyncInfo();
+}
+
+/* ============================================================================
+   HIDDEN FINANCIAL SECTION
+   ---------------------------------------------------------------------------
+   CHANGE THE ACCESS CODE HERE. This is a visibility screen, not security —
+   the value below is readable in the page source by anyone who looks.
+   ========================================================================== */
+const VAULT_PASSWORD = 'Admin123';
+let financeUnlocked = false, tapCount = 0, tapTimer = null;
+
+$('secretTrigger').addEventListener('click', ()=>{
+  tapCount++;
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(()=> tapCount=0, 2000);
+  if(tapCount>=3){
+    tapCount=0; clearTimeout(tapTimer);
+    if(financeUnlocked) showView('finance');
+    else { $('vaultInput').value=''; $('vaultErr').textContent=''; $('vaultOv').classList.add('open');
+           setTimeout(()=>$('vaultInput').focus(),40); }
+  }
+});
+function tryVault(){
+  if($('vaultInput').value === VAULT_PASSWORD){
+    financeUnlocked = true;
+    $('financeTab').style.display='';
+    $('vaultOv').classList.remove('open');
+    rollRecurring();
+    showView('finance');
+  } else {
+    $('vaultErr').textContent = 'Incorrect code.';
+    const c = $('vaultCard'); c.classList.add('shake'); setTimeout(()=>c.classList.remove('shake'),400);
+    $('vaultInput').value=''; $('vaultInput').focus();
+  }
+}
+$('vaultOk').addEventListener('click', tryVault);
+$('vaultCancel').addEventListener('click', ()=> $('vaultOv').classList.remove('open'));
+$('vaultInput').addEventListener('keydown', e=>{ if(e.key==='Enter') tryVault(); });
+
+/* ============================================================================
+   THEME
+   ========================================================================== */
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme', t);
+  $('themeBtn').textContent = t==='dark'?'☀️':'🌙';
+  localStorage.setItem(LS+'theme', t);
+}
+$('themeBtn').addEventListener('click', ()=>
+  applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'));
+applyTheme(localStorage.getItem(LS+'theme') || 'light');
+
+/* ============================================================================
+   SYNC SETTINGS PANEL
+   ========================================================================== */
+$('syncBtn').addEventListener('click', ()=>{
+  $('syncUrl').value = cloud.url; $('syncToken').value = cloud.token;
+  $('syncMsg').textContent=''; updateSyncInfo(); $('syncOv').classList.add('open');
+});
+$('syncOvClose').addEventListener('click', ()=> $('syncOv').classList.remove('open'));
+$('syncSave').addEventListener('click', async ()=>{
+  const url = $('syncUrl').value.trim(), token = $('syncToken').value.trim();
+  if(!url || !token){ $('syncMsg').textContent = 'Both fields are required.'; return; }
+  cloud = { url, token }; saveCloudCfg();
+  $('syncMsg').textContent = 'Connecting…';
+  const ok = await pullCloud();
+  $('syncMsg').textContent = ok ? 'Connected and synced.' : 'Could not reach that URL.';
+  if(ok){ await pushCloud(); setTimeout(()=> $('syncOv').classList.remove('open'), 800); }
+});
+$('syncOff').addEventListener('click', ()=>{
+  if(!confirm('Disconnect sync? Data stays on this device.')) return;
+  cloud = { url:'', token:'' }; saveCloudCfg();
+  $('syncUrl').value=''; $('syncToken').value='';
+  setStatus('','Local only'); $('syncMsg').textContent='Disconnected.';
+});
+$('syncNowBtn').addEventListener('click', async ()=>{ await pullCloud(); await pushCloud(); toast('Synced.'); });
+
+/* backup: plain JSON, unencrypted, for your own safekeeping */
+$('backupBtn').addEventListener('click', ()=>{
+  dl(new Blob([JSON.stringify(Object.values(records), null, 2)], {type:'application/json'}),
+     'register-backup-'+todayISO()+'.json');
+  toast('Backup downloaded — keep it somewhere safe.');
+});
+
+/* restore / import: accepts a backup file or the output of migrate.html */
+$('restoreBtn').addEventListener('click', ()=> $('restoreFile').click());
+$('restoreFile').addEventListener('change', e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = async ev=>{
+    let arr;
+    try{ arr = JSON.parse(ev.target.result); }catch(err){ toast('Could not read that file.'); return; }
+    if(!Array.isArray(arr)){ toast('Unexpected file format.'); return; }
+    let added = 0, skipped = 0;
+    arr.forEach(r=>{
+      if(!r || !r.id || !r.type) { skipped++; return; }
+      const existing = records[r.id];
+      // don't let an old import overwrite something newer
+      if(existing && existing.updatedAt >= (r.updatedAt||0)){ skipped++; return; }
+      r.updatedAt = r.updatedAt || nowMs();
+      records[r.id] = r; added++;
+    });
+    await persistLocal();
+    renderAll();
+    pushCloud();
+    toast(`Imported ${added} record${added===1?'':'s'}${skipped?`, skipped ${skipped}`:''}.`);
+  };
+  rd.readAsText(f);
+  e.target.value='';
+});
+
+/* ============================================================================
+   KEYBOARD SHORTCUTS
+   ========================================================================== */
+document.addEventListener('keydown', e=>{
+  const typing = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
+  if(e.key==='Escape'){
+    document.querySelectorAll('.ov.open').forEach(o=>o.classList.remove('open'));
+    closeSearch();
+    return;
+  }
+  if(typing) return;
+  if(e.key==='/'){ e.preventDefault(); openSearch(); }
+  else if(e.key==='n'||e.key==='N'){
+    e.preventDefault();
+    if(currentView==='notes') newNote('', false);
+    else { showView('tasks'); $('taskInput').focus(); }
+  }
+  else if(e.key==='l'||e.key==='L'){ lockNow(); }
+});
+
+/* ============================================================================
+   AUTO-LOCK
+   ========================================================================== */
+const IDLE_MS = 10*60*1000;
+let idleTimer = null;
+function resetIdle(){
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(()=>{ if(!$('lockScreen').classList.contains('hidden')) return; lockNow(); }, IDLE_MS);
+}
+['click','keydown','mousemove','touchstart','scroll'].forEach(ev=>
+  document.addEventListener(ev, resetIdle, { passive:true }));
+
+function lockNow(){
+  cryptoKey = null; records = {};
+  financeUnlocked = false; $('financeTab').style.display='none';
+  currentView = 'tasks';
+  document.querySelectorAll('.ov.open').forEach(o=>o.classList.remove('open'));
+  $('mainApp').style.display='none';
+  $('lockScreen').classList.remove('hidden');
+  clearTimeout(idleTimer);
+  initLock();
+}
+$('lockNowBtn').addEventListener('click', lockNow);
+
+/* ============================================================================
+   BIOMETRIC UNLOCK (convenience layer)
+   ---------------------------------------------------------------------------
+   WebAuthn proves it's you on this device, then we unwrap a locally-stored
+   copy of the key. Convenience over the passphrase — someone with your
+   unlocked device and devtools could still extract it, so it is deliberately
+   opt-in and per-device.
+   ========================================================================== */
+const bioAvailable = () => !!(window.PublicKeyCredential && navigator.credentials);
+function bioEnrolled(){ return !!localStorage.getItem(LS+'bioKey'); }
+
+async function bioEnroll(){
+  if(!bioAvailable() || !cryptoKey) return false;
+  try{
+    const cred = await navigator.credentials.create({ publicKey:{
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp:{ name:'Register' },
+      user:{ id: crypto.getRandomValues(new Uint8Array(16)), name:'register', displayName:'Register' },
+      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+      authenticatorSelection:{ authenticatorAttachment:'platform', userVerification:'required' },
+      timeout:60000
+    }});
+    if(!cred) return false;
+    const raw = await crypto.subtle.exportKey('raw', cryptoKey);
+    localStorage.setItem(LS+'bioKey', b64(raw));
+    localStorage.setItem(LS+'bioId', b64(cred.rawId));
+    return true;
+  }catch(e){ console.error('bio enroll failed', e); return false; }
+}
+async function bioUnlock(){
+  if(!bioEnrolled()) return false;
+  try{
+    await navigator.credentials.get({ publicKey:{
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials:[{ type:'public-key', id: unb64(localStorage.getItem(LS+'bioId')) }],
+      userVerification:'required', timeout:60000
+    }});
+    const raw = unb64(localStorage.getItem(LS+'bioKey'));
+    cryptoKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt','decrypt']);
+    return true;
+  }catch(e){ console.error('bio unlock failed', e); return false; }
+}
+
+/* ============================================================================
+   LOCK SCREEN / STARTUP
+   ========================================================================== */
+let lockMode = 'enter';
+
+function pwScore(p){
+  let s = 0;
+  if(p.length>=8) s++; if(p.length>=12) s++;
+  if(/[a-z]/.test(p)&&/[A-Z]/.test(p)) s++;
+  if(/\d/.test(p)) s++;
+  if(/[^A-Za-z0-9]/.test(p)) s++;
+  return s;   // 0..5
+}
+$('lockInput').addEventListener('input', ()=>{
+  if(lockMode!=='set') return;
+  const s = pwScore($('lockInput').value);
+  const bar = $('lockStrength').firstElementChild;
+  bar.style.width = (s/5*100)+'%';
+  bar.style.background = s<=2 ? 'var(--seal)' : s<=3 ? 'var(--brass)' : 'var(--forest)';
+});
+
+async function initLock(){
+  const hasVerifier = !!localStorage.getItem(LS+'verify');
+  lockMode = hasVerifier ? 'enter' : 'set';
+  $('lockInput').value=''; $('lockConfirm').value=''; $('lockErr').textContent='';
+  if(lockMode==='set'){
+    $('lockTitle').textContent = 'Create your passphrase';
+    $('lockSub').innerHTML = 'This encrypts everything. <b>Write it down</b> — if you lose it, the data cannot be recovered by anyone.';
+    $('lockConfirm').style.display=''; $('lockStrength').style.display='';
+    $('lockBtn').textContent = 'Create';
+    $('lockBioWrap').style.display='none'; $('lockResetWrap').style.display='none';
+  } else {
+    $('lockTitle').textContent = 'Unlock Register';
+    $('lockSub').textContent = 'Enter your passphrase.';
+    $('lockConfirm').style.display='none'; $('lockStrength').style.display='none';
+    $('lockBtn').textContent = 'Unlock';
+    $('lockBioWrap').style.display = (bioAvailable() && bioEnrolled()) ? '' : 'none';
+    $('lockResetWrap').style.display='';
+  }
+  $('lockInput').focus();
+}
+
+async function afterUnlock(){
+  $('lockScreen').classList.add('hidden');
+  $('mainApp').style.display='';
+  await loadLocal();
+  if(purgeOldTrash()) await persistLocal();
+  loadCloudCfg();
+  showView('tasks');
+  resetIdle();
+  await pullCloud();
+  await pushCloud();
+  // offer biometrics once, after a successful passphrase unlock
+  if(bioAvailable() && !bioEnrolled() && localStorage.getItem(LS+'bioAsked')!=='1'){
+    localStorage.setItem(LS+'bioAsked','1');
+    setTimeout(async ()=>{
+      if(confirm('Enable Face ID / Touch ID unlock on this device?')){
+        const ok = await bioEnroll();
+        toast(ok ? 'Biometric unlock enabled.' : 'Could not enable biometrics.');
+      }
+    }, 900);
+  }
+}
+
+async function submitLock(){
+  const pass = $('lockInput').value;
+  if(!pass){ $('lockErr').textContent='Enter your passphrase.'; return; }
+  $('lockBtn').disabled = true; $('lockBtn').textContent='Working…';
+
+  if(lockMode==='set'){
+    if(pass.length < 10){
+      $('lockErr').textContent='Use at least 10 characters.';
+      $('lockBtn').disabled=false; $('lockBtn').textContent='Create'; return;
+    }
+    if(pass !== $('lockConfirm').value){
+      $('lockErr').textContent="Passphrases don't match.";
+      $('lockBtn').disabled=false; $('lockBtn').textContent='Create'; return;
+    }
+    cryptoKey = await deriveKey(pass, getSalt());
+    await setVerifier();
+    $('lockBtn').disabled=false; $('lockBtn').textContent='Create';
+    await afterUnlock();
+    toast('Passphrase set. Write it down somewhere safe.');
+    return;
+  }
+
+  cryptoKey = await deriveKey(pass, getSalt());
+  const ok = await checkVerifier();
+  $('lockBtn').disabled=false; $('lockBtn').textContent='Unlock';
+  if(!ok){
+    cryptoKey = null;
+    $('lockErr').textContent='Incorrect passphrase.';
+    const c=$('lockCard'); c.classList.add('shake'); setTimeout(()=>c.classList.remove('shake'),400);
+    $('lockInput').value=''; $('lockInput').focus();
+    return;
+  }
+  await afterUnlock();
+}
+$('lockBtn').addEventListener('click', submitLock);
+$('lockInput').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ if(lockMode==='set') $('lockConfirm').focus(); else submitLock(); }
+});
+$('lockConfirm').addEventListener('keydown', e=>{ if(e.key==='Enter') submitLock(); });
+$('lockBio').addEventListener('click', async ()=>{
+  const ok = await bioUnlock();
+  if(ok) await afterUnlock();
+  else $('lockErr').textContent='Biometric unlock failed — use your passphrase.';
+});
+$('lockReset').addEventListener('click', ()=>{
+  const warn = 'This DESTROYS all encrypted data on this device permanently.\n\n' +
+    'There is no recovery — not by me, not by Anthropic, not by Google.\n\n' +
+    'Type ERASE to confirm.';
+  const ans = prompt(warn);
+  if(ans !== 'ERASE') return;
+  localStorage.removeItem(LS+'verify'); localStorage.removeItem(LS+'salt');
+  localStorage.removeItem(LS+'recs'); localStorage.removeItem(LS+'bioKey');
+  localStorage.removeItem(LS+'bioId'); localStorage.removeItem(LS+'lastSync');
+  records = {}; cryptoKey = null;
+  alert('Local data erased. Anything already in your Sheet stays there but can no longer be read.');
+  initLock();
+});
+
+/* ---------- misc UI wiring ---------- */
+$('addBtn').addEventListener('click', addTask);
+$('taskInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addTask(); });
+['statusFilter','sortBy'].forEach(i=> $(i).addEventListener('change', renderTasks));
+$('taskSearch').addEventListener('input', renderTasks);
+$('doneToggle').addEventListener('click', ()=>{
+  $('doneToggle').classList.toggle('open'); $('doneList').classList.toggle('open');
+});
+$('trashToggle').addEventListener('click', ()=>{
+  $('trashToggle').classList.toggle('open'); $('trashList').classList.toggle('open');
+});
+document.querySelectorAll('.ov').forEach(o=> o.addEventListener('click', e=>{
+  if(e.target===o) o.classList.remove('open');
+}));
+function tickClock(){
+  const n = new Date();
+  $('todayBox').innerHTML = `<b>${n.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})}</b>${n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}`;
+}
+tickClock(); setInterval(tickClock, 30000);
+syncFinTypeUI();
+
+/* service worker: offline shell */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=> navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+
+initLock();
+</script>
+</body>
+</html>
