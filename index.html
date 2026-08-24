@@ -1188,6 +1188,16 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <button class="btn ghost" id="rcRegen" style="width:100%">Generate a new recovery code</button>
 
     <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Face ID / Touch ID</div>
+    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
+      margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="bioAuto" style="width:auto">
+      <span>Prompt automatically when the app opens</span>
+    </label>
+    <button class="btn ghost" id="bioSetup" style="width:100%">Set up on this device</button>
+    <div class="lock-err" id="bioMsg" style="color:var(--ink-soft)"></div>
+
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
     <div class="flabel" style="margin-bottom:8px">Passphrase hint</div>
     <p style="font-size:12px;color:var(--ink-soft);margin:0 0 10px;line-height:1.5">
       Shown on the lock screen. Stored unencrypted, so make it a nudge, not the answer.</p>
@@ -3351,6 +3361,11 @@ $('syncBtn').addEventListener('click', ()=>{
   // otherwise Settings would betray that the section exists at all.
   $('finCodeSection').style.display = financeUnlocked ? '' : 'none';
   $('hintInput').value = metaCache.hint || '';
+  $('bioAuto').checked = localStorage.getItem(LS+'bioAuto') !== '0';
+  $('bioSetup').textContent = bioEnrolled() ? 'Re-enrol on this device' : 'Set up on this device';
+  $('bioMsg').textContent = bioAvailable()
+    ? (bioEnrolled() ? 'Enabled on this device.' : 'Not set up on this device yet.')
+    : 'Not supported on this device.';
   $('syncOv').classList.add('open');
 });
 $('syncOvClose').addEventListener('click', ()=> $('syncOv').classList.remove('open'));
@@ -3376,9 +3391,26 @@ $('syncSave').addEventListener('click', async ()=>{
     return;
   }
 
-  // Already unlocked: reconcile salts, then sync.
-  if(meta && meta.salt !== localStorage.getItem(LS+'salt')){
-    $('syncMsg').textContent = 'That Sheet uses a different passphrase. Lock and unlock with it.';
+  // Already unlocked: reconcile key sets, then sync.
+  const mine = metaCache;
+  const differs = meta && ((meta.mkId && mine.mkId && meta.mkId !== mine.mkId) ||
+                           (!meta.mkId && meta.salt && mine.salt && meta.salt !== mine.salt));
+  if(differs){
+    const localCount = Object.values(records).filter(r=> !r.deleted).length;
+    const msg = 'That Sheet was set up with a different passphrase.\n\n' +
+      'To read it, this device has to switch to the Sheet\'s key — you will then be asked ' +
+      'for the passphrase that Sheet uses.\n\n' +
+      (localCount ? localCount + ' item(s) created on this device only will be lost. ' +
+                    'Cancel and hit Backup first if you need them.\n\n' : '') +
+      'Switch to the Sheet\'s key now?';
+    if(!confirm(msg)){
+      $('syncMsg').textContent = 'Left as is — this device stays separate.';
+      return;
+    }
+    await adoptMeta(meta);
+    $('syncOv').classList.remove('open');
+    lockNow();
+    setTimeout(()=>{ $('lockErr').textContent = 'Enter the passphrase this Sheet uses.'; }, 120);
     return;
   }
   if(!meta) await uploadMeta();
@@ -3425,6 +3457,18 @@ $('rcRegen').addEventListener('click', async ()=>{
   if(!confirm('Generate a new recovery code? The old one stops working immediately.')) return;
   const code = await regenerateRecovery();
   showRecoveryCode(code, 'New recovery code');
+});
+$('bioAuto').addEventListener('change', ()=>{
+  localStorage.setItem(LS+'bioAuto', $('bioAuto').checked ? '1' : '0');
+  toast($('bioAuto').checked ? 'Will prompt on open.' : 'Auto-prompt off.');
+});
+$('bioSetup').addEventListener('click', async ()=>{
+  const msg = $('bioMsg');
+  if(!bioAvailable()){ msg.style.color='var(--seal)'; msg.textContent='Not supported on this device.'; return; }
+  msg.style.color='var(--ink-soft)'; msg.textContent='Follow the prompt…';
+  const ok = await bioEnroll();
+  msg.style.color = ok ? 'var(--forest)' : 'var(--seal)';
+  msg.textContent = ok ? 'Enabled on this device.' : 'Could not enable it.';
 });
 $('hintSave').addEventListener('click', async ()=>{
   const m = { ...metaCache, hint: $('hintInput').value.trim() };
@@ -3566,6 +3610,7 @@ function resetIdle(){
   document.addEventListener(ev, resetIdle, { passive:true }));
 
 function lockNow(){
+  bioTried = false;
   masterKey = null; records = {};
   financeUnlocked = false; $('financeTab').style.display='none';
   currentView = 'tasks';
@@ -3685,6 +3730,11 @@ async function initLock(){
   } else {
     $('lockTitle').textContent = 'Unlock Register';
     $('lockSub').textContent = 'Enter your passphrase.';
+    // Try biometrics straight away when enrolled, so opening the app is one step.
+    if(bioAvailable() && bioEnrolled() && localStorage.getItem(LS+'bioAuto') !== '0' && !bioTried){
+      bioTried = true;
+      setTimeout(()=> tryBioUnlock(true), 250);
+    }
     $('lockConfirm').style.display='none'; $('lockStrength').style.display='none';
     $('lockBtn').textContent = 'Unlock';
     $('lockInput').placeholder = 'Passphrase';
@@ -3813,11 +3863,19 @@ $('lockInput').addEventListener('keydown', e=>{
   if(e.key==='Enter'){ if(lockMode==='set') $('lockConfirm').focus(); else submitLock(); }
 });
 $('lockConfirm').addEventListener('keydown', e=>{ if(e.key==='Enter') submitLock(); });
-$('lockBio').addEventListener('click', async ()=>{
+let bioTried = false;
+async function tryBioUnlock(silent){
+  $('lockSub').textContent = 'Waiting for Face ID / Touch ID…';
   const ok = await bioUnlock();
-  if(ok) await afterUnlock();
-  else $('lockErr').textContent='Biometric unlock failed — use your passphrase.';
-});
+  if(ok){ await afterUnlock(); return true; }
+  $('lockSub').textContent = 'Enter your passphrase.';
+  // A cancelled or unavailable prompt is not an error worth shouting about —
+  // the passphrase field is right there.
+  if(!silent) $('lockErr').textContent = 'Biometric unlock failed — use your passphrase.';
+  $('lockInput').focus();
+  return false;
+}
+$('lockBio').addEventListener('click', ()=> tryBioUnlock(false));
 $('lockSync').addEventListener('click', ()=>{
   $('syncUrl').value = cloud.url; $('syncToken').value = cloud.token;
   $('syncMsg').textContent = 'Connect, then enter the passphrase you already use.';
