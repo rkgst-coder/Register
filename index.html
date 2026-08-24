@@ -197,6 +197,30 @@ h1{font-family:'Source Serif 4',serif;font-weight:700;font-size:clamp(26px,4vw,3
   display:flex;align-items:center;gap:4px}
 .meta .duewarn{color:var(--seal);font-weight:600}
 .subprog{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint)}
+.subtoggle{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);
+  cursor:pointer;display:flex;align-items:center;gap:4px;border:none;background:none;padding:0}
+.subtoggle:hover{color:var(--brass)}
+.subtoggle .chev{display:inline-block;transition:transform .15s}
+.subtoggle.open .chev{transform:rotate(90deg)}
+
+/* subtasks shown inline under their parent in the list */
+.task-subs{margin-top:9px;border-left:2px solid var(--line);padding-left:11px}
+.tsub{display:flex;align-items:flex-start;gap:8px;padding:5px 0}
+.tsub-check{width:15px;height:15px;border:2px solid var(--ink-faint);border-radius:50%;flex:none;
+  margin-top:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:9px;background:var(--field-bg);transition:background-color .12s,border-color .12s}
+.tsub-check:hover{border-color:var(--forest)}
+.tsub-check.on{background:var(--forest);border-color:var(--forest);color:#fff}
+.tsub-body{flex:1;min-width:0}
+.tsub-text{font-size:13px;line-height:1.35;word-break:break-word}
+.tsub.on .tsub-text{text-decoration:line-through;color:var(--ink-faint)}
+.tsub-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;
+  font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--ink-faint)}
+.tsub-meta .duewarn{color:var(--seal);font-weight:600}
+.tsub-dot{width:6px;height:6px;border-radius:50%;flex:none;margin-top:6px}
+.tsub-add{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);
+  cursor:pointer;padding:5px 0 2px;background:none;border:none}
+.tsub-add:hover{color:var(--brass)}
 
 /* kanban */
 .kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:2px}
@@ -1232,6 +1256,48 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <p style="font-size:12px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5">
       Your Apps Script Web App URL and token. Everything is encrypted in this browser before it is sent —
       the Sheet only ever holds ciphertext.</p>
+    <!-- ---- keyless mode: device key + pairing ---- -->
+    <div id="keylessSection" style="display:none">
+    <div class="flabel" style="margin-bottom:8px">Device key</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
+      There is no passphrase. This device holds the encryption key directly, so the app
+      opens straight away. Everything is still encrypted before it reaches your Sheet —
+      the key never leaves your devices.</p>
+    <div class="field" style="margin-bottom:10px"><label>Pairing code for your other device</label>
+      <input type="text" id="pairShow" readonly style="font-family:'IBM Plex Mono',monospace;font-size:11px"></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn ghost small" id="pairReveal" style="flex:1">Show</button>
+      <button class="btn ghost small" id="pairCopy" style="flex:1">Copy</button>
+    </div>
+    <div class="field" style="margin-bottom:10px"><label for="pairIn">Paste a pairing code from another device</label>
+      <input type="text" id="pairIn" placeholder="REGKEY-…" autocomplete="off"></div>
+    <button class="btn ghost" id="pairApply" style="width:100%">Use this key on this device</button>
+    <div class="lock-err" id="pairMsg" style="color:var(--ink-soft)"></div>
+    <p style="font-size:11px;color:var(--ink-faint);margin:10px 0 0;line-height:1.5">
+      Anyone holding this code can read your Sheet. Move it between your own machines
+      directly — don't email it to yourself.</p>
+
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Decoy screen</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 10px;line-height:1.5">
+      Off by default — the app just opens. Turn this on and it first shows a dead
+      "connection failed" page instead. <b>Tap the word “Register” in the heading three
+      times</b> to go through. Nothing is typed, so this only stops a casual glance,
+      not anyone determined.</p>
+    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
+      margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="decoyOn" style="width:auto">
+      <span>Show the decoy screen when the app opens</span>
+    </label>
+    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
+      margin-bottom:4px;cursor:pointer">
+      <input type="checkbox" id="decoyIdle" style="width:auto">
+      <span>Also fall back to it after 10 minutes idle</span>
+    </label>
+    </div>
+
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Sheet sync</div>
     <div class="field" style="margin-bottom:12px"><label for="syncUrl">Web App URL</label>
       <input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/…/exec"></div>
     <div class="field" style="margin-bottom:14px"><label for="syncToken">Token</label>
@@ -1288,47 +1354,6 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <input type="text" id="hintInput" placeholder="e.g. the usual one, with the year"></div>
     <button class="btn ghost" id="hintSave" style="width:100%">Save hint</button>
     <div class="lock-err" id="hintMsg" style="color:var(--ink-soft)"></div>
-    </div>
-
-    <!-- ---- keyless mode: device key + pairing ---- -->
-    <div id="keylessSection" style="display:none">
-    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
-    <div class="flabel" style="margin-bottom:8px">Device key</div>
-    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
-      There is no passphrase. This device holds the encryption key directly, so the app
-      opens straight away. Everything is still encrypted before it reaches your Sheet —
-      the key never leaves your devices.</p>
-    <div class="field" style="margin-bottom:10px"><label>Pairing code for your other device</label>
-      <input type="text" id="pairShow" readonly style="font-family:'IBM Plex Mono',monospace;font-size:11px"></div>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button class="btn ghost small" id="pairReveal" style="flex:1">Show</button>
-      <button class="btn ghost small" id="pairCopy" style="flex:1">Copy</button>
-    </div>
-    <div class="field" style="margin-bottom:10px"><label for="pairIn">Paste a pairing code from another device</label>
-      <input type="text" id="pairIn" placeholder="REGKEY-…" autocomplete="off"></div>
-    <button class="btn ghost" id="pairApply" style="width:100%">Use this key on this device</button>
-    <div class="lock-err" id="pairMsg" style="color:var(--ink-soft)"></div>
-    <p style="font-size:11px;color:var(--ink-faint);margin:10px 0 0;line-height:1.5">
-      Anyone holding this code can read your Sheet. Move it between your own machines
-      directly — don't email it to yourself.</p>
-
-    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
-    <div class="flabel" style="margin-bottom:8px">Decoy screen</div>
-    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 10px;line-height:1.5">
-      Off by default — the app just opens. Turn this on and it first shows a dead
-      "connection failed" page instead. <b>Tap the word “Register” in the heading three
-      times</b> to go through. Nothing is typed, so this only stops a casual glance,
-      not anyone determined.</p>
-    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
-      margin-bottom:10px;cursor:pointer">
-      <input type="checkbox" id="decoyOn" style="width:auto">
-      <span>Show the decoy screen when the app opens</span>
-    </label>
-    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
-      margin-bottom:4px;cursor:pointer">
-      <input type="checkbox" id="decoyIdle" style="width:auto">
-      <span>Also fall back to it after 10 minutes idle</span>
-    </label>
     </div>
 
     <!-- ---- Drive image storage ---- -->
@@ -2111,6 +2136,30 @@ const isOverdue = t => t.dueDate && t.status!=='done' && t.dueDate < todayISO();
 const isDueToday = t => t.dueDate === todayISO();
 
 /* ---------- task rendering ---------- */
+/* Which tasks have their subtask list expanded in the main view. Kept in
+   memory rather than on the record — it's a view state, not data, and it
+   shouldn't sync between devices. */
+const expandedTasks = new Set();
+
+const PRIO_DOT = { High:'var(--seal)', Medium:'var(--brass)', Low:'#4A6FA5' };
+
+function subRowHtml(s, i){
+  const od = subOverdue(s), dt = s.dueDate===todayISO() && !s.done;
+  return `<div class="tsub ${s.done?'on':''}">
+    <div class="tsub-check ${s.done?'on':''}" data-tsub="${i}" role="button" tabindex="0"
+         aria-label="${s.done?'Mark step not done':'Mark step done'}">${s.done?'✓':''}</div>
+    <span class="tsub-dot" style="background:${PRIO_DOT[s.priority]||'var(--brass)'}"
+          title="${s.priority} priority"></span>
+    <div class="tsub-body">
+      <div class="tsub-text">${esc(s.text)}</div>
+      ${(s.dueDate||s.notes)?`<div class="tsub-meta">
+        ${s.dueDate?`<span class="${od||dt?'duewarn':''}">📅 ${fmtDate(s.dueDate)}${od?' · overdue':dt?' · today':''}</span>`:''}
+        ${s.notes?'<span>📝</span>':''}
+      </div>`:''}
+    </div>
+  </div>`;
+}
+
 function taskHtml(t, showCat){
   const od = isOverdue(t), dt = isDueToday(t);
   const subs = (t.subs||[]).map(normSub);
@@ -2119,6 +2168,8 @@ function taskHtml(t, showCat){
   // earliest still-open step with a date — the thing actually due next
   const nextSub = subs.filter(s=>!s.done && s.dueDate)
                       .sort((a,b)=> a.dueDate.localeCompare(b.dueDate))[0];
+  // An overdue step is worth surfacing without being asked.
+  const open = expandedTasks.has(t.id) || (lateSubs > 0 && !expandedTasks.has('!'+t.id));
   return `<div class="task prio-${t.priority} ${t.status==='done'?'done':''} ${od?'overdue':''}"
        data-id="${t.id}" draggable="true">
     <div class="check ${t.status==='done'?'checked':''} ${t.status==='inprogress'?'inprog':''}"
@@ -2131,14 +2182,19 @@ function taskHtml(t, showCat){
       </div>
       <div class="meta">
         ${t.dueDate?`<span class="${od||dt?'duewarn':''}">📅 ${fmtDate(t.dueDate)}${od?' · overdue':dt?' · today':''}</span>`:''}
-        ${subs.length?`<span class="subprog">☑ ${doneSubs}/${subs.length}</span>`:''}
+        ${subs.length?`<button class="subtoggle ${open?'open':''}" data-act="subtoggle"
+            aria-expanded="${open?'true':'false'}"><span class="chev">▸</span>☑ ${doneSubs}/${subs.length}</button>`:''}
         ${lateSubs?`<span class="duewarn">⚠ ${lateSubs} step${lateSubs>1?'s':''} overdue</span>`
-                  :nextSub?`<span class="${nextSub.dueDate===todayISO()?'duewarn':''}">↳ next ${fmtDate(nextSub.dueDate)}</span>`:''}
+                  :(!open && nextSub)?`<span class="${nextSub.dueDate===todayISO()?'duewarn':''}">↳ next ${fmtDate(nextSub.dueDate)}</span>`:''}
         ${t.repeat&&t.repeat!=='none'?`<span>🔁 ${t.repeat}</span>`:''}
         ${t.status==='inprogress'?'<span>◐ in progress</span>':''}
         ${t.status==='done'&&t.completedOn?`<span>✓ ${fmtDate(t.completedOn)}</span>`:''}
         ${t.notes?'<span>📝</span>':''}
       </div>
+      ${subs.length && open ? `<div class="task-subs">
+        ${subs.map((s,i)=> subRowHtml(s,i)).join('')}
+      </div>` : ''}
+      ${!subs.length ? `<button class="tsub-add" data-act="subadd">+ add a step</button>` : ''}
     </div>
   </div>`;
 }
@@ -2240,7 +2296,44 @@ function wireTasks(){
     const chk = el.querySelector('[data-act="cycle"]');
     chk.addEventListener('click', e=>{ e.stopPropagation(); cycleTask(id); });
     chk.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); e.stopPropagation(); cycleTask(id);} });
-    el.addEventListener('click', ()=> openTask(id));
+
+    // expand / collapse the subtask list. '!id' records a deliberate collapse,
+    // so an overdue step doesn't force the list back open on every render.
+    const tog = el.querySelector('[data-act="subtoggle"]');
+    if(tog) tog.addEventListener('click', e=>{
+      e.stopPropagation();
+      if(tog.classList.contains('open')){ expandedTasks.delete(id); expandedTasks.add('!'+id); }
+      else { expandedTasks.add(id); expandedTasks.delete('!'+id); }
+      renderTasks();
+    });
+
+    // tick a step straight from the list, no need to open the task
+    el.querySelectorAll('[data-tsub]').forEach(sc=>{
+      const toggle = e=>{
+        e.stopPropagation();
+        const t = records[id]; if(!t) return;
+        t.subs = (t.subs||[]).map(normSub);
+        const i = +sc.dataset.tsub;
+        if(!t.subs[i]) return;
+        t.subs[i].done = !t.subs[i].done;
+        expandedTasks.add(id); expandedTasks.delete('!'+id);   // keep it open
+        put(t);
+      };
+      sc.addEventListener('click', toggle);
+      sc.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(e); } });
+    });
+
+    const add = el.querySelector('[data-act="subadd"]');
+    if(add) add.addEventListener('click', e=>{
+      e.stopPropagation();
+      openTask(id);
+      setTimeout(()=> $('etSubInput').focus(), 120);
+    });
+
+    el.addEventListener('click', e=>{
+      if(e.target.closest('.task-subs') || e.target.closest('button')) return;
+      openTask(id);
+    });
     el.addEventListener('dragstart', e=>{
       e.dataTransfer.setData('text/plain', id); el.classList.add('dragging');
     });
@@ -4158,10 +4251,12 @@ function lockNow(){
   $('mainApp').style.display='none';
   clearTimeout(idleTimer);
   if(isKeyless()){
-    // Keyless: the key is still on the device, so "locking" can only hide the
-    // screen. Show the decoy if it's on, otherwise just reopen.
-    if(decoyEnabled()){ $('decoyScreen').classList.remove('hidden'); decoyTaps = 0; return; }
-    initLock(); return;
+    // Keyless: the key still lives on the device, so "locking" can only blank
+    // the screen. Pressing 🔒 always drops to the decoy, whether or not it is
+    // set to appear at launch — otherwise the button would do nothing at all.
+    $('decoyScreen').classList.remove('hidden');
+    decoyTaps = 0;
+    return;
   }
   $('lockScreen').classList.remove('hidden');
   initLock();
@@ -4528,7 +4623,10 @@ function applyKeylessUI(){
   const kl = isKeyless();
   $('keylessSection').style.display = kl ? '' : 'none';
   ['ppSection','hintSection'].forEach(id=>{ if($(id)) $(id).style.display = kl ? 'none' : ''; });
-  $('lockNowBtn').style.display = kl && !decoyEnabled() ? 'none' : '';
+  // The lock button stays, keyless or not — it's the only way to blank the
+  // screen on demand, and hiding it made the feature impossible to find.
+  $('lockNowBtn').style.display = '';
+  $('lockNowBtn').title = kl ? 'Hide behind the decoy screen' : 'Lock now';
   $('decoyOn').checked   = decoyEnabled();
   $('decoyIdle').checked = decoyIdleEnabled();
   $('driveFolder').value = driveFolderId();
