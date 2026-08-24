@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1C2B39">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Register">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
@@ -46,7 +46,11 @@ html,body{margin:0;padding:0}
 body{
   background:radial-gradient(1200px 600px at 10% -10%,rgba(147,115,31,.06),transparent),var(--paper);
   color:var(--ink);font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased;
-  min-height:100vh;padding:22px 16px calc(80px + env(safe-area-inset-bottom));
+  min-height:100vh;
+  padding:calc(22px + env(safe-area-inset-top,0px))
+          calc(16px + env(safe-area-inset-right,0px))
+          calc(80px + env(safe-area-inset-bottom,0px))
+          calc(16px + env(safe-area-inset-left,0px));
   transition:background-color .25s ease,color .25s ease;
 }
 .wrap{max-width:1080px;margin:0 auto}
@@ -309,7 +313,8 @@ h1{font-family:'Source Serif 4',serif;font-weight:700;font-size:clamp(26px,4vw,3
 .ov-close:hover{color:var(--ink)}
 @media(max-width:640px){
   .ov{padding:0}
-  .ov-card{max-width:100%;height:100%;max-height:100%;border-radius:0;padding:20px}
+  .ov-card{max-width:100%;height:100%;max-height:100%;border-radius:0;
+    padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(20px + env(safe-area-inset-bottom,0px))}
 }
 
 /* task edit modal: horizontal field row */
@@ -329,15 +334,33 @@ h1{font-family:'Source Serif 4',serif;font-weight:700;font-size:clamp(26px,4vw,3
 
 /* subtasks */
 .sub-wrap{margin:16px 0}
-.sub-item{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line)}
+.sub-item{border-bottom:1px solid var(--line);border-left:3px solid transparent;padding-left:8px}
 .sub-item:last-of-type{border-bottom:none}
-.sub-check{width:17px;height:17px;border:2px solid var(--ink-soft);border-radius:3px;flex:none;
+.sub-item.sp-High{border-left-color:#A6362F}
+.sub-item.sp-Medium{border-left-color:var(--brass)}
+.sub-item.sp-Low{border-left-color:var(--cat-work)}
+.sub-row{display:flex;align-items:flex-start;gap:9px;padding:8px 0}
+.sub-check{width:17px;height:17px;border:2px solid var(--ink-soft);border-radius:3px;flex:none;margin-top:1px;
   cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;background:var(--field-bg)}
 .sub-check.on{background:var(--forest);border-color:var(--forest);color:#fff}
-.sub-text{flex:1;font-size:13.5px}
+.sub-main{flex:1;min-width:0;cursor:pointer}
+.sub-text{font-size:13.5px;word-break:break-word}
 .sub-item.on .sub-text{text-decoration:line-through;color:var(--ink-faint)}
+.sub-meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:3px;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-faint)}
+.sub-meta .duewarn{color:var(--seal);font-weight:600}
+.sub-edit{display:none;grid-template-columns:1fr 1fr;gap:9px;padding:2px 0 12px 26px}
+.sub-item.editing .sub-edit{display:grid}
+.sub-edit .field{grid-column:span 1}
+.sub-edit .field.wide{grid-column:1 / -1}
+.sub-edit input,.sub-edit select,.sub-edit textarea{font-size:13px;padding:7px 8px;
+  border:1px solid var(--line-strong);border-radius:2px;outline:none;width:100%}
+.sub-edit textarea{min-height:52px;resize:vertical;line-height:1.5}
+@media(max-width:520px){.sub-edit{grid-template-columns:1fr}}
 .sub-add{display:flex;gap:7px;margin-top:9px}
 .sub-add input{flex:1;font-size:13px;padding:8px 9px;border:1px solid var(--line-strong);border-radius:2px;outline:none}
+.sub-hint{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-faint);margin-top:6px}
+.sub-hint code{background:rgba(128,128,128,.14);padding:1px 5px;border-radius:3px}
 
 /* ============================================================
    NOTES
@@ -386,6 +409,27 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 .folder-pill{font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:7px 12px;border-radius:16px;
   border:1px solid var(--line-strong);background:var(--card);color:var(--ink-soft);cursor:pointer;white-space:nowrap}
 .folder-pill.active{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+/* folder cards on the notes board */
+.folder-card{break-inside:avoid;margin-bottom:15px;border-radius:2px;
+  border:1px solid var(--line-strong);background:var(--card);box-shadow:var(--shadow);
+  padding:15px 15px 12px;position:relative;cursor:pointer;
+  transition:transform .12s,box-shadow .12s}
+.folder-card:hover{transform:translateY(-2px);box-shadow:0 2px 4px rgba(0,0,0,.08),0 8px 20px rgba(0,0,0,.1)}
+.folder-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;
+  background:linear-gradient(180deg,var(--brass),var(--brass-soft))}
+.fc-top{display:flex;align-items:center;gap:9px}
+.fc-name{font-family:'Source Serif 4',serif;font-weight:600;font-size:15.5px;flex:1;word-break:break-word}
+.fc-count{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 8px;border-radius:9px;
+  background:var(--brass);color:#fff;flex:none}
+.fc-preview{margin-top:8px;font-size:11.5px;color:var(--ink-soft);line-height:1.6}
+.fc-preview div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fc-foot{margin-top:9px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-faint)}
+.board-head{display:flex;align-items:center;gap:10px;margin-top:16px;margin-bottom:-4px}
+.board-head .bh-title{font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.07em;color:var(--ink-faint)}
+.back-pill{font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:6px 12px;border-radius:16px;
+  border:1px solid var(--line-strong);background:var(--card);color:var(--ink-soft);cursor:pointer}
+.back-pill:hover{border-color:var(--brass);color:var(--ink)}
 .note-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
 .chip{font-family:'IBM Plex Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;
   padding:2px 7px;border-radius:9px;background:rgba(128,128,128,.18);color:var(--ink-soft)}
@@ -476,7 +520,8 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
    SEARCH / TRASH / LOCK
    ============================================================ */
 .search-ov{position:fixed;inset:0;z-index:950;background:rgba(10,14,18,.6);
-  display:none;align-items:flex-start;justify-content:center;padding:70px 20px 20px}
+  display:none;align-items:flex-start;justify-content:center;
+  padding:calc(70px + env(safe-area-inset-top,0px)) 20px calc(20px + env(safe-area-inset-bottom,0px))}
 .search-ov.open{display:flex}
 .search-card{max-width:640px;width:100%;background:var(--card);border:1px solid var(--line-strong);
   border-radius:3px;box-shadow:0 10px 40px rgba(0,0,0,.4);overflow:hidden}
@@ -490,8 +535,23 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
   padding:2px 7px;border-radius:9px;background:rgba(128,128,128,.2);color:var(--ink-soft);flex:none}
 .sr-text{flex:1;font-size:14px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+#decoyScreen{position:fixed;inset:0;z-index:1000;background:var(--paper);
+  display:flex;align-items:center;justify-content:center;
+  padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(20px + env(safe-area-inset-bottom,0px))}
+#decoyScreen.hidden{display:none}
+.decoy-box{max-width:360px;width:100%;text-align:center;color:var(--ink-soft)}
+.decoy-icon{font-size:34px;color:var(--ink-faint);margin-bottom:12px}
+.decoy-box h2{font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:17px;
+  color:var(--ink);margin:0 0 8px}
+.decoy-box p{font-size:13px;line-height:1.6;margin:0 0 18px}
+/* no cursor change, no hover, no hint that this word does anything */
+.decoy-word{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.decoy-code{margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;
+  color:var(--ink-faint);letter-spacing:.04em}
+
 #lockScreen{position:fixed;inset:0;z-index:999;background:var(--paper);
-  display:flex;align-items:center;justify-content:center;padding:20px}
+  display:flex;align-items:center;justify-content:center;
+  padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(20px + env(safe-area-inset-bottom,0px))}
 #lockScreen.hidden{display:none}
 .lock-card{max-width:360px;width:100%;background:var(--card);border:1px solid var(--line-strong);
   border-radius:2px;box-shadow:var(--shadow);padding:28px 26px;text-align:center;position:relative;overflow:hidden}
@@ -524,6 +584,20 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 </style>
 </head>
 <body>
+
+<!-- ========== DECOY SCREEN ==========
+     Deliberately looks like a page that failed to load. The way through is
+     three taps on the word "Register" in the heading, within two seconds. -->
+<div id="decoyScreen" class="hidden">
+  <div class="decoy-box">
+    <div class="decoy-icon">⚠</div>
+    <h2>Couldn't reach the server</h2>
+    <p>The connection to <span class="decoy-word" id="decoyKey">Register</span> timed out.
+       Check your network and try again.</p>
+    <button class="btn ghost" id="decoyRetry">Retry</button>
+    <div class="decoy-code">ERR_CONNECTION_TIMED_OUT</div>
+  </div>
+</div>
 
 <!-- ========== LOCK SCREEN ========== -->
 <div id="lockScreen">
@@ -655,6 +729,10 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
         <button class="btn" id="newNoteBtn">+ New note</button>
       </div>
       <div class="folder-bar" id="folderBar"></div>
+    </div>
+    <div class="board-head" id="boardHead" style="display:none">
+      <button class="back-pill" id="folderBack">← All folders</button>
+      <span class="bh-title" id="boardHeadTitle"></span>
     </div>
     <div class="notes-board" id="notesBoard"></div>
   </div>
@@ -837,9 +915,11 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <div class="flabel" style="margin-bottom:7px">Subtasks <span id="etSubCount"></span></div>
       <div id="etSubs"></div>
       <div class="sub-add">
-        <input type="text" id="etSubInput" placeholder="Add a step…" aria-label="New subtask">
+        <input type="text" id="etSubInput" placeholder="Add a step… (!high @tomorrow)" aria-label="New subtask">
         <button class="btn ghost small" id="etSubAdd">Add</button>
       </div>
+      <div class="sub-hint">Tap a step to set its own due date, priority and note ·
+        shortcuts <code>!high</code> <code>@tomorrow</code> <code>@3d</code></div>
     </div>
     <div class="field"><label for="etNotes">Notes</label>
       <textarea class="edit-notes" id="etNotes" placeholder="Any detail worth keeping…"></textarea></div>
@@ -1166,6 +1246,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <code>Code.gs</code>, redeploy a new version, then update it here. It cannot be
       changed from the app alone.</p>
 
+    <div id="ppSection">
     <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
     <div class="flabel" style="margin-bottom:8px">Change passphrase</div>
     <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
@@ -1186,6 +1267,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       Your way back in if the passphrase is ever forgotten. Generating a new one
       immediately invalidates the old.</p>
     <button class="btn ghost" id="rcRegen" style="width:100%">Generate a new recovery code</button>
+    </div>
 
     <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
     <div class="flabel" style="margin-bottom:8px">Face ID / Touch ID</div>
@@ -1197,6 +1279,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <button class="btn ghost" id="bioSetup" style="width:100%">Set up on this device</button>
     <div class="lock-err" id="bioMsg" style="color:var(--ink-soft)"></div>
 
+    <div id="hintSection">
     <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
     <div class="flabel" style="margin-bottom:8px">Passphrase hint</div>
     <p style="font-size:12px;color:var(--ink-soft);margin:0 0 10px;line-height:1.5">
@@ -1205,6 +1288,69 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <input type="text" id="hintInput" placeholder="e.g. the usual one, with the year"></div>
     <button class="btn ghost" id="hintSave" style="width:100%">Save hint</button>
     <div class="lock-err" id="hintMsg" style="color:var(--ink-soft)"></div>
+    </div>
+
+    <!-- ---- keyless mode: device key + pairing ---- -->
+    <div id="keylessSection" style="display:none">
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Device key</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
+      There is no passphrase. This device holds the encryption key directly, so the app
+      opens straight away. Everything is still encrypted before it reaches your Sheet —
+      the key never leaves your devices.</p>
+    <div class="field" style="margin-bottom:10px"><label>Pairing code for your other device</label>
+      <input type="text" id="pairShow" readonly style="font-family:'IBM Plex Mono',monospace;font-size:11px"></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn ghost small" id="pairReveal" style="flex:1">Show</button>
+      <button class="btn ghost small" id="pairCopy" style="flex:1">Copy</button>
+    </div>
+    <div class="field" style="margin-bottom:10px"><label for="pairIn">Paste a pairing code from another device</label>
+      <input type="text" id="pairIn" placeholder="REGKEY-…" autocomplete="off"></div>
+    <button class="btn ghost" id="pairApply" style="width:100%">Use this key on this device</button>
+    <div class="lock-err" id="pairMsg" style="color:var(--ink-soft)"></div>
+    <p style="font-size:11px;color:var(--ink-faint);margin:10px 0 0;line-height:1.5">
+      Anyone holding this code can read your Sheet. Move it between your own machines
+      directly — don't email it to yourself.</p>
+
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Decoy screen</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 10px;line-height:1.5">
+      Off by default — the app just opens. Turn this on and it first shows a dead
+      "connection failed" page instead. <b>Tap the word “Register” in the heading three
+      times</b> to go through. Nothing is typed, so this only stops a casual glance,
+      not anyone determined.</p>
+    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
+      margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="decoyOn" style="width:auto">
+      <span>Show the decoy screen when the app opens</span>
+    </label>
+    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
+      margin-bottom:4px;cursor:pointer">
+      <input type="checkbox" id="decoyIdle" style="width:auto">
+      <span>Also fall back to it after 10 minutes idle</span>
+    </label>
+    </div>
+
+    <!-- ---- Drive image storage ---- -->
+    <div id="driveSection">
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Image storage</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
+      With a Drive folder set, pasted images go to Drive at full size instead of being
+      squeezed into a Sheet cell. <b>Images in Drive are not encrypted</b> — Google can
+      read them, unlike the rest of your data.</p>
+    <div class="field" style="margin-bottom:10px"><label for="driveFolder">Drive folder ID or link</label>
+      <input type="text" id="driveFolder" placeholder="https://drive.google.com/drive/folders/…"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn ghost small" id="driveSave" style="flex:1">Save</button>
+      <button class="btn ghost small" id="driveTest" style="flex:1">Test upload</button>
+    </div>
+    <div class="lock-err" id="driveMsg" style="color:var(--ink-soft)"></div>
+    <p style="font-size:11px;color:var(--ink-faint);margin:10px 0 0;line-height:1.5">
+      Needs the <code>driveUpload</code> / <code>driveGet</code> / <code>driveDelete</code>
+      actions in your <code>Code.gs</code>. Without them the app quietly falls back to the
+      old compressed-in-Sheet images.</p>
+    </div>
 
     <div id="finCodeSection" style="display:none">
     <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
@@ -1457,6 +1603,72 @@ async function upgradeLegacyKeySet(passphrase){
   pendingRecoveryCode = recovery;    // surfaced to the user right after unlock
 }
 
+/* ---------------------------------------------------------------------------
+   KEYLESS MODE (v3) — no passphrase
+
+   The master key is generated once and kept raw in localStorage on each
+   device. There is nothing to type, so the app opens immediately.
+
+   What this still protects: the Sheet. Records are encrypted in the browser
+   exactly as before, so the copy sitting in Google's servers — the part
+   exposed to the internet — is unreadable ciphertext.
+
+   What it no longer protects: this device. Anyone with the unlocked machine
+   can read localStorage and get the key. That is the trade being made.
+
+   Because the key is no longer derived from anything, a second device cannot
+   re-create it — it has to be carried across as a pairing code.
+   ------------------------------------------------------------------------- */
+const KEYLESS_PREFIX = 'REGKEY-';
+const hasDeviceKey = () => !!localStorage.getItem(LS+'devKey');
+const isKeyless = () => metaCache.ver === 3 || metaCache.keyless === true;
+
+async function loadDeviceKey(){
+  const raw = localStorage.getItem(LS+'devKey');
+  if(!raw) return false;
+  try{
+    masterKey = await crypto.subtle.importKey('raw', unb64(raw), 'AES-GCM', true, ['encrypt','decrypt']);
+    return true;
+  }catch(e){ return false; }
+}
+async function storeDeviceKey(){
+  const raw = await crypto.subtle.exportKey('raw', masterKey);
+  localStorage.setItem(LS+'devKey', b64(raw));
+}
+/* Brand new install with nothing in the Sheet: make a key and walk straight in. */
+async function createKeylessKeySet(){
+  masterKey = await crypto.subtle.generateKey({name:'AES-GCM', length:256}, true, ['encrypt','decrypt']);
+  await storeDeviceKey();
+  saveMetaCache({ ver:3, keyless:true, mkId: randB64(8), hint:'' });
+  await uploadMeta();
+}
+/* Convert an existing passphrase install to keyless. The master key itself is
+   unchanged, so not a single record has to be re-encrypted. */
+async function convertToKeyless(){
+  if(!masterKey) return false;
+  await storeDeviceKey();
+  saveMetaCache({ ver:3, keyless:true, mkId: metaCache.mkId || randB64(8), hint:'' });
+  await uploadMeta(true);
+  return true;
+}
+async function getPairingCode(){
+  if(!masterKey) return '';
+  const raw = await crypto.subtle.exportKey('raw', masterKey);
+  return KEYLESS_PREFIX + b64(raw).replace(/=+$/,'');
+}
+async function usePairingCode(code){
+  const body = String(code||'').trim().replace(/^REGKEY-/i,'').replace(/\s+/g,'');
+  if(!body) return false;
+  try{
+    const pad = body + '='.repeat((4 - body.length % 4) % 4);
+    const raw = unb64(pad);
+    if(raw.length !== 32) return false;
+    masterKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt','decrypt']);
+    await storeDeviceKey();
+    return true;
+  }catch(e){ return false; }
+}
+
 async function openWithRecovery(code){
   const m = metaCache;
   if(!m.wrapRec || !m.saltRec) return false;
@@ -1506,7 +1718,7 @@ async function fetchMeta(){
     const r = await fetch(cloud.url + '?action=meta&token=' + encodeURIComponent(cloud.token));
     const d = await r.json();
     if(d.error || !d.meta) return null;
-    return (d.meta.wrapPass || d.meta.salt) ? d.meta : null;
+    return (d.meta.wrapPass || d.meta.salt || d.meta.keyless) ? d.meta : null;
   }catch(e){ return null; }
 }
 async function uploadMeta(rotate){
@@ -1528,10 +1740,12 @@ async function adoptMeta(meta){
   const changed = (cur.mkId && meta.mkId && cur.mkId !== meta.mkId) ||
                   (cur.salt && meta.salt && cur.salt !== meta.salt);
   if(changed){
+    // a different key set owns the Sheet now — everything cached here is dead
     masterKey = null;
     localStorage.removeItem(LS+'recs');
     localStorage.removeItem(LS+'bioKey');
     localStorage.removeItem(LS+'bioId');
+    localStorage.removeItem(LS+'devKey');
   }
   saveMetaCache(meta);
   return true;
@@ -1872,17 +2086,25 @@ function cycleTask(id){
   } else { t.status='active'; delete t.completedOn; delete t.completedAt; }
   put(t);
 }
+function shiftISO(iso, repeat){
+  if(!iso) return null;
+  const d = new Date(iso+'T00:00:00');
+  if(isNaN(d)) return iso;
+  if(repeat==='daily') d.setDate(d.getDate()+1);
+  else if(repeat==='weekly') d.setDate(d.getDate()+7);
+  else if(repeat==='monthly') d.setMonth(d.getMonth()+1);
+  return isoLocal(d);
+}
 function spawnRepeat(t){
   const clone = { ...t, id:uid('t'), status:'active', createdAt:nowMs(),
-                  subs:(t.subs||[]).map(s=>({...s, done:false})) };
+                  // subtasks keep their priority and note; their due dates roll
+                  // forward with the parent so the new copy isn't born overdue
+                  subs:(t.subs||[]).map(s=>{
+                    const n = normSub(s);
+                    return { ...n, done:false, dueDate:shiftISO(n.dueDate, t.repeat) };
+                  }) };
   delete clone.completedOn; delete clone.completedAt;
-  if(t.dueDate){
-    const d = new Date(t.dueDate+'T00:00:00');
-    if(t.repeat==='daily') d.setDate(d.getDate()+1);
-    else if(t.repeat==='weekly') d.setDate(d.getDate()+7);
-    else if(t.repeat==='monthly') d.setMonth(d.getMonth()+1);
-    clone.dueDate = isoLocal(d);
-  }
+  if(t.dueDate) clone.dueDate = shiftISO(t.dueDate, t.repeat);
   put(clone, true);
 }
 const isOverdue = t => t.dueDate && t.status!=='done' && t.dueDate < todayISO();
@@ -1891,8 +2113,12 @@ const isDueToday = t => t.dueDate === todayISO();
 /* ---------- task rendering ---------- */
 function taskHtml(t, showCat){
   const od = isOverdue(t), dt = isDueToday(t);
-  const subs = t.subs||[];
+  const subs = (t.subs||[]).map(normSub);
   const doneSubs = subs.filter(s=>s.done).length;
+  const lateSubs = subs.filter(subOverdue).length;
+  // earliest still-open step with a date — the thing actually due next
+  const nextSub = subs.filter(s=>!s.done && s.dueDate)
+                      .sort((a,b)=> a.dueDate.localeCompare(b.dueDate))[0];
   return `<div class="task prio-${t.priority} ${t.status==='done'?'done':''} ${od?'overdue':''}"
        data-id="${t.id}" draggable="true">
     <div class="check ${t.status==='done'?'checked':''} ${t.status==='inprogress'?'inprog':''}"
@@ -1906,6 +2132,8 @@ function taskHtml(t, showCat){
       <div class="meta">
         ${t.dueDate?`<span class="${od||dt?'duewarn':''}">📅 ${fmtDate(t.dueDate)}${od?' · overdue':dt?' · today':''}</span>`:''}
         ${subs.length?`<span class="subprog">☑ ${doneSubs}/${subs.length}</span>`:''}
+        ${lateSubs?`<span class="duewarn">⚠ ${lateSubs} step${lateSubs>1?'s':''} overdue</span>`
+                  :nextSub?`<span class="${nextSub.dueDate===todayISO()?'duewarn':''}">↳ next ${fmtDate(nextSub.dueDate)}</span>`:''}
         ${t.repeat&&t.repeat!=='none'?`<span>🔁 ${t.repeat}</span>`:''}
         ${t.status==='inprogress'?'<span>◐ in progress</span>':''}
         ${t.status==='done'&&t.completedOn?`<span>✓ ${fmtDate(t.completedOn)}</span>`:''}
@@ -2045,6 +2273,7 @@ function fillSelect(el, opts, val, withIcon){
 function openTask(id){
   const t = records[id]; if(!t) return;
   openTaskId = id;
+  expandedSub = -1;
   $('etTitle').value = t.title||'';
   fillSelect($('etCat'), Object.keys(CATS), t.category);
   fillSelect($('etPrio'), Object.keys(PRIOS), t.priority, PRIOS);
@@ -2072,32 +2301,120 @@ function etQueue(){ clearTimeout(etTimer); etTimer = setTimeout(etSave, 450); }
 ['etTitle','etNotes'].forEach(i=> $(i).addEventListener('input', etQueue));
 ['etCat','etPrio','etDue','etRepeat'].forEach(i=> $(i).addEventListener('change', etSave));
 
+/* ---------- subtasks ----------
+   A subtask carries the same options as a task: text, done, dueDate, priority,
+   notes. Older records only have {text,done}; normSub() fills the rest in so
+   nothing written by an earlier build breaks. */
+function normSub(s){
+  return { text:s.text||'', done:!!s.done,
+           dueDate:s.dueDate||null,
+           priority:PRIOS[s.priority]?s.priority:'Medium',
+           notes:s.notes||'' };
+}
+const subOverdue = s => s.dueDate && !s.done && s.dueDate < todayISO();
+let expandedSub = -1;   // index of the subtask whose inline editor is open
+
 function renderSubs(){
   const t = records[openTaskId]; if(!t) return;
-  const subs = t.subs||[];
-  $('etSubCount').textContent = subs.length ? `(${subs.filter(s=>s.done).length}/${subs.length})` : '';
-  $('etSubs').innerHTML = subs.map((s,i)=>`
-    <div class="sub-item ${s.done?'on':''}">
-      <div class="sub-check ${s.done?'on':''}" data-sub="${i}" role="button" tabindex="0"
-           aria-label="Toggle subtask">${s.done?'✓':''}</div>
-      <span class="sub-text">${esc(s.text)}</span>
-      <button class="icon-btn" data-subdel="${i}" aria-label="Remove subtask">✕</button>
-    </div>`).join('');
-  $('etSubs').querySelectorAll('[data-sub]').forEach(el=>{
-    el.addEventListener('click', ()=>{
+  t.subs = (t.subs||[]).map(normSub);
+  const subs = t.subs;
+  const late = subs.filter(subOverdue).length;
+  $('etSubCount').textContent = subs.length
+    ? `(${subs.filter(s=>s.done).length}/${subs.length}${late?` · ${late} overdue`:''})` : '';
+
+  $('etSubs').innerHTML = subs.map((s,i)=>{
+    const od = subOverdue(s), dt = s.dueDate===todayISO() && !s.done;
+    return `<div class="sub-item sp-${s.priority} ${s.done?'on':''} ${expandedSub===i?'editing':''}" data-idx="${i}">
+      <div class="sub-row">
+        <div class="sub-check ${s.done?'on':''}" data-sub="${i}" role="button" tabindex="0"
+             aria-label="Toggle subtask">${s.done?'✓':''}</div>
+        <div class="sub-main" data-subopen="${i}" role="button" tabindex="0" aria-label="Edit subtask options">
+          <div class="sub-text">${esc(s.text)}</div>
+          <div class="sub-meta">
+            <span>${PRIOS[s.priority]} ${s.priority}</span>
+            ${s.dueDate?`<span class="${od||dt?'duewarn':''}">📅 ${fmtDate(s.dueDate)}${od?' · overdue':dt?' · today':''}</span>`:''}
+            ${s.notes?'<span>📝 note</span>':''}
+          </div>
+        </div>
+        <button class="icon-btn" data-subdel="${i}" aria-label="Remove subtask">✕</button>
+      </div>
+      <div class="sub-edit">
+        <div class="field wide"><label>Step</label>
+          <input type="text" data-sf="text" data-i="${i}" value="${esc(s.text)}"></div>
+        <div class="field"><label>Due date</label>
+          <input type="date" data-sf="dueDate" data-i="${i}" value="${s.dueDate||''}"></div>
+        <div class="field"><label>Priority</label>
+          <select data-sf="priority" data-i="${i}">${Object.keys(PRIOS).map(p=>
+            `<option value="${p}" ${p===s.priority?'selected':''}>${PRIOS[p]} ${p}</option>`).join('')}</select></div>
+        <div class="field wide"><label>Note</label>
+          <textarea data-sf="notes" data-i="${i}" placeholder="Detail for this step…">${esc(s.notes)}</textarea></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const wrap = $('etSubs');
+  wrap.querySelectorAll('[data-sub]').forEach(el=>{
+    el.addEventListener('click', e=>{
+      e.stopPropagation();
       const i = +el.dataset.sub; t.subs[i].done = !t.subs[i].done; put(t, true); renderSubs();
     });
-  });
-  $('etSubs').querySelectorAll('[data-subdel]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      t.subs.splice(+el.dataset.subdel,1); put(t, true); renderSubs();
+    el.addEventListener('keydown', e=>{
+      if(e.key==='Enter'||e.key===' '){ e.preventDefault(); el.click(); }
     });
   });
+  wrap.querySelectorAll('[data-subopen]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const i = +el.dataset.subopen;
+      expandedSub = (expandedSub===i) ? -1 : i;
+      renderSubs();
+      if(expandedSub===i){
+        const f = wrap.querySelector(`[data-sf="text"][data-i="${i}"]`);
+        if(f) f.focus();
+      }
+    });
+  });
+  wrap.querySelectorAll('[data-subdel]').forEach(el=>{
+    el.addEventListener('click', e=>{
+      e.stopPropagation();
+      const i = +el.dataset.subdel;
+      t.subs.splice(i,1);
+      if(expandedSub===i) expandedSub = -1;
+      else if(expandedSub>i) expandedSub--;
+      put(t, true); renderSubs();
+    });
+  });
+  // field edits: text/notes debounce so typing isn't interrupted by a re-render
+  wrap.querySelectorAll('[data-sf]').forEach(el=>{
+    const commit = rerender => {
+      const i = +el.dataset.i, f = el.dataset.sf;
+      if(!t.subs[i]) return;
+      let v = el.value;
+      if(f==='text'){ v = v.trim(); if(!v) return; }
+      if(f==='dueDate') v = v || null;
+      t.subs[i][f] = v;
+      put(t, true);
+      if(rerender) renderSubs();
+    };
+    if(el.tagName==='SELECT' || el.type==='date'){
+      el.addEventListener('change', ()=> commit(true));
+    } else {
+      let tm = null;
+      el.addEventListener('input', ()=>{ clearTimeout(tm); tm = setTimeout(()=> commit(false), 400); });
+      el.addEventListener('blur', ()=>{ clearTimeout(tm); commit(true); });
+    }
+  });
 }
+
 function addSub(){
   const t = records[openTaskId]; if(!t) return;
-  const v = $('etSubInput').value.trim(); if(!v) return;
-  t.subs = t.subs||[]; t.subs.push({ text:v, done:false });
+  const raw = $('etSubInput').value.trim(); if(!raw) return;
+  // reuse the task quick-add parser so !high / @tomorrow work on steps too
+  const q = parseQuickAdd(raw);
+  if(!q.title) return;
+  t.subs = (t.subs||[]).map(normSub);
+  t.subs.push(normSub({ text:q.title, done:false,
+                        dueDate:q.dueDate || null,
+                        priority:q.priority || 'Medium' }));
   $('etSubInput').value=''; put(t, true); renderSubs();
 }
 $('etSubAdd').addEventListener('click', addSub);
@@ -2120,7 +2437,7 @@ $('etRecat').addEventListener('click', ()=>{
 $('etSaveTemplate').addEventListener('click', ()=>{
   const t = records[openTaskId]; if(!t) return;
   put({ id:uid('tpl'), type:'template', title:t.title, category:t.category,
-        priority:t.priority, notes:t.notes||'', subs:(t.subs||[]).map(s=>({text:s.text,done:false})),
+        priority:t.priority, notes:t.notes||'', subs:(t.subs||[]).map(s=>({...normSub(s), done:false})),
         createdAt:nowMs(), deleted:false }, true);
   toast('Saved as template.');
 });
@@ -2145,7 +2462,7 @@ function renderTemplates(){
       const due = await pickDue(t.title);
       put({ id:uid('t'), type:'task', title:t.title, category:t.category, priority:t.priority,
             dueDate:due, status:'active', notes:t.notes||'', repeat:'none',
-            subs:(t.subs||[]).map(s=>({text:s.text,done:false})),
+            subs:(t.subs||[]).map(s=>({...normSub(s), done:false})),
             aiFiled:false, createdAt:nowMs(), deleted:false });
       toast('Task created from template.');
     });
@@ -2181,28 +2498,99 @@ function md(src){
   return '<p>'+h+'</p>';
 }
 
+function sortNotes(list, by){
+  const c = [...list];
+  if(by==='pinned') c.sort((a,b)=> (b.pinned?1:0)-(a.pinned?1:0) || b.updatedAt-a.updatedAt);
+  else if(by==='recent') c.sort((a,b)=> b.updatedAt-a.updatedAt);
+  else c.sort((a,b)=> b.createdAt-a.createdAt);
+  return c;
+}
+const noteFolder = n => (n.folder||'').trim();
+
 function renderNotes(){
   renderFolderBar();
   const q = $('notesSearch').value.toLowerCase();
   const by = $('notesSort').value;
   const dups = dupIds();
-  let list = all('note').filter(n =>{
-    const f = (n.folder||'').trim();
-    if(activeFolder==='__none__' && f) return false;
-    if(activeFolder!=='__all__' && activeFolder!=='__none__' && f!==activeFolder) return false;
-    if(q && !((n.title||'').toLowerCase().includes(q) || (n.text||'').toLowerCase().includes(q))) return false;
-    return true;
-  });
-  if(by==='pinned') list.sort((a,b)=> (b.pinned?1:0)-(a.pinned?1:0) || b.updatedAt-a.updatedAt);
-  else if(by==='recent') list.sort((a,b)=> b.updatedAt-a.updatedAt);
-  else list.sort((a,b)=> b.createdAt-a.createdAt);
-
   const board = $('notesBoard');
+  const head = $('boardHead');
+
+  const matchesQ = n => !q || (n.title||'').toLowerCase().includes(q)
+                            || (n.text||'').toLowerCase().includes(q)
+                            || noteFolder(n).toLowerCase().includes(q);
+
   if(!all('note').length){
+    head.style.display='none';
     board.innerHTML = '<div class="empty"><b>Board is empty</b>Create a note or paste something in.</div>'; return;
   }
-  if(!list.length){ board.innerHTML = '<div class="empty"><b>No matches</b>Nothing found for that search.</div>'; return; }
-  board.innerHTML = list.map(n=>{
+
+  /* ---- top level: folders collapse into one card each ----
+     Only when browsing "All" with no search. A search should always dig
+     through the actual notes, otherwise results hide behind folder covers. */
+  if(activeFolder==='__all__' && !q){
+    head.style.display='none';
+    const folders = folderList();
+    const loose = sortNotes(all('note').filter(n=> !noteFolder(n)), by);
+
+    const folderCards = folders.map(f=>{
+      const inside = sortNotes(all('note').filter(n=> noteFolder(n)===f), 'recent');
+      const pins = inside.filter(n=>n.pinned).length;
+      const last = inside[0];
+      const peek = inside.slice(0,3).map(n=>{
+        const t = (n.title||'').trim() || (n.text||'').split('\n')[0].trim() || 'Untitled note';
+        return `<div>${n.pinned?'📌 ':'• '}${esc(t.slice(0,52))}</div>`;
+      }).join('');
+      return `<div class="folder-card" data-folder="${esc(f)}" role="button" tabindex="0">
+        <div class="fc-top">
+          <span style="font-size:17px">📁</span>
+          <div class="fc-name">${esc(f)}</div>
+          <span class="fc-count">${inside.length}</span>
+        </div>
+        <div class="fc-preview">${peek}${inside.length>3?`<div style="color:var(--ink-faint)">+ ${inside.length-3} more</div>`:''}</div>
+        <div class="fc-foot">${pins?`📌 ${pins} pinned · `:''}${last?'updated '+timeAgo(last.updatedAt):''}</div>
+      </div>`;
+    }).join('');
+
+    board.innerHTML = folderCards + loose.map(n=> noteCardHtml(n, dups)).join('');
+    board.querySelectorAll('.folder-card').forEach(c=>{
+      const open = ()=>{ activeFolder = c.dataset.folder; renderNotes(); window.scrollTo({top:0,behavior:'smooth'}); };
+      c.addEventListener('click', open);
+      c.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } });
+    });
+    wireNoteCards(board);
+    return;
+  }
+
+  /* ---- inside a folder, or searching: plain note cards ---- */
+  let list = all('note').filter(n =>{
+    const f = noteFolder(n);
+    if(activeFolder==='__none__' && f) return false;
+    if(activeFolder!=='__all__' && activeFolder!=='__none__' && f!==activeFolder) return false;
+    return matchesQ(n);
+  });
+  list = sortNotes(list, by);
+
+  if(activeFolder==='__all__'){
+    head.style.display='none';
+  } else {
+    head.style.display='';
+    $('boardHeadTitle').textContent =
+      (activeFolder==='__none__' ? 'Unfiled notes' : activeFolder) + ` · ${list.length} note${list.length===1?'':'s'}`;
+  }
+
+  if(!list.length){
+    board.innerHTML = '<div class="empty"><b>No matches</b>Nothing found for that search.</div>'; return;
+  }
+  board.innerHTML = list.map(n=> noteCardHtml(n, dups)).join('');
+  wireNoteCards(board);
+}
+
+$('folderBack').addEventListener('click', ()=>{
+  activeFolder = '__all__'; $('notesSearch').value = ''; renderNotes();
+});
+
+function noteCardHtml(n, dups){
+  {
     const title = (n.title||'').trim();
     return `<div class="note-card ${n.color} ${n.pinned?'pinned':''}" data-note="${n.id}">
       <div class="note-top">
@@ -2219,7 +2607,10 @@ function renderNotes(){
       </div>
       <div class="note-foot"><span>${timeAgo(n.updatedAt)}</span></div>
     </div>`;
-  }).join('');
+  }
+}
+
+function wireNoteCards(board){
   board.querySelectorAll('.note-card').forEach(c=>{
     c.addEventListener('click', e=>{ if(e.target.closest('button')) return; openNote(c.dataset.note); });
   });
@@ -2806,9 +3197,69 @@ function renderFolderBar(){
     p.addEventListener('click', ()=>{ activeFolder = p.dataset.f; renderNotes(); }));
 }
 
-/* ---- images: compressed hard, stored as their own records ---- */
-const IMG_MAX_CHARS = 34000;      // stays comfortably inside one Sheet cell
+/* ============================================================================
+   IMAGE STORAGE
+   ---------------------------------------------------------------------------
+   Two backends, picked per image:
+
+   Drive (preferred, when a folder is configured) — the file goes to your own
+     Drive folder via the Apps Script, at close to full size. The note record
+     only keeps the file id. Bytes are fetched back through the same script,
+     so the file never has to be link-shared. NOT ENCRYPTED: Google holds the
+     real JPEG, unlike every other record.
+
+   Sheet (fallback) — the original behaviour: compress until the base64 fits
+     inside one Sheet cell, store it as an encrypted blob record. Private, but
+     hard-capped around 34 KB an image.
+   ========================================================================== */
+const IMG_MAX_CHARS = 34000;      // Sheet fallback only: one cell's worth
 const IMG_PER_NOTE  = 6;
+const DRIVE_MAXDIM  = 2400;       // Drive path: only resize genuinely huge shots
+const DRIVE_QUALITY = 0.88;
+
+function driveFolderId(){
+  return localStorage.getItem(LS+'driveFolder') || '';
+}
+/* Accepts a bare id or any of the folder URL shapes Drive hands out. */
+function parseFolderId(v){
+  const s = String(v||'').trim();
+  if(!s) return '';
+  const m = s.match(/[-\w]{25,}/);
+  return m ? m[0] : '';
+}
+const driveOn = () => !!(cloudOn() && driveFolderId());
+
+async function driveCall(action, payload){
+  const res = await fetch(cloud.url, {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ action, token: cloud.token, folderId: driveFolderId(), ...payload })
+  });
+  const d = await res.json();
+  if(d.error) throw new Error(d.error);
+  return d;
+}
+async function driveUpload(dataUrl, name){
+  const comma = dataUrl.indexOf(',');
+  const mime = dataUrl.slice(5, dataUrl.indexOf(';'));
+  const d = await driveCall('driveUpload', { name, mime, data: dataUrl.slice(comma+1) });
+  if(!d.fileId) throw new Error('no fileId returned');
+  return d.fileId;
+}
+/* Bytes come back through the script, so nothing has to be made public.
+   Cached for the session — Drive round-trips are slow and quota-metered. */
+const driveCache = new Map();
+async function driveFetch(fileId){
+  if(driveCache.has(fileId)) return driveCache.get(fileId);
+  const d = await driveCall('driveGet', { fileId });
+  if(!d.data) throw new Error('empty');
+  const url = 'data:' + (d.mime||'image/jpeg') + ';base64,' + d.data;
+  driveCache.set(fileId, url);
+  return url;
+}
+async function driveDelete(fileId){
+  try{ await driveCall('driveDelete', { fileId }); }
+  catch(e){ console.error('drive delete failed', e); }
+}
 
 function compressImage(file){
   return new Promise((resolve, reject)=>{
@@ -2844,41 +3295,119 @@ function compressImage(file){
     fr.readAsDataURL(file);
   });
 }
+/* Drive path: keep the picture, only rein in absurd dimensions. */
+function prepForDrive(file){
+  return new Promise((resolve, reject)=>{
+    const fr = new FileReader();
+    fr.onerror = ()=> reject(new Error('read failed'));
+    fr.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=> reject(new Error('not an image'));
+      img.onload = ()=>{
+        let w = img.width, h = img.height;
+        if(Math.max(w,h) <= DRIVE_MAXDIM && fr.result.length < 6e6){
+          return resolve(fr.result);          // small enough already, send as-is
+        }
+        const s = Math.min(1, DRIVE_MAXDIM/Math.max(w,h));
+        w = Math.round(w*s); h = Math.round(h*s);
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(cv.toDataURL('image/jpeg', DRIVE_QUALITY));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
 async function attachImages(files){
   const n = records[openNoteId]; if(!n) return;
   n.imgs = n.imgs || [];
-  let added = 0, failed = 0;
+  let added = 0, failed = 0, fellBack = 0;
+  const useDrive = driveOn();
+  if(useDrive && files.length) toast('Uploading to Drive…');
+
   for(const f of files){
     if(n.imgs.length + added >= IMG_PER_NOTE){ toast(`Limit is ${IMG_PER_NOTE} images per note.`); break; }
-    try{
-      const data = await compressImage(f);
-      const blob = put({ id:uid('img'), type:'blob', data, createdAt:nowMs(), deleted:false }, true);
-      n.imgs.push(blob.id); added++;
-    }catch(e){ failed++; }
+    let done = false;
+
+    if(useDrive){
+      try{
+        const dataUrl = await prepForDrive(f);
+        const name = (f.name || 'image') .replace(/[^\w.\- ]/g,'_');
+        const fileId = await driveUpload(dataUrl, `${todayISO()}-${name}`);
+        driveCache.set(fileId, dataUrl);           // no need to re-download it
+        const blob = put({ id:uid('img'), type:'blob', drive:true, fileId,
+                           name, bytes: Math.round(dataUrl.length*0.75),
+                           createdAt:nowMs(), deleted:false }, true);
+        n.imgs.push(blob.id); added++; done = true;
+      }catch(e){
+        console.error('drive upload failed', e);
+        fellBack++;                                 // try the Sheet path instead
+      }
+    }
+
+    if(!done){
+      try{
+        const data = await compressImage(f);
+        const blob = put({ id:uid('img'), type:'blob', data, createdAt:nowMs(), deleted:false }, true);
+        n.imgs.push(blob.id); added++;
+      }catch(e){ failed++; }
+    }
   }
+
   if(added) put(n, true);
   renderNoteImgs();
-  if(failed) toast(`${failed} image(s) couldn't be compressed small enough.`);
-  else if(added) toast(`${added} image(s) attached.`);
+  if(failed) toast(`${failed} image(s) couldn't be stored — too large even compressed.`);
+  else if(fellBack) toast(`${added} attached, but Drive refused ${fellBack} — stored compressed instead.`);
+  else if(added) toast(`${added} image(s) attached${useDrive?' to Drive':''}.`);
 }
+/* Resolve a blob record to something an <img> can show. */
+async function imgSrc(b){
+  if(!b) return '';
+  if(b.drive) return await driveFetch(b.fileId);
+  return b.data || '';
+}
+
 function renderNoteImgs(){
   const n = records[openNoteId];
   const wrap = $('enImgs');
   if(!n){ wrap.innerHTML=''; return; }
   const imgs = (n.imgs||[]).map(id=> records[id]).filter(b=> b && !b.deleted);
-  wrap.innerHTML = imgs.map(b=>`
-    <div class="note-img"><img src="${b.data}" data-full="${b.id}" alt="attachment">
-      <button data-imgdel="${b.id}" aria-label="Remove image">✕</button></div>`).join('');
-  const chars = imgs.reduce((s,b)=> s + b.data.length, 0);
+
+  // Drive images render as placeholders first, then fill in as bytes arrive.
+  wrap.innerHTML = imgs.map(b=>{
+    const inline = b.drive ? (driveCache.get(b.fileId) || '') : (b.data || '');
+    return `<div class="note-img">
+      ${inline ? `<img src="${inline}" data-full="${b.id}" alt="attachment">`
+               : `<img data-lazy="${b.id}" data-full="${b.id}" alt="loading">`}
+      <button data-imgdel="${b.id}" aria-label="Remove image">✕</button></div>`;
+  }).join('');
+
+  const driveCount = imgs.filter(b=>b.drive).length;
+  const sheetChars = imgs.filter(b=>!b.drive).reduce((s,b)=> s + (b.data||'').length, 0);
+  const driveBytes = imgs.filter(b=>b.drive).reduce((s,b)=> s + (b.bytes||0), 0);
   $('enImgBudget').textContent = imgs.length
-    ? `${imgs.length}/${IMG_PER_NOTE} images · ~${Math.round(chars/1024)} KB stored`
+    ? `${imgs.length}/${IMG_PER_NOTE} images`
+      + (driveCount ? ` · ${driveCount} in Drive (~${Math.round(driveBytes/1024)} KB)` : '')
+      + (sheetChars ? ` · ~${Math.round(sheetChars/1024)} KB in Sheet` : '')
     : '';
+
+  wrap.querySelectorAll('img[data-lazy]').forEach(async im=>{
+    const b = records[im.dataset.lazy];
+    try{ im.src = await driveFetch(b.fileId); im.alt='attachment'; }
+    catch(e){ im.replaceWith(Object.assign(document.createElement('div'), {
+      style:'font:10px monospace;padding:8px;color:var(--seal)', textContent:'Drive fetch failed' })); }
+  });
   wrap.querySelectorAll('[data-imgdel]').forEach(b=> b.addEventListener('click', ()=>{
-    const id = b.dataset.imgdel;
+    const id = b.dataset.imgdel, rec = records[id];
     n.imgs = (n.imgs||[]).filter(x=>x!==id);
+    if(rec && rec.drive){ driveCache.delete(rec.fileId); driveDelete(rec.fileId); }
     softDelete(id); put(n, true); renderNoteImgs();
   }));
   wrap.querySelectorAll('img[data-full]').forEach(im=> im.addEventListener('click', ()=>{
+    if(!im.src) return;
     const w = window.open('');
     if(w) w.document.write('<img src="'+im.src+'" style="max-width:100%">');
   }));
@@ -2986,35 +3515,43 @@ $('dupBtn').addEventListener('click', ()=>{
 $('dupOvClose').addEventListener('click', ()=> $('dupOv').classList.remove('open'));
 
 /* ---- export / print a single note ---- */
-function noteMarkdown(n, embedImages){
+async function noteMarkdown(n, embedImages){
   let out = '# ' + (n.title || 'Untitled note') + '\n\n';
   if(n.folder) out += '_Folder: ' + n.folder + '_\n\n';
   const linked = (n.docRefs||[]).map(id=> records[id]).filter(Boolean);
   if(linked.length) out += '_Documents: ' + linked.map(d=>d.title).join(', ') + '_\n\n';
   out += (n.text||'') + '\n';
   if(embedImages){
-    (n.imgs||[]).map(id=> records[id]).filter(Boolean)
-      .forEach((b,i)=> out += '\n![attachment ' + (i+1) + '](' + b.data + ')\n');
+    const blobs = (n.imgs||[]).map(id=> records[id]).filter(Boolean);
+    for(let i=0;i<blobs.length;i++){
+      // Drive-backed images have to be pulled down before they can be embedded
+      let src = '';
+      try{ src = await imgSrc(blobs[i]); }catch(e){ src = ''; }
+      out += src ? '\n![attachment ' + (i+1) + '](' + src + ')\n'
+                 : '\n_[attachment ' + (i+1) + ' unavailable offline]_\n';
+    }
   }
   out += '\n---\n_Exported ' + new Date().toLocaleString('en-IN') + ' from Register_\n';
   return out;
 }
-$('enExport').addEventListener('click', ()=>{
+$('enExport').addEventListener('click', async ()=>{
   const n = records[openNoteId]; if(!n) return;
   const safe = (n.title||'note').replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'-').slice(0,50) || 'note';
-  dl(new Blob([noteMarkdown(n, true)], {type:'text/markdown'}), safe + '.md');
+  dl(new Blob([await noteMarkdown(n, true)], {type:'text/markdown'}), safe + '.md');
   toast('Note exported.');
 });
-$('enPrint').addEventListener('click', ()=>{
+$('enPrint').addEventListener('click', async ()=>{
   const n = records[openNoteId]; if(!n) return;
-  const imgs = (n.imgs||[]).map(id=> records[id]).filter(Boolean);
+  const blobs = (n.imgs||[]).map(id=> records[id]).filter(Boolean);
+  const srcs = [];
+  for(const b of blobs){ try{ srcs.push(await imgSrc(b)); }catch(e){ srcs.push(''); } }
   const linked = (n.docRefs||[]).map(id=> records[id]).filter(Boolean);
   $('printArea').innerHTML =
     `<h1 style="font-family:Georgia,serif">${esc(n.title||'Untitled note')}</h1>` +
     (n.folder?`<p style="color:#666"><i>Folder: ${esc(n.folder)}</i></p>`:'') +
     (linked.length?`<p style="color:#666"><i>Documents: ${linked.map(d=>esc(d.title)).join(', ')}</i></p>`:'') +
     `<div style="font:15px/1.7 system-ui">${md(n.text||'')}</div>` +
-    imgs.map(b=>`<img src="${b.data}" style="max-width:100%;margin:10px 0">`).join('') +
+    srcs.filter(Boolean).map(src=>`<img src="${src}" style="max-width:100%;margin:10px 0">`).join('') +
     `<hr><p style="color:#666;font-size:12px">Printed ${new Date().toLocaleString('en-IN')}</p>`;
   window.print();
 });
@@ -3604,6 +4141,9 @@ const IDLE_MS = 10*60*1000;
 let idleTimer = null;
 function resetIdle(){
   clearTimeout(idleTimer);
+  // With no passphrase there is nothing to re-enter, so idle timeout only
+  // means anything when the decoy is switched on.
+  if(isKeyless() && !(decoyEnabled() && decoyIdleEnabled())) return;
   idleTimer = setTimeout(()=>{ if(!$('lockScreen').classList.contains('hidden')) return; lockNow(); }, IDLE_MS);
 }
 ['click','keydown','mousemove','touchstart','scroll'].forEach(ev=>
@@ -3616,8 +4156,14 @@ function lockNow(){
   currentView = 'tasks';
   document.querySelectorAll('.ov.open').forEach(o=>o.classList.remove('open'));
   $('mainApp').style.display='none';
-  $('lockScreen').classList.remove('hidden');
   clearTimeout(idleTimer);
+  if(isKeyless()){
+    // Keyless: the key is still on the device, so "locking" can only hide the
+    // screen. Show the decoy if it's on, otherwise just reopen.
+    if(decoyEnabled()){ $('decoyScreen').classList.remove('hidden'); decoyTaps = 0; return; }
+    initLock(); return;
+  }
+  $('lockScreen').classList.remove('hidden');
   initLock();
 }
 $('lockRecover').addEventListener('click', ()=>{ lockMode='recover'; initLock(); });
@@ -3699,6 +4245,40 @@ $('lockInput').addEventListener('input', ()=>{
 
 async function initLock(){
   loadMetaCache();
+
+  /* ---- keyless path: no screen at all when this device holds the key ---- */
+  if(lockMode !== 'recover' && lockMode !== 'pair'){
+    if(isKeyless() && hasDeviceKey()){
+      if(await loadDeviceKey()){ await gateOrEnter(); return; }
+    }
+    // nothing here and nothing in the Sheet: first ever run, just start
+    if(!metaCache.wrapPass && !metaCache.salt && !isKeyless()){
+      await createKeylessKeySet();
+      await gateOrEnter();
+      return;
+    }
+    // Sheet is keyless but this device has no key — it must be carried across
+    if(isKeyless() && !hasDeviceKey()) lockMode = 'pair';
+  }
+
+  if(lockMode === 'pair'){
+    $('lockInput').value=''; $('lockConfirm').value=''; $('lockErr').textContent='';
+    $('lockTitle').textContent = 'Pair this device';
+    $('lockSub').innerHTML = 'Your data is already set up elsewhere. On that device open ' +
+      '<b>⚙ Settings → Device key</b> and copy the pairing code, then paste it here.';
+    $('lockInput').type='text';
+    $('lockInput').placeholder = 'REGKEY-…';
+    $('lockConfirm').style.display='none'; $('lockStrength').style.display='none';
+    $('lockBtn').textContent = 'Pair';
+    $('lockBioWrap').style.display='none';
+    $('lockRecoverWrap').style.display='none';
+    $('lockHint').style.display='none';
+    $('lockSyncWrap').style.display = cloudOn() ? 'none' : '';
+    $('lockResetWrap').style.display='';
+    $('lockInput').focus();
+    return;
+  }
+
   const hasKeySet = !!(metaCache.wrapPass || metaCache.salt);
   if(lockMode !== 'recover') lockMode = hasKeySet ? 'enter' : 'set';
   $('lockInput').value=''; $('lockConfirm').value=''; $('lockErr').textContent='';
@@ -3749,7 +4329,41 @@ async function initLock(){
   $('lockInput').focus();
 }
 
+/* ---------- decoy gate ---------- */
+const decoyEnabled = () => localStorage.getItem(LS+'decoy') === '1';
+const decoyIdleEnabled = () => localStorage.getItem(LS+'decoyIdle') === '1';
+
+/* Key is loaded. Either walk in, or park behind the decoy first. */
+async function gateOrEnter(){
+  if(decoyEnabled()){
+    $('lockScreen').classList.add('hidden');
+    $('mainApp').style.display='none';
+    $('decoyScreen').classList.remove('hidden');
+    decoyTaps = 0;
+    return;
+  }
+  await afterUnlock();
+}
+let decoyTaps = 0, decoyTimer = null;
+$('decoyKey').addEventListener('click', async ()=>{
+  clearTimeout(decoyTimer);
+  decoyTaps++;
+  decoyTimer = setTimeout(()=>{ decoyTaps = 0; }, 2000);
+  if(decoyTaps < 3) return;
+  decoyTaps = 0;
+  $('decoyScreen').classList.add('hidden');
+  if(!masterKey && !(await loadDeviceKey())){ initLock(); return; }
+  await afterUnlock();
+});
+/* The Retry button does exactly nothing, which is the point. */
+$('decoyRetry').addEventListener('click', ()=>{
+  const b = $('decoyRetry');
+  b.disabled = true; b.textContent = 'Retrying…';
+  setTimeout(()=>{ b.disabled = false; b.textContent = 'Retry'; }, 1400);
+});
+
 async function afterUnlock(){
+  $('decoyScreen').classList.add('hidden');
   $('lockScreen').classList.add('hidden');
   $('mainApp').style.display='';
   await loadLocal();
@@ -3761,6 +4375,9 @@ async function afterUnlock(){
   if(localStorage.getItem(LS+'qcOff') !== '1') setTimeout(openQC, 600);
   await pullCloud();
   await pushCloud();
+  applyKeylessUI();
+  // Biometrics only make sense when there is a secret to stand in for.
+  if(isKeyless()) return;
   // offer biometrics once, after a successful passphrase unlock
   if(bioAvailable() && !bioEnrolled() && localStorage.getItem(LS+'bioAsked')!=='1'){
     localStorage.setItem(LS+'bioAsked','1');
@@ -3775,6 +4392,26 @@ async function afterUnlock(){
 
 async function submitLock(){
   const pass = $('lockInput').value;
+  // Nothing to submit once a device key is already open — a stray click here
+  // would otherwise run the passphrase branch and throw the live key away.
+  if(isKeyless() && masterKey && lockMode!=='pair') return;
+
+  if(lockMode==='pair'){
+    if(!pass){ $('lockErr').textContent='Paste the pairing code.'; return; }
+    $('lockBtn').disabled=true; $('lockBtn').textContent='Working…';
+    const ok = await usePairingCode(pass);
+    $('lockBtn').disabled=false; $('lockBtn').textContent='Pair';
+    if(!ok){
+      $('lockErr').textContent="That doesn't look like a pairing code.";
+      const cd=$('lockCard'); cd.classList.add('shake'); setTimeout(()=>cd.classList.remove('shake'),400);
+      return;
+    }
+    lockMode='enter';
+    await gateOrEnter();
+    toast('Paired. Pulling your data…');
+    return;
+  }
+
   if(!pass){ $('lockErr').textContent='Enter your passphrase.'; return; }
   $('lockBtn').disabled = true; $('lockBtn').textContent='Working…';
 
@@ -3826,11 +4463,12 @@ async function submitLock(){
     $('lockInput').value=''; $('lockInput').focus();
     return;
   }
+  // Last passphrase you'll be asked for: adopt the same master key as a device
+  // key, so the next launch skips the lock screen entirely.
+  await convertToKeyless();
+  pendingRecoveryCode = null;
   await afterUnlock();
-  if(pendingRecoveryCode){
-    const code = pendingRecoveryCode; pendingRecoveryCode = null;
-    showRecoveryCode(code, 'Save your recovery code');
-  }
+  toast('Passphrase removed — this device now opens straight in.');
 }
 
 /* Shown once, after setup or regeneration. This is the only time it exists in
@@ -3881,6 +4519,85 @@ $('lockSync').addEventListener('click', ()=>{
   $('syncMsg').textContent = 'Connect, then enter the passphrase you already use.';
   $('syncOv').classList.add('open');
   setTimeout(()=> $('syncUrl').focus(), 40);
+});
+
+/* ============================================================================
+   KEYLESS SETTINGS UI
+   ========================================================================== */
+function applyKeylessUI(){
+  const kl = isKeyless();
+  $('keylessSection').style.display = kl ? '' : 'none';
+  ['ppSection','hintSection'].forEach(id=>{ if($(id)) $(id).style.display = kl ? 'none' : ''; });
+  $('lockNowBtn').style.display = kl && !decoyEnabled() ? 'none' : '';
+  $('decoyOn').checked   = decoyEnabled();
+  $('decoyIdle').checked = decoyIdleEnabled();
+  $('driveFolder').value = driveFolderId();
+}
+$('pairReveal').addEventListener('click', async ()=>{
+  const f = $('pairShow');
+  if(f.value){ f.value=''; $('pairReveal').textContent='Show'; return; }
+  f.value = await getPairingCode();
+  $('pairReveal').textContent = 'Hide';
+});
+$('pairCopy').addEventListener('click', async ()=>{
+  const code = await getPairingCode();
+  try{ await navigator.clipboard.writeText(code); toast('Pairing code copied.'); }
+  catch(e){ $('pairShow').value = code; $('pairReveal').textContent='Hide'; toast('Copy it from the box.'); }
+});
+$('pairApply').addEventListener('click', async ()=>{
+  const code = $('pairIn').value;
+  $('pairMsg').textContent = 'Working…';
+  const ok = await usePairingCode(code);
+  if(!ok){ $('pairMsg').textContent = "That doesn't look like a pairing code."; return; }
+  saveMetaCache({ ...metaCache, ver:3, keyless:true });
+  localStorage.removeItem(LS+'recs');
+  records = {}; lastSync = 0;
+  $('pairIn').value=''; $('pairMsg').textContent = 'Key replaced. Pulling data…';
+  await pullCloud();
+  renderAll();
+  toast('This device now uses the pasted key.');
+});
+$('decoyOn').addEventListener('change', ()=>{
+  localStorage.setItem(LS+'decoy', $('decoyOn').checked ? '1' : '0');
+  applyKeylessUI(); resetIdle();
+  toast($('decoyOn').checked
+    ? 'Decoy on — three taps on "Register" gets you through.'
+    : 'Decoy off — the app opens directly.');
+});
+$('decoyIdle').addEventListener('change', ()=>{
+  localStorage.setItem(LS+'decoyIdle', $('decoyIdle').checked ? '1' : '0');
+  resetIdle();
+});
+
+/* ---------- Drive image storage ---------- */
+$('driveSave').addEventListener('click', ()=>{
+  const raw = $('driveFolder').value.trim();
+  if(!raw){
+    localStorage.removeItem(LS+'driveFolder');
+    $('driveMsg').textContent = 'Cleared — images go back to compressed-in-Sheet.';
+    return;
+  }
+  const id = parseFolderId(raw);
+  if(!id){ $('driveMsg').textContent = "Couldn't find a folder id in that."; return; }
+  localStorage.setItem(LS+'driveFolder', id);
+  $('driveFolder').value = id;
+  $('driveMsg').textContent = 'Saved. Run "Test upload" to check Code.gs has the actions.';
+});
+$('driveTest').addEventListener('click', async ()=>{
+  if(!cloudOn()){ $('driveMsg').textContent = 'Connect your Sheet first.'; return; }
+  if(!driveFolderId()){ $('driveMsg').textContent = 'Save a folder id first.'; return; }
+  $('driveMsg').textContent = 'Testing…';
+  try{
+    // 1x1 pixel, uploaded then deleted — proves all three actions work
+    const px = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const id = await driveUpload(px, 'register-test.png');
+    await driveFetch(id);
+    driveCache.delete(id);
+    await driveDelete(id);
+    $('driveMsg').textContent = 'Working — upload, read and delete all succeeded.';
+  }catch(e){
+    $('driveMsg').textContent = 'Failed: ' + e.message + ' — check Code.gs has driveUpload/driveGet/driveDelete and is redeployed.';
+  }
 });
 
 /* ---------- misc UI wiring ---------- */
