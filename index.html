@@ -216,6 +216,81 @@ h1{font-family:'Source Serif 4',serif;font-weight:700;font-size:clamp(26px,4vw,3
 .section-body{display:none;margin-top:2px;border:1px solid var(--line-strong);border-top:none;background:var(--card)}
 .section-body.open{display:block}
 
+/* ---- bills / commitments ---- */
+.bill-row{display:flex;align-items:center;gap:11px;padding:12px 15px;border-bottom:1px solid var(--line);
+  border-left:3px solid var(--line-strong)}
+.bill-row:last-child{border-bottom:none}
+.bill-row.pending{border-left-color:var(--brass);background:rgba(147,115,31,.05)}
+.bill-row.overdue{border-left-color:var(--seal);background:rgba(166,54,47,.08)}
+.bill-row.paid{border-left-color:var(--forest);opacity:.72}
+.bill-row.skipped{opacity:.5}
+.bill-main{flex:1;min-width:0}
+.bill-label{font-size:14.5px;font-weight:500}
+.bill-sub{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);margin-top:3px}
+.bill-amt{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;flex:none}
+.hist{display:flex;gap:3px;margin-top:5px}
+.hist i{width:9px;height:9px;border-radius:50%;display:block;border:1px solid var(--line-strong)}
+.hist i.p{background:var(--forest);border-color:var(--forest)}
+.hist i.m{background:var(--seal);border-color:var(--seal)}
+.hist i.s{background:var(--ink-faint);border-color:var(--ink-faint)}
+.hist i.f{background:transparent}
+.emi-bar{height:5px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden}
+.emi-bar i{display:block;height:100%;background:var(--brass)}
+.tab-badge{display:inline-block;min-width:17px;padding:0 5px;border-radius:9px;background:var(--seal);
+  color:#fff;font-size:10px;line-height:17px;text-align:center;margin-left:5px;font-weight:600}
+.section-head{font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--ink-faint);margin:22px 0 8px}
+
+/* ---- quick capture ---- */
+.qc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}
+.qc-btn{padding:14px 8px;border:1px solid var(--line-strong);border-radius:4px;background:var(--card);
+  cursor:pointer;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft)}
+.qc-btn:hover,.qc-btn.on{border-color:var(--brass);color:var(--ink);background:rgba(147,115,31,.08)}
+.qc-btn b{display:block;font-size:19px;margin-bottom:4px}
+.qc-input{width:100%;font-size:16px;padding:13px;border:1px solid var(--line-strong);
+  border-radius:3px;outline:none;margin-bottom:10px}
+.qc-input:focus{border-color:var(--brass);box-shadow:0 0 0 3px rgba(147,115,31,.12)}
+
+/* ---- clickable syntax chips ---- */
+.add-hint code{cursor:pointer;user-select:none;transition:background-color .12s}
+.add-hint code:hover{background:var(--brass);color:var(--paper)}
+
+/* ============================================================
+   MOBILE
+   ============================================================ */
+@media(max-width:700px){
+  body{padding:10px 10px calc(70px + env(safe-area-inset-bottom))}
+  .view-switch{gap:6px;margin-bottom:12px;flex-wrap:nowrap;overflow-x:auto;
+    -webkit-overflow-scrolling:touch;padding-bottom:4px}
+  .view-switch::-webkit-scrollbar{display:none}
+  .view-tab{padding:8px 12px;font-size:11.5px;flex:none}
+  .hbtn{padding:8px 9px;font-size:13px;flex:none}
+  .cloud-status{display:none}
+  .cover{padding:18px 16px 16px}
+  h1{font-size:25px;margin:2px 0 5px}
+  .sub{font-size:12.5px}
+  .datebox{min-width:0;width:100%;text-align:left;font-size:11px;padding:6px 10px}
+  .datebox b{font-size:12.5px;display:inline;margin-right:8px}
+  .stats{grid-template-columns:repeat(4,1fr);margin-top:14px}
+  .stat{padding:9px 6px;text-align:center}
+  .stat .n{font-size:18px}
+  .stat .l{font-size:8.5px;letter-spacing:.04em}
+  .add-row{margin-top:14px;gap:6px}
+  .add-row input{font-size:16px;padding:11px 12px}
+  .btn{padding:11px 13px}
+  .add-hint{font-size:11px;line-height:2}
+  .toolbar{padding:8px 10px;gap:6px}
+  .toolbar select,.toolbar input{font-size:11.5px;padding:6px 8px}
+  .tabs{margin-top:16px}
+  .qc-grid{grid-template-columns:repeat(2,1fr)}
+  .notes-board{columns:1}
+  .fin-summary{grid-template-columns:repeat(2,1fr)}
+  .inline-form input,.inline-form select{font-size:16px;flex:1 1 100%;min-width:0}
+  .inline-form .grow{flex:1 1 100%}
+  .bill-row,.date-row{padding:11px 12px;gap:9px}
+  .date-countdown{font-size:17px;min-width:52px}
+}
+
 /* ============================================================
    MODALS (shared shell)
    ============================================================ */
@@ -484,7 +559,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
   <div class="view-switch">
     <button class="view-tab active" data-view="tasks">📋 Tasks</button>
     <button class="view-tab" data-view="notes">🗒 Notes</button>
-    <button class="view-tab" data-view="dates">📅 Dates</button>
+    <button class="view-tab" data-view="dates">📅 Dates<span class="tab-badge" id="datesBadge" style="display:none">0</span></button>
     <button class="view-tab" data-view="docs">📁 Documents</button>
     <button class="view-tab" data-view="finance" id="financeTab" style="display:none">💰 Financial</button>
     <div class="spacer"></div>
@@ -601,6 +676,40 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
         <button class="btn" id="addDateBtn">Add</button>
       </div>
     </div>
+
+    <!-- ---------- RECURRING COMMITMENTS ---------- -->
+    <div class="cover" style="margin-top:18px">
+      <div class="cover-top">
+        <div>
+          <div class="eyebrow">Recurring</div>
+          <h1 style="font-size:clamp(21px,3vw,27px)">Bills &amp; Instalments</h1>
+          <div class="sub">Things that come round every month. Mark each one paid so you always
+            know what's still outstanding — including anything missed from earlier months.</div>
+        </div>
+        <div class="month-nav">
+          <button class="hbtn" id="billPrev" aria-label="Previous month">‹</button>
+          <b id="billMonth"></b>
+          <button class="hbtn" id="billNext" aria-label="Next month">›</button>
+        </div>
+      </div>
+      <div class="inline-form">
+        <input type="text" class="grow" id="billLabel" placeholder="e.g. Electricity bill" aria-label="Bill name">
+        <input type="number" id="billAmt" placeholder="Expected ₹ (optional)" step="0.01" aria-label="Expected amount">
+        <select id="billFreq" aria-label="Frequency">
+          <option value="1">Monthly</option><option value="2">Every 2 months</option>
+          <option value="3">Quarterly</option><option value="6">Half-yearly</option>
+          <option value="12">Yearly</option>
+        </select>
+        <input type="number" id="billDay" placeholder="Due day" min="1" max="31" style="max-width:110px" aria-label="Due day of month">
+        <input type="number" id="billEmi" placeholder="Instalments (EMI)" style="max-width:150px" aria-label="Total instalments">
+        <button class="btn" id="addBillBtn">Add</button>
+      </div>
+      <div class="add-hint">Leave the amount blank for bills that vary. Instalments only for EMIs —
+        it retires itself once the last one is paid.</div>
+    </div>
+    <div class="rows" id="billsList" style="margin-top:2px"></div>
+
+    <div class="section-head">Key dates</div>
     <div class="rows" id="datesList"></div>
   </div>
 
@@ -875,6 +984,83 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <input type="date" id="dueCustom" style="flex:1;padding:9px;border:1px solid var(--line-strong);border-radius:2px">
       <button class="btn small" id="dueCustomBtn">Use</button>
     </div>
+  </div>
+</div>
+
+<!-- ========== BILL EDIT ========== -->
+<div class="ov" id="billOv">
+  <div class="ov-card" style="max-width:520px">
+    <div class="ov-head"><h2>Edit commitment</h2><button class="ov-close" id="billOvClose" aria-label="Close">✕</button></div>
+    <div class="field" style="margin-bottom:12px"><label for="ebLabel">Name</label>
+      <input type="text" id="ebLabel"></div>
+    <div class="edit-grid" style="grid-template-columns:repeat(2,1fr)">
+      <div class="field"><label for="ebAmt">Expected ₹</label><input type="number" id="ebAmt" step="0.01"></div>
+      <div class="field"><label for="ebFreq">Frequency</label><select id="ebFreq">
+        <option value="1">Monthly</option><option value="2">Every 2 months</option>
+        <option value="3">Quarterly</option><option value="6">Half-yearly</option>
+        <option value="12">Yearly</option></select></div>
+      <div class="field"><label for="ebDay">Due day</label><input type="number" id="ebDay" min="1" max="31"></div>
+      <div class="field"><label for="ebCat">Category</label><select id="ebCat">
+        <option value="">— none —</option>
+        <option>Household</option><option>Bills</option><option>Travel</option><option>Food</option>
+        <option>Health</option><option>Education</option><option>Investment</option><option>Other</option>
+      </select></div>
+      <div class="field"><label for="ebEmi">Total instalments</label><input type="number" id="ebEmi" placeholder="blank = ongoing"></div>
+      <div class="field"><label for="ebStart">Started</label><input type="month" id="ebStart"></div>
+    </div>
+    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);margin-top:14px;cursor:pointer">
+      <input type="checkbox" id="ebPost" style="width:auto">
+      <span>Also record an expense in Financial when I mark this paid</span>
+    </label>
+    <div class="edit-foot">
+      <button class="btn ghost small danger" id="ebDelete">Delete</button>
+      <div class="spacer"></div>
+      <button class="btn small" id="ebSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MARK PAID ========== -->
+<div class="ov" id="payOv" style="z-index:940">
+  <div class="ov-card narrow" style="text-align:left;max-width:380px">
+    <h2 style="font-family:'Source Serif 4',serif;font-size:19px;margin:0 0 4px" id="payTitle">Mark paid</h2>
+    <p id="paySub" style="font-size:12.5px;color:var(--ink-soft);margin:0 0 16px"></p>
+    <div class="field" style="margin-bottom:14px"><label for="payAmt">Amount paid</label>
+      <input type="number" id="payAmt" step="0.01" placeholder="leave blank to keep the expected amount"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="payOk" style="flex:1">Mark paid</button>
+      <button class="btn ghost" id="paySkip" style="flex:1">Skip this one</button>
+    </div>
+    <button class="btn ghost small" id="payCancel" style="width:100%;margin-top:8px">Cancel</button>
+  </div>
+</div>
+
+<!-- ========== QUICK CAPTURE ========== -->
+<div class="ov" id="qcOv" style="z-index:930">
+  <div class="ov-card" style="max-width:430px">
+    <div class="ov-head"><h2>Jot something down</h2>
+      <button class="ov-close" id="qcClose" aria-label="Close">✕</button></div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 4px;line-height:1.5">
+      Just the gist — you can fill in the details later.</p>
+    <div class="qc-grid" id="qcGrid">
+      <div class="qc-btn on" data-k="task"><b>📋</b>Task</div>
+      <div class="qc-btn" data-k="note"><b>🗒</b>Note</div>
+      <div class="qc-btn" data-k="date"><b>📅</b>Date</div>
+      <div class="qc-btn" data-k="doc"><b>📁</b>Document</div>
+      <div class="qc-btn" data-k="bill"><b>🔁</b>Bill</div>
+      <div class="qc-btn" data-k="fin"><b>💰</b>Spend</div>
+    </div>
+    <input type="text" class="qc-input" id="qcInput" placeholder="What is it?" autocomplete="off">
+    <input type="number" class="qc-input" id="qcAmt" placeholder="Amount ₹ (optional)" step="0.01" style="display:none">
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="qcSave" style="flex:1">Save &amp; add another</button>
+      <button class="btn ghost" id="qcDone" style="flex:1">Done</button>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink-faint);
+      margin-top:14px;cursor:pointer">
+      <input type="checkbox" id="qcOff" style="width:auto">
+      <span>Don't show this when the app opens</span>
+    </label>
   </div>
 </div>
 
@@ -1577,29 +1763,50 @@ function parseDateToken(tok){
   return null;
 }
 
-/* ---------- AI filing (graceful when offline) ---------- */
-let aiAvailable = true;
-async function aiFile(title){
-  if(!online){ aiAvailable=false; return null; }
-  const sys = `Reply with ONLY raw JSON, no fences:
-{"category":"Work|Personal|Finance|Errands","priority":"High|Medium|Low","title":"tidied short title"}
-Work = office/professional. Finance = money, bills, tax, banking. Errands = shopping, pickups, appointments.
-Personal = family, health, home, learning, anything else.
-High if urgent/asap/today. Low if someday/eventually. Medium otherwise.`;
-  try{
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000, system:sys,
-        messages:[{role:'user',content:title}] })
-    });
-    const d = await r.json();
-    const txt = (d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-    const p = JSON.parse(txt.replace(/```json|```/g,'').trim());
-    aiAvailable = true;
-    return { category: CATS[p.category]?p.category:'Work',
-             priority: PRIOS[p.priority]?p.priority:'Medium',
-             title: p.title || title };
-  }catch(e){ aiAvailable = false; return null; }
+/* ---------- local classifier ----------
+   The old build called the Anthropic API directly. That only works inside the
+   Claude.ai artifact sandbox, where a key is injected — on your own domain the
+   call always fails and everything silently landed in Work/Medium. This is a
+   keyword classifier instead: no network, instant, works offline, predictable. */
+const CAT_WORDS = {
+  Finance: ['bill','pay','payment','emi','loan','tax','gst','bank','insurance','premium','invoice',
+            'salary','rent','fee','fees','refund','investment','sip','mutual','fd','interest','recharge',
+            'credit','debit','installment','instalment','budget','money','cash','account','itc','tds','return'],
+  Errands: ['buy','purchase','shop','shopping','grocery','groceries','pick up','pickup','drop','collect',
+            'market','order','deliver','delivery','courier','post','repair','service','servicing','fuel',
+            'petrol','laundry','haircut','appointment'],
+  Personal:['family','wife','son','daughter','mother','father','doctor','hospital','medicine','health',
+            'gym','exercise','birthday','anniversary','call','visit','temple','puja','school','homework',
+            'read','book','learn','course','study','friend','holiday','trip','travel','home','kitchen'],
+  Work:    ['office','file','filing','report','letter','draft','case','summons','notice','scn','audit',
+            'inspection','meeting','email','mail','send','submit','approve','review','sir','madam',
+            'department','officer','statement','panchanama','search','investigation','memo','noting']
+};
+const HIGH_WORDS = ['urgent','asap','immediately','today','critical','emergency','deadline','last date','overdue','now'];
+const LOW_WORDS  = ['someday','eventually','sometime','later','whenever','low priority','if time','maybe'];
+
+/* High-signal words that should decide the category on their own, so a weak
+   generic match ("appointment") can't outvote a strong specific one ("doctor"). */
+const STRONG = {
+  Finance: ['emi','gst','tds','itc','tax','loan','premium','invoice','salary','sip','recharge','instalment','installment'],
+  Personal:['doctor','hospital','medicine','birthday','anniversary','school','gym','wife','son','daughter','temple','puja'],
+  Errands: ['grocery','groceries','shopping','courier','petrol','laundry','haircut'],
+  Work:    ['scn','panchanama','summons','audit','inspection','noting','assessee','commissionerate']
+};
+function classify(title){
+  const t = ' ' + title.toLowerCase() + ' ';
+  const hit = (w) => t.includes(' '+w) || t.includes(w+' ');
+  let best = 'Work', bestScore = 0;
+  for(const cat in CAT_WORDS){
+    let score = 0;
+    for(const w of CAT_WORDS[cat]) if(hit(w)) score++;
+    for(const w of (STRONG[cat]||[])) if(hit(w)) score += 3;   // decisive
+    if(score > bestScore){ bestScore = score; best = cat; }
+  }
+  let prio = 'Medium';
+  if(HIGH_WORDS.some(w=> t.includes(w))) prio = 'High';
+  else if(LOW_WORDS.some(w=> t.includes(w))) prio = 'Low';
+  return { category: bestScore ? best : 'Work', priority: prio, matched: bestScore > 0 };
 }
 
 /* ---------- due date picker ---------- */
@@ -1634,23 +1841,16 @@ async function addTask(){
   if(!raw) return;
   input.value = '';
   const q = parseQuickAdd(raw);
+  const guess = classify(q.title);
+  const cat  = q.category || guess.category;
+  const prio = q.priority || guess.priority;
+  const due  = q.dueDate !== null ? q.dueDate : await pickDue(q.title);
 
-  let cat = q.category, prio = q.priority, title = q.title, aiUsed = false;
-  // Only call the AI for what the user didn't specify.
-  if(!cat || !prio){
-    const btn = $('addBtn'); btn.disabled = true; btn.textContent = 'Filing…';
-    const ai = await aiFile(title);
-    btn.disabled = false; btn.textContent = 'File';
-    if(ai){ cat = cat || ai.category; prio = prio || ai.priority; title = q.category||q.priority?title:ai.title; aiUsed = true; }
-    else { cat = cat || 'Work'; prio = prio || 'Medium';
-           toast('Filed offline — AI unavailable, defaulted to Work / Medium.'); }
-  }
-  const due = q.dueDate !== null ? q.dueDate : await pickDue(title);
-
-  put({ id:uid('t'), type:'task', title, category:fixCat(cat), priority:prio,
+  put({ id:uid('t'), type:'task', title:q.title, category:fixCat(cat), priority:prio,
         dueDate:due, status:'active', notes:'', repeat:'none', subs:[],
-        aiFiled:aiUsed, createdAt:nowMs(), deleted:false });
-  toast('Task filed.');
+        autoFiled: !q.category && guess.matched,
+        createdAt:nowMs(), deleted:false });
+  toast('Task filed under ' + cat + '.');
 }
 
 function cycleTask(id){
@@ -1900,15 +2100,12 @@ $('etDelete').addEventListener('click', ()=>{
   softDelete(id); closeTask();
   toast(`Deleted "${t.title.slice(0,28)}".`, 'Undo', ()=>{ restore(id); });
 });
-$('etRecat').addEventListener('click', async ()=>{
+$('etRecat').addEventListener('click', ()=>{
   const t = records[openTaskId]; if(!t) return;
-  $('etRecat').textContent = 'Filing…';
-  const ai = await aiFile(t.title);
-  $('etRecat').textContent = '↻ Re-file with AI';
-  if(!ai){ toast('AI unavailable right now.'); return; }
-  t.category = ai.category; t.priority = ai.priority; put(t, true);
+  const g = classify(t.title);
+  t.category = g.category; t.priority = g.priority; put(t, true);
   $('etCat').value = t.category; $('etPrio').value = t.priority;
-  toast('Re-filed.');
+  toast(g.matched ? 'Re-filed under '+g.category+'.' : 'No strong match — left as Work.');
 });
 $('etSaveTemplate').addEventListener('click', ()=>{
   const t = records[openTaskId]; if(!t) return;
@@ -2098,19 +2295,20 @@ $('enToTask').addEventListener('click', async ()=>{
   const n = records[openNoteId]; if(!n) return;
   const title = (n.title||n.text||'').split('\n')[0].trim().slice(0,90) || 'Follow up on note';
   $('noteOv').classList.remove('open');
-  const ai = await aiFile(title);
+  const g = classify(title);
   const due = await pickDue(title);
-  put({ id:uid('t'), type:'task', title, category:ai?ai.category:'Work', priority:ai?ai.priority:'Medium',
+  put({ id:uid('t'), type:'task', title, category:g.category, priority:g.priority,
         dueDate:due, status:'active', notes:'From note: '+(n.title||'')+'\n\n'+(n.text||'').slice(0,500),
-        repeat:'none', subs:[], linkedNote:n.id, aiFiled:!!ai, createdAt:nowMs(), deleted:false });
+        repeat:'none', subs:[], linkedNote:n.id, createdAt:nowMs(), deleted:false });
   showView('tasks');
   toast('Task created from note.');
 });
 $('newNoteBtn').addEventListener('click', ()=> newNote('', false));
-$('pasteNoteBtn').addEventListener('click', async ()=>{
-  let txt = '';
-  try{ txt = await navigator.clipboard.readText(); }catch(e){}
-  newNote(txt, true);   // opens with the guessed title selected, ready to rename
+/* No clipboard permission needed: open an empty note with the body focused so
+   Ctrl+V (or long-press → Paste) drops straight in. */
+$('pasteNoteBtn').addEventListener('click', ()=>{
+  newNote('', false);
+  setTimeout(()=>{ $('enBody').focus(); toast('Paste into the note (Ctrl+V or long-press).'); }, 120);
 });
 $('notesSearch').addEventListener('input', renderNotes);
 $('notesSort').addEventListener('change', renderNotes);
@@ -2374,6 +2572,207 @@ function dl(blob, name){
   const a = document.createElement('a'); a.href=u; a.download=name; a.click();
   URL.revokeObjectURL(u);
 }
+
+/* ============================================================================
+   BILLS & INSTALMENTS
+   A commitment is the standing obligation. A payment record is created only
+   when a period is actually settled — so any period without one is pending,
+   and history comes for free without pre-generating empty rows.
+   ========================================================================== */
+let billMonth = isoMonth(new Date());
+let openBillId = null, payTarget = null;
+
+const monthAdd = (ym, n) => { const d = new Date(ym+'-01T00:00:00'); d.setMonth(d.getMonth()+n); return isoMonth(d); };
+const monthName = ym => new Date(ym+'-01T00:00:00').toLocaleDateString('en-IN',{month:'short',year:'2-digit'});
+const monthFull = ym => new Date(ym+'-01T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+const monthDiff = (a,b) => { const [ay,am]=a.split('-').map(Number), [by,bm]=b.split('-').map(Number);
+                             return (by-ay)*12 + (bm-am); };
+
+/* Is this commitment due in this period? Depends on frequency and start month. */
+function billDueIn(b, ym){
+  const start = b.startMonth || isoMonth(new Date(b.createdAt));
+  const diff = monthDiff(start, ym);
+  if(diff < 0) return false;
+  if(diff % (b.freq||1) !== 0) return false;
+  if(b.total){                                   // EMI: stop after the last instalment
+    const idx = diff / (b.freq||1);
+    if(idx >= b.total) return false;
+  }
+  return true;
+}
+const payFor = (bid, ym) => all('billpay').find(p=> p.billId===bid && p.period===ym);
+function billPaidCount(b){ return all('billpay').filter(p=> p.billId===b.id && p.status==='paid').length; }
+
+/* Every period from start to now that is due and has no payment record. */
+function overduePeriods(b, uptoYm){
+  const start = b.startMonth || isoMonth(new Date(b.createdAt));
+  const out = [];
+  for(let ym = start; monthDiff(ym, uptoYm) >= 0; ym = monthAdd(ym,1)){
+    if(!billDueIn(b, ym)) continue;
+    if(ym === uptoYm) continue;                  // current period isn't "overdue" yet
+    if(!payFor(b.id, ym)) out.push(ym);
+  }
+  return out;
+}
+function pendingCount(){
+  const now = isoMonth(new Date());
+  let n = 0;
+  all('bill').forEach(b=>{
+    if(billDueIn(b, now) && !payFor(b.id, now)) n++;
+    n += overduePeriods(b, now).length;
+  });
+  return n;
+}
+
+function addBill(){
+  const label = $('billLabel').value.trim();
+  if(!label){ toast('Give the commitment a name.'); return; }
+  put({ id:uid('bill'), type:'bill', label,
+        amount: parseFloat($('billAmt').value) || 0,
+        freq: parseInt($('billFreq').value,10) || 1,
+        dueDay: parseInt($('billDay').value,10) || 0,
+        total: parseInt($('billEmi').value,10) || 0,
+        category:'Bills', autoPost:false,
+        startMonth: isoMonth(new Date()),
+        createdAt:nowMs(), deleted:false });
+  ['billLabel','billAmt','billDay','billEmi'].forEach(i=> $(i).value='');
+  toast('Commitment added.');
+}
+$('addBillBtn').addEventListener('click', addBill);
+$('billLabel').addEventListener('keydown', e=>{ if(e.key==='Enter') addBill(); });
+$('billPrev').addEventListener('click', ()=>{ billMonth = monthAdd(billMonth,-1); renderBills(); });
+$('billNext').addEventListener('click', ()=>{ billMonth = monthAdd(billMonth, 1); renderBills(); });
+
+/* ---- mark paid / skip ---- */
+function askPay(billId, ym){
+  const b = records[billId]; if(!b) return;
+  payTarget = { billId, ym };
+  $('payTitle').textContent = b.label;
+  $('paySub').textContent = monthFull(ym) + (b.amount ? ' · expected ' + fmtMoney(b.amount) : '');
+  $('payAmt').value = '';
+  $('payAmt').placeholder = b.amount ? 'blank = ' + fmtMoney(b.amount) : 'amount (optional)';
+  $('payOv').classList.add('open');
+  setTimeout(()=> $('payAmt').focus(), 40);
+}
+function settlePay(status){
+  if(!payTarget) return;
+  const { billId, ym } = payTarget;
+  const b = records[billId];
+  const typed = parseFloat($('payAmt').value);
+  const amount = (!isNaN(typed) && typed > 0) ? typed : (b.amount || 0);
+  put({ id:uid('bp'), type:'billpay', billId, period:ym, status,
+        amount: status==='paid' ? amount : 0,
+        paidOn: todayISO(), createdAt:nowMs(), deleted:false }, true);
+  // optional: mirror into the Financial ledger
+  if(status==='paid' && b.autoPost && amount > 0){
+    put({ id:uid('f'), type:'fin', desc:b.label+' — '+monthName(ym), amount,
+          kind:'expense', category:b.category||'Bills', date:todayISO(), who:'',
+          recurring:false, settled:false, billRef:b.id, createdAt:nowMs(), deleted:false }, true);
+  }
+  $('payOv').classList.remove('open');
+  payTarget = null;
+  renderAll();
+  toast(status==='paid' ? 'Marked paid.' : 'Skipped for this period.');
+}
+$('payOk').addEventListener('click', ()=> settlePay('paid'));
+$('paySkip').addEventListener('click', ()=> settlePay('skipped'));
+$('payCancel').addEventListener('click', ()=>{ $('payOv').classList.remove('open'); payTarget=null; });
+$('payAmt').addEventListener('keydown', e=>{ if(e.key==='Enter') settlePay('paid'); });
+
+function undoPay(billId, ym){
+  const p = payFor(billId, ym);
+  if(p){ softDelete(p.id); toast('Marked unpaid again.', 'Undo', ()=> restore(p.id)); }
+}
+
+function renderBills(){
+  $('billMonth').textContent = monthFull(billMonth);
+  const now = isoMonth(new Date());
+  const bills = all('bill');
+
+  const rows = [];
+  bills.forEach(b=>{
+    // any missed earlier periods, surfaced first
+    overduePeriods(b, now).forEach(ym=> rows.push({ b, ym, state:'overdue' }));
+  });
+  bills.forEach(b=>{
+    if(!billDueIn(b, billMonth)) return;
+    const p = payFor(b.id, billMonth);
+    rows.push({ b, ym:billMonth, state: p ? (p.status==='skipped'?'skipped':'paid') : 'pending', pay:p });
+  });
+
+  $('billsList').innerHTML = rows.length ? rows.map(r=>{
+    const b = r.b;
+    const paidN = billPaidCount(b);
+    const hist = [];
+    for(let i=5;i>=0;i--){
+      const ym = monthAdd(now, -i);
+      if(!billDueIn(b, ym)){ hist.push('f'); continue; }
+      const p = payFor(b.id, ym);
+      hist.push(p ? (p.status==='skipped'?'s':'p') : (ym===now?'f':'m'));
+    }
+    const amt = r.pay && r.pay.status==='paid' ? r.pay.amount : b.amount;
+    return `<div class="bill-row ${r.state}">
+      <div class="bill-main">
+        <div class="bill-label">${esc(b.label)}${r.state==='overdue'?` <span class="pill" style="background:var(--seal);color:#fff">${monthName(r.ym)}</span>`:''}</div>
+        <div class="bill-sub">
+          ${b.dueDay?`due ${b.dueDay}${['th','st','nd','rd'][(b.dueDay%10>3||~~((b.dueDay%100)/10)===1)?0:b.dueDay%10]} · `:''}
+          ${b.freq==1?'monthly':'every '+b.freq+' months'}
+          ${b.total?` · ${paidN}/${b.total} paid`:''}
+          ${b.autoPost?' · posts to ledger':''}
+          ${r.state==='paid'&&r.pay?` · paid ${fmtDate(r.pay.paidOn)}`:''}
+        </div>
+        ${b.total?`<div class="emi-bar"><i style="width:${Math.min(100,Math.round(paidN/b.total*100))}%"></i></div>`:''}
+        <div class="hist">${hist.map(h=>`<i class="${h}"></i>`).join('')}</div>
+      </div>
+      <span class="bill-amt">${amt?fmtMoney(amt):'—'}</span>
+      ${r.state==='paid'||r.state==='skipped'
+        ? `<button class="btn ghost small" data-unpay="${b.id}|${r.ym}">Undo</button>`
+        : `<button class="btn small" data-pay="${b.id}|${r.ym}">Mark paid</button>`}
+      <button class="icon-btn" data-bedit="${b.id}" aria-label="Edit commitment">✎</button>
+    </div>`;
+  }).join('') : '<div class="empty"><b>Nothing due</b>Add a recurring bill or EMI above.</div>';
+
+  $('billsList').querySelectorAll('[data-pay]').forEach(x=> x.addEventListener('click', ()=>{
+    const [id,ym] = x.dataset.pay.split('|'); askPay(id, ym);
+  }));
+  $('billsList').querySelectorAll('[data-unpay]').forEach(x=> x.addEventListener('click', ()=>{
+    const [id,ym] = x.dataset.unpay.split('|'); undoPay(id, ym);
+  }));
+  $('billsList').querySelectorAll('[data-bedit]').forEach(x=> x.addEventListener('click', ()=> openBill(x.dataset.bedit)));
+
+  const pend = pendingCount();
+  const badge = $('datesBadge');
+  badge.style.display = pend ? '' : 'none';
+  badge.textContent = pend;
+}
+
+function openBill(id){
+  const b = records[id]; if(!b) return;
+  openBillId = id;
+  $('ebLabel').value = b.label; $('ebAmt').value = b.amount||'';
+  $('ebFreq').value = String(b.freq||1); $('ebDay').value = b.dueDay||'';
+  $('ebCat').value = b.category||''; $('ebEmi').value = b.total||'';
+  $('ebStart').value = b.startMonth || isoMonth(new Date(b.createdAt));
+  $('ebPost').checked = !!b.autoPost;
+  $('billOv').classList.add('open');
+}
+$('billOvClose').addEventListener('click', ()=> $('billOv').classList.remove('open'));
+$('ebSave').addEventListener('click', ()=>{
+  const b = records[openBillId]; if(!b) return;
+  b.label = $('ebLabel').value.trim()||b.label;
+  b.amount = parseFloat($('ebAmt').value)||0;
+  b.freq = parseInt($('ebFreq').value,10)||1;
+  b.dueDay = parseInt($('ebDay').value,10)||0;
+  b.category = $('ebCat').value;
+  b.total = parseInt($('ebEmi').value,10)||0;
+  b.startMonth = $('ebStart').value || b.startMonth;
+  b.autoPost = $('ebPost').checked;
+  put(b); $('billOv').classList.remove('open'); toast('Saved.');
+});
+$('ebDelete').addEventListener('click', ()=>{
+  const id = openBillId; softDelete(id); $('billOv').classList.remove('open');
+  toast('Commitment removed.', 'Undo', ()=> restore(id));
+});
 
 /* ============================================================================
    NOTES — folders, images, duplicates, linking, export/print
@@ -2715,6 +3114,71 @@ $('edocRemind').addEventListener('click', ()=>{
 });
 
 /* ============================================================================
+   QUICK CAPTURE — a low-friction way to get something down now and tidy later
+   ========================================================================== */
+let qcKind = 'task';
+function openQC(){
+  qcKind = 'task';
+  document.querySelectorAll('.qc-btn').forEach(b=> b.classList.toggle('on', b.dataset.k==='task'));
+  $('qcInput').value=''; $('qcAmt').value=''; $('qcAmt').style.display='none';
+  $('qcOff').checked = localStorage.getItem(LS+'qcOff')==='1';
+  $('qcOv').classList.add('open');
+  setTimeout(()=> $('qcInput').focus(), 60);
+}
+document.querySelectorAll('.qc-btn').forEach(b=> b.addEventListener('click', ()=>{
+  qcKind = b.dataset.k;
+  document.querySelectorAll('.qc-btn').forEach(x=> x.classList.toggle('on', x===b));
+  $('qcAmt').style.display = (qcKind==='fin'||qcKind==='bill') ? '' : 'none';
+  const ph = { task:'What needs doing?', note:'What do you want to remember?',
+               date:'What date matters?', doc:'Which document?',
+               bill:'Which recurring bill?', fin:'What did you spend on?' };
+  $('qcInput').placeholder = ph[qcKind] || 'What is it?';
+  $('qcInput').focus();
+}));
+
+function qcSave(){
+  const v = $('qcInput').value.trim();
+  if(!v){ $('qcInput').focus(); return false; }
+  const amt = parseFloat($('qcAmt').value) || 0;
+  const now = nowMs();
+  if(qcKind==='task'){
+    const q = parseQuickAdd(v), g = classify(q.title);
+    put({ id:uid('t'), type:'task', title:q.title, category:fixCat(q.category||g.category),
+          priority:q.priority||g.priority, dueDate:q.dueDate||null, status:'active',
+          notes:'', repeat:'none', subs:[], createdAt:now, deleted:false });
+  } else if(qcKind==='note'){
+    put({ id:uid('n'), type:'note', title:v.slice(0,60), text:'',
+          color:NOTE_COLORS[Math.floor(Math.random()*5)], pinned:false,
+          folder:'', docRefs:[], imgs:[], createdAt:now, deleted:false });
+  } else if(qcKind==='date'){
+    put({ id:uid('d'), type:'date', label:v, when:todayISO(), repeat:'once',
+          needsDetail:true, createdAt:now, deleted:false });
+  } else if(qcKind==='doc'){
+    put({ id:uid('doc'), type:'doc', title:v, docType:'Other', number:'', expiry:null,
+          issuer:'', notes:'', createdAt:now, deleted:false });
+  } else if(qcKind==='bill'){
+    put({ id:uid('bill'), type:'bill', label:v, amount:amt, freq:1, dueDay:0, total:0,
+          category:'Bills', autoPost:false, startMonth:isoMonth(new Date()),
+          createdAt:now, deleted:false });
+  } else if(qcKind==='fin'){
+    put({ id:uid('f'), type:'fin', desc:v, amount:amt, kind:'expense', category:'',
+          date:todayISO(), who:'', recurring:false, settled:false, createdAt:now, deleted:false });
+  }
+  toast('Saved — add the details whenever you like.');
+  $('qcInput').value=''; $('qcAmt').value=''; $('qcInput').focus();
+  return true;
+}
+$('qcSave').addEventListener('click', qcSave);
+$('qcInput').addEventListener('keydown', e=>{ if(e.key==='Enter') qcSave(); });
+$('qcAmt').addEventListener('keydown', e=>{ if(e.key==='Enter') qcSave(); });
+function closeQC(){
+  localStorage.setItem(LS+'qcOff', $('qcOff').checked ? '1' : '0');
+  $('qcOv').classList.remove('open');
+}
+$('qcDone').addEventListener('click', ()=>{ if($('qcInput').value.trim()) qcSave(); closeQC(); });
+$('qcClose').addEventListener('click', closeQC);
+
+/* ============================================================================
    GLOBAL SEARCH
    ========================================================================== */
 let searchSel = 0, searchHits = [];
@@ -2798,10 +3262,17 @@ function showView(v){
 }
 document.querySelectorAll('.view-tab').forEach(t=> t.addEventListener('click', ()=> showView(t.dataset.view)));
 
+function updateBadges(){
+  const pend = pendingCount();
+  const b = $('datesBadge');
+  b.style.display = pend ? '' : 'none';
+  b.textContent = pend;
+}
 function renderAll(){
+  updateBadges();
   if(currentView==='tasks') renderTasks();
   else if(currentView==='notes') renderNotes();
-  else if(currentView==='dates') renderDates();
+  else if(currentView==='dates'){ renderDates(); renderBills(); }
   else if(currentView==='docs') renderDocs();
   else if(currentView==='finance') renderFinance();
   updateSyncInfo();
@@ -3237,6 +3708,7 @@ async function afterUnlock(){
   $('hintInput').value = metaCache.hint || '';
   showView('tasks');
   resetIdle();
+  if(localStorage.getItem(LS+'qcOff') !== '1') setTimeout(openQC, 600);
   await pullCloud();
   await pushCloud();
   // offer biometrics once, after a successful passphrase unlock
@@ -3372,6 +3844,26 @@ function tickClock(){
   $('todayBox').innerHTML = `<b>${n.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})}</b>${n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}`;
 }
 tickClock(); setInterval(tickClock, 30000);
+
+/* Tapping a syntax chip appends that token to the input. parseQuickAdd strips
+   the tokens out again, so they never end up in the task's actual title. */
+document.querySelectorAll('#addHint code').forEach(code=>{
+  code.setAttribute('role','button');
+  code.setAttribute('tabindex','0');
+  const apply = ()=>{
+    const tok = code.textContent.trim();
+    const inp = $('taskInput');
+    let v = inp.value;
+    // one category, one priority, one date — replace rather than stack
+    if(tok.startsWith('#')) v = v.replace(/#\w+/g,'');
+    else if(tok.startsWith('!')) v = v.replace(/![a-z]+/gi,'');
+    else if(tok.startsWith('@')) v = v.replace(/@\S+/g,'');
+    inp.value = (v.trim() + ' ' + tok).replace(/\s{2,}/g,' ').trim() + ' ';
+    inp.focus();
+  };
+  code.addEventListener('click', apply);
+  code.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); apply(); } });
+});
 syncFinTypeUI();
 
 /* Startup: if this device is already pointed at a Sheet, adopt its salt before
