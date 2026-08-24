@@ -306,6 +306,39 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 .md-preview a{color:var(--brass)}
 .md-preview blockquote{border-left:3px solid var(--brass-soft);margin:.6em 0;padding-left:12px;color:var(--ink-soft)}
 
+/* notes: folders, chips, images, toolbar */
+.folder-bar{display:flex;gap:5px;margin-top:14px;overflow-x:auto;padding-bottom:2px}
+.folder-pill{font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:7px 12px;border-radius:16px;
+  border:1px solid var(--line-strong);background:var(--card);color:var(--ink-soft);cursor:pointer;white-space:nowrap}
+.folder-pill.active{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+.note-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.chip{font-family:'IBM Plex Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;
+  padding:2px 7px;border-radius:9px;background:rgba(128,128,128,.18);color:var(--ink-soft)}
+.chip.dup{background:var(--seal);color:#fff}
+.chip.folder{background:var(--brass);color:#fff}
+.chip.doc{background:var(--cat-work);color:#fff}
+.md-toolbar{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.md-btn{font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:6px 10px;border-radius:3px;
+  border:1px solid var(--line-strong);background:var(--card);color:var(--ink-soft);cursor:pointer;line-height:1}
+.md-btn:hover{border-color:var(--brass);color:var(--ink)}
+.note-imgs{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+.note-img{position:relative;border:1px solid var(--line-strong);border-radius:3px;overflow:hidden;
+  width:120px;height:90px;background:var(--field-bg)}
+.note-img img{width:100%;height:100%;object-fit:cover;cursor:pointer;display:block}
+.note-img button{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.65);color:#fff;border:none;
+  border-radius:3px;cursor:pointer;font-size:11px;line-height:1;padding:3px 5px}
+.img-budget{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);margin-top:6px}
+.dup-group{border:1px solid var(--line);border-radius:3px;padding:11px;margin-bottom:10px;background:var(--field-bg)}
+.dup-group .dg-head{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.dup-row{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:13.5px}
+.md-preview img{max-width:100%;border-radius:3px;margin:8px 0}
+@media print{
+  body>*{display:none!important}
+  #printArea{display:block!important;position:static;padding:0;color:#000;background:#fff}
+}
+#printArea{display:none}
+
 /* ============================================================
    KEY DATES
    ============================================================ */
@@ -542,9 +575,11 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
           <option value="created">Newest</option>
         </select>
         <div class="spacer"></div>
+        <button class="btn ghost small" id="dupBtn">⧉ Duplicates</button>
         <button class="btn ghost small" id="pasteNoteBtn">📋 Paste</button>
         <button class="btn" id="newNoteBtn">+ New note</button>
       </div>
+      <div class="folder-bar" id="folderBar"></div>
     </div>
     <div class="notes-board" id="notesBoard"></div>
   </div>
@@ -719,13 +754,43 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <button class="ov-close" id="noteOvClose" aria-label="Close">✕</button>
     </div>
     <div class="note-swatches" id="enSwatches"></div>
+
+    <div class="edit-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+      <div class="field"><label for="enFolder">Folder</label>
+        <input type="text" id="enFolder" list="folderList" placeholder="e.g. GST cases">
+        <datalist id="folderList"></datalist></div>
+      <div class="field"><label for="enDocSel">Link a document</label>
+        <select id="enDocSel"><option value="">— choose —</option></select></div>
+    </div>
+    <div class="note-chips" id="enDocChips" style="margin:-8px 0 12px"></div>
+
+    <div class="md-toolbar">
+      <button class="md-btn" data-md="bold" title="Bold"><b>B</b></button>
+      <button class="md-btn" data-md="italic" title="Italic"><i>I</i></button>
+      <button class="md-btn" data-md="h2" title="Heading">H</button>
+      <button class="md-btn" data-md="ul" title="Bullet list">• List</button>
+      <button class="md-btn" data-md="ol" title="Numbered list">1. List</button>
+      <button class="md-btn" data-md="check" title="Checklist">☐ Check</button>
+      <button class="md-btn" data-md="quote" title="Quote">❝</button>
+      <button class="md-btn" data-md="code" title="Code">&lt;/&gt;</button>
+      <button class="md-btn" data-md="link" title="Link">🔗</button>
+      <div class="spacer"></div>
+      <button class="md-btn" id="enAddImg" title="Add an image">🖼 Image</button>
+      <input type="file" id="enImgFile" accept="image/*" multiple style="display:none">
+    </div>
+
     <textarea class="note-body" id="enBody" placeholder="Paste or type here… markdown supported"></textarea>
     <div class="md-preview" id="enPreview" style="display:none"></div>
+    <div class="note-imgs" id="enImgs"></div>
+    <div class="img-budget" id="enImgBudget"></div>
+
     <div class="edit-foot">
       <span id="enTime" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint)"></span>
       <div class="spacer"></div>
       <button class="btn ghost small" id="enPreviewBtn">👁 Preview</button>
-      <button class="btn ghost small" id="enToTask">→ Make task</button>
+      <button class="btn ghost small" id="enExport">⤓ Export</button>
+      <button class="btn ghost small" id="enPrint">🖨 Print</button>
+      <button class="btn ghost small" id="enToTask">→ Task</button>
       <button class="btn ghost small" id="enCopy">⧉ Copy</button>
       <button class="btn ghost small" id="enPin">📌 Pin</button>
       <button class="btn ghost small danger" id="enDelete">Delete</button>
@@ -812,6 +877,19 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     </div>
   </div>
 </div>
+
+<!-- ========== DUPLICATE NOTES ========== -->
+<div class="ov" id="dupOv">
+  <div class="ov-card" style="max-width:560px">
+    <div class="ov-head"><h2>Possible duplicates</h2><button class="ov-close" id="dupOvClose" aria-label="Close">✕</button></div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 14px;line-height:1.5">
+      Notes whose contents look substantially the same. Nothing is deleted automatically —
+      open the ones you want to keep and remove the rest.</p>
+    <div id="dupList"></div>
+  </div>
+</div>
+
+<div id="printArea"></div>
 
 <!-- ========== DOCUMENT EDIT ========== -->
 <div class="ov" id="docOv">
@@ -1702,7 +1780,8 @@ function renderDone(){
 }
 
 function renderTrash(){
-  const tr = trashed().sort((a,b)=> b.deletedAt-a.deletedAt);
+  // image blobs are deleted alongside their note; they'd be meaningless rows here
+  const tr = trashed().filter(r=> r.type!=='blob').sort((a,b)=> b.deletedAt-a.deletedAt);
   $('trashLabel').textContent = `Trash (${tr.length}) · auto-clears after 30 days`;
   $('trashList').innerHTML = tr.length ? tr.map(r=>`
     <div class="date-row">
@@ -1887,6 +1966,8 @@ function md(src){
   h = h.replace(/^&gt; (.*)$/gm,'<blockquote>$1</blockquote>');
   h = h.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/\*([^*\n]+)\*/g,'<i>$1</i>');
   h = h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  h = h.replace(/^\s*[-*] \[[ xX]\] (.*)$/gm, (m,t)=>
+        `<li style="list-style:none;margin-left:-1.2em">${/\[[xX]\]/.test(m)?'☑':'☐'} ${t}</li>`);
   h = h.replace(/^\s*[-*] (.*)$/gm,'<li>$1</li>').replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g,'<ul>$1</ul>');
   h = h.replace(/^\s*(\d+)\. (.*)$/gm,'<li>$2</li>');
   h = h.replace(/\n{2,}/g,'</p><p>').replace(/\n/g,'<br>');
@@ -1894,10 +1975,17 @@ function md(src){
 }
 
 function renderNotes(){
+  renderFolderBar();
   const q = $('notesSearch').value.toLowerCase();
   const by = $('notesSort').value;
-  let list = all('note').filter(n =>
-    !q || (n.title||'').toLowerCase().includes(q) || (n.text||'').toLowerCase().includes(q));
+  const dups = dupIds();
+  let list = all('note').filter(n =>{
+    const f = (n.folder||'').trim();
+    if(activeFolder==='__none__' && f) return false;
+    if(activeFolder!=='__all__' && activeFolder!=='__none__' && f!==activeFolder) return false;
+    if(q && !((n.title||'').toLowerCase().includes(q) || (n.text||'').toLowerCase().includes(q))) return false;
+    return true;
+  });
   if(by==='pinned') list.sort((a,b)=> (b.pinned?1:0)-(a.pinned?1:0) || b.updatedAt-a.updatedAt);
   else if(by==='recent') list.sort((a,b)=> b.updatedAt-a.updatedAt);
   else list.sort((a,b)=> b.createdAt-a.createdAt);
@@ -1916,6 +2004,12 @@ function renderNotes(){
           style="${n.pinned?'color:var(--seal)':''}">📌</button>
         <button class="icon-btn" data-ndel="${n.id}" aria-label="Delete note">✕</button>
       </div>
+      <div class="note-chips">
+        ${n.folder?`<span class="chip folder">${esc(n.folder)}</span>`:''}
+        ${(n.imgs||[]).length?`<span class="chip">🖼 ${(n.imgs||[]).length}</span>`:''}
+        ${(n.docRefs||[]).length?`<span class="chip doc">📁 ${(n.docRefs||[]).length}</span>`:''}
+        ${dups.has(n.id)?'<span class="chip dup">duplicate?</span>':''}
+      </div>
       <div class="note-foot"><span>${timeAgo(n.updatedAt)}</span></div>
     </div>`;
   }).join('');
@@ -1933,8 +2027,10 @@ function renderNotes(){
 
 function newNote(prefillText, selectTitle){
   const text = prefillText||'';
+  const inFolder = (activeFolder!=='__all__' && activeFolder!=='__none__') ? activeFolder : '';
   const n = put({ id:uid('n'), type:'note', title:(text.split('\n')[0]||'').trim().slice(0,60),
     text, color:NOTE_COLORS[Math.floor(Math.random()*5)], pinned:false,
+    folder:inFolder, docRefs:[], imgs:[],
     createdAt:nowMs(), deleted:false });
   openNote(n.id, selectTitle);
 }
@@ -1953,12 +2049,17 @@ function openNote(id, selectTitle){
   $('enSwatches').querySelectorAll('[data-c]').forEach(s=> s.addEventListener('click', ()=>{
     n.color = s.dataset.c; put(n, true); openNote(id);
   }));
+  $('enFolder').value = n.folder||'';
+  $('folderList').innerHTML = folderList().map(f=>`<option value="${esc(f)}">`).join('');
+  renderDocLinks();
+  renderNoteImgs();
   $('noteOv').classList.add('open');
   setTimeout(()=>{ const t=$('enTitle'); t.focus(); if(selectTitle) t.select(); }, 40);
 }
 function enSave(){
   const n = records[openNoteId]; if(!n) return;
   n.title = $('enTitle').value; n.text = $('enBody').value;
+  n.folder = $('enFolder').value.trim();
   put(n, true);
   const f = $('noteSaved'); f.classList.add('show'); setTimeout(()=>f.classList.remove('show'),1100);
   $('enTime').textContent = 'Edited just now';
@@ -1966,6 +2067,12 @@ function enSave(){
 function enQueue(){ clearTimeout(enTimer); enTimer = setTimeout(enSave, 450); }
 $('enTitle').addEventListener('input', enQueue);
 $('enBody').addEventListener('input', enQueue);
+$('enFolder').addEventListener('input', enQueue);
+$('enBody').addEventListener('paste', e=>{
+  const imgs = [...(e.clipboardData?.items||[])]
+    .filter(i=> i.type.startsWith('image/')).map(i=> i.getAsFile()).filter(Boolean);
+  if(imgs.length){ e.preventDefault(); attachImages(imgs); }
+});
 $('noteOvClose').addEventListener('click', ()=>{ enSave(); $('noteOv').classList.remove('open'); openNoteId=null; renderAll(); });
 $('enPreviewBtn').addEventListener('click', ()=>{
   previewOn = !previewOn;
@@ -2267,6 +2374,241 @@ function dl(blob, name){
   const a = document.createElement('a'); a.href=u; a.download=name; a.click();
   URL.revokeObjectURL(u);
 }
+
+/* ============================================================================
+   NOTES — folders, images, duplicates, linking, export/print
+   ========================================================================== */
+
+/* ---- folders ---- */
+let activeFolder = '__all__';
+function folderList(){
+  return [...new Set(all('note').map(n=> (n.folder||'').trim()).filter(Boolean))].sort();
+}
+function renderFolderBar(){
+  const fs = folderList();
+  const counts = f => all('note').filter(n=> (n.folder||'').trim()===f).length;
+  const unfiled = all('note').filter(n=> !(n.folder||'').trim()).length;
+  let html = `<div class="folder-pill ${activeFolder==='__all__'?'active':''}" data-f="__all__">All ${all('note').length}</div>`;
+  fs.forEach(f=> html += `<div class="folder-pill ${activeFolder===f?'active':''}" data-f="${esc(f)}">${esc(f)} ${counts(f)}</div>`);
+  if(unfiled) html += `<div class="folder-pill ${activeFolder==='__none__'?'active':''}" data-f="__none__">Unfiled ${unfiled}</div>`;
+  const bar = $('folderBar');
+  bar.innerHTML = html;
+  bar.querySelectorAll('.folder-pill').forEach(p=>
+    p.addEventListener('click', ()=>{ activeFolder = p.dataset.f; renderNotes(); }));
+}
+
+/* ---- images: compressed hard, stored as their own records ---- */
+const IMG_MAX_CHARS = 34000;      // stays comfortably inside one Sheet cell
+const IMG_PER_NOTE  = 6;
+
+function compressImage(file){
+  return new Promise((resolve, reject)=>{
+    const fr = new FileReader();
+    fr.onerror = ()=> reject(new Error('read failed'));
+    fr.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=> reject(new Error('not an image'));
+      img.onload = ()=>{
+        // downscale, then walk quality down until it fits the cell budget
+        let w = img.width, h = img.height;
+        const MAXDIM = 900;
+        if(Math.max(w,h) > MAXDIM){
+          const s = MAXDIM/Math.max(w,h); w = Math.round(w*s); h = Math.round(h*s);
+        }
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        let q = 0.72, out = cv.toDataURL('image/jpeg', q);
+        while(out.length > IMG_MAX_CHARS && q > 0.25){ q -= 0.08; out = cv.toDataURL('image/jpeg', q); }
+        if(out.length > IMG_MAX_CHARS){
+          // still too big: halve dimensions once and retry
+          const cv2 = document.createElement('canvas');
+          cv2.width = Math.round(w/1.6); cv2.height = Math.round(h/1.6);
+          cv2.getContext('2d').drawImage(img, 0, 0, cv2.width, cv2.height);
+          out = cv2.toDataURL('image/jpeg', 0.55);
+        }
+        if(out.length > IMG_MAX_CHARS) return reject(new Error('too large'));
+        resolve(out);
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+async function attachImages(files){
+  const n = records[openNoteId]; if(!n) return;
+  n.imgs = n.imgs || [];
+  let added = 0, failed = 0;
+  for(const f of files){
+    if(n.imgs.length + added >= IMG_PER_NOTE){ toast(`Limit is ${IMG_PER_NOTE} images per note.`); break; }
+    try{
+      const data = await compressImage(f);
+      const blob = put({ id:uid('img'), type:'blob', data, createdAt:nowMs(), deleted:false }, true);
+      n.imgs.push(blob.id); added++;
+    }catch(e){ failed++; }
+  }
+  if(added) put(n, true);
+  renderNoteImgs();
+  if(failed) toast(`${failed} image(s) couldn't be compressed small enough.`);
+  else if(added) toast(`${added} image(s) attached.`);
+}
+function renderNoteImgs(){
+  const n = records[openNoteId];
+  const wrap = $('enImgs');
+  if(!n){ wrap.innerHTML=''; return; }
+  const imgs = (n.imgs||[]).map(id=> records[id]).filter(b=> b && !b.deleted);
+  wrap.innerHTML = imgs.map(b=>`
+    <div class="note-img"><img src="${b.data}" data-full="${b.id}" alt="attachment">
+      <button data-imgdel="${b.id}" aria-label="Remove image">✕</button></div>`).join('');
+  const chars = imgs.reduce((s,b)=> s + b.data.length, 0);
+  $('enImgBudget').textContent = imgs.length
+    ? `${imgs.length}/${IMG_PER_NOTE} images · ~${Math.round(chars/1024)} KB stored`
+    : '';
+  wrap.querySelectorAll('[data-imgdel]').forEach(b=> b.addEventListener('click', ()=>{
+    const id = b.dataset.imgdel;
+    n.imgs = (n.imgs||[]).filter(x=>x!==id);
+    softDelete(id); put(n, true); renderNoteImgs();
+  }));
+  wrap.querySelectorAll('img[data-full]').forEach(im=> im.addEventListener('click', ()=>{
+    const w = window.open('');
+    if(w) w.document.write('<img src="'+im.src+'" style="max-width:100%">');
+  }));
+}
+$('enAddImg').addEventListener('click', ()=> $('enImgFile').click());
+$('enImgFile').addEventListener('change', e=>{
+  if(e.target.files.length) attachImages([...e.target.files]);
+  e.target.value='';
+});
+
+/* ---- markdown toolbar ---- */
+function wrapSel(before, after, blockPrefix){
+  const ta = $('enBody');
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = ta.value.slice(s, e);
+  let ins;
+  if(blockPrefix){
+    const lines = (sel || 'item').split('\n');
+    ins = lines.map((l,i)=> blockPrefix.replace('{n}', i+1) + l).join('\n');
+  } else {
+    ins = before + (sel || 'text') + after;
+  }
+  ta.value = ta.value.slice(0,s) + ins + ta.value.slice(e);
+  ta.focus();
+  ta.selectionStart = s; ta.selectionEnd = s + ins.length;
+  enQueue();
+}
+document.querySelectorAll('.md-btn[data-md]').forEach(b=> b.addEventListener('click', ()=>{
+  const k = b.dataset.md;
+  if(k==='bold') wrapSel('**','**');
+  else if(k==='italic') wrapSel('*','*');
+  else if(k==='h2') wrapSel('','', '## ');
+  else if(k==='ul') wrapSel('','', '- ');
+  else if(k==='ol') wrapSel('','', '{n}. ');
+  else if(k==='check') wrapSel('','', '- [ ] ');
+  else if(k==='quote') wrapSel('','', '> ');
+  else if(k==='code') wrapSel('`','`');
+  else if(k==='link') wrapSel('[','](https://)');
+}));
+
+/* ---- document linking ---- */
+function renderDocLinks(){
+  const n = records[openNoteId]; if(!n) return;
+  const docs = all('doc');
+  $('enDocSel').innerHTML = '<option value="">— choose —</option>' +
+    docs.map(d=>`<option value="${d.id}">${esc(d.title)}</option>`).join('');
+  const linked = (n.docRefs||[]).map(id=> records[id]).filter(d=> d && !d.deleted);
+  $('enDocChips').innerHTML = linked.map(d=>
+    `<span class="chip doc" data-unlink="${d.id}" style="cursor:pointer" title="Click to unlink">📁 ${esc(d.title)} ✕</span>`).join('');
+  $('enDocChips').querySelectorAll('[data-unlink]').forEach(ch=> ch.addEventListener('click', ()=>{
+    n.docRefs = (n.docRefs||[]).filter(x=> x!==ch.dataset.unlink);
+    put(n, true); renderDocLinks();
+  }));
+}
+$('enDocSel').addEventListener('change', e=>{
+  const id = e.target.value; if(!id) return;
+  const n = records[openNoteId]; if(!n) return;
+  n.docRefs = n.docRefs || [];
+  if(!n.docRefs.includes(id)) n.docRefs.push(id);
+  put(n, true); e.target.value=''; renderDocLinks();
+});
+
+/* ---- duplicate detection ---- */
+function normText(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+function dupGroups(){
+  const notes = all('note');
+  const byKey = {};
+  notes.forEach(n=>{
+    const t = normText(n.title + ' ' + n.text);
+    if(t.length < 12) return;                    // too short to judge
+    const key = t.slice(0, 300);                 // compare on the leading content
+    (byKey[key] = byKey[key] || []).push(n);
+  });
+  return Object.values(byKey).filter(g=> g.length > 1);
+}
+function dupIds(){
+  const s = new Set();
+  dupGroups().forEach(g=> g.forEach(n=> s.add(n.id)));
+  return s;
+}
+$('dupBtn').addEventListener('click', ()=>{
+  const groups = dupGroups();
+  $('dupList').innerHTML = groups.length ? groups.map((g,i)=>`
+    <div class="dup-group">
+      <div class="dg-head">Group ${i+1} — ${g.length} similar notes</div>
+      ${g.map(n=>`<div class="dup-row">
+        <span style="flex:1">${esc(n.title||'(untitled)')}<br>
+          <small style="color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;font-size:10px">
+            edited ${timeAgo(n.updatedAt)}${n.folder?' · '+esc(n.folder):''}</small></span>
+        <button class="btn ghost small" data-dopen="${n.id}">Open</button>
+        <button class="btn ghost small danger" data-ddel="${n.id}">Delete</button>
+      </div>`).join('')}
+    </div>`).join('')
+    : '<div class="empty"><b>No duplicates found</b>Nothing looks repeated.</div>';
+  $('dupList').querySelectorAll('[data-dopen]').forEach(b=> b.addEventListener('click', ()=>{
+    $('dupOv').classList.remove('open'); openNote(b.dataset.dopen);
+  }));
+  $('dupList').querySelectorAll('[data-ddel]').forEach(b=> b.addEventListener('click', ()=>{
+    const id = b.dataset.ddel;
+    softDelete(id); toast('Deleted.', 'Undo', ()=> restore(id));
+    $('dupBtn').click();
+  }));
+  $('dupOv').classList.add('open');
+});
+$('dupOvClose').addEventListener('click', ()=> $('dupOv').classList.remove('open'));
+
+/* ---- export / print a single note ---- */
+function noteMarkdown(n, embedImages){
+  let out = '# ' + (n.title || 'Untitled note') + '\n\n';
+  if(n.folder) out += '_Folder: ' + n.folder + '_\n\n';
+  const linked = (n.docRefs||[]).map(id=> records[id]).filter(Boolean);
+  if(linked.length) out += '_Documents: ' + linked.map(d=>d.title).join(', ') + '_\n\n';
+  out += (n.text||'') + '\n';
+  if(embedImages){
+    (n.imgs||[]).map(id=> records[id]).filter(Boolean)
+      .forEach((b,i)=> out += '\n![attachment ' + (i+1) + '](' + b.data + ')\n');
+  }
+  out += '\n---\n_Exported ' + new Date().toLocaleString('en-IN') + ' from Register_\n';
+  return out;
+}
+$('enExport').addEventListener('click', ()=>{
+  const n = records[openNoteId]; if(!n) return;
+  const safe = (n.title||'note').replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'-').slice(0,50) || 'note';
+  dl(new Blob([noteMarkdown(n, true)], {type:'text/markdown'}), safe + '.md');
+  toast('Note exported.');
+});
+$('enPrint').addEventListener('click', ()=>{
+  const n = records[openNoteId]; if(!n) return;
+  const imgs = (n.imgs||[]).map(id=> records[id]).filter(Boolean);
+  const linked = (n.docRefs||[]).map(id=> records[id]).filter(Boolean);
+  $('printArea').innerHTML =
+    `<h1 style="font-family:Georgia,serif">${esc(n.title||'Untitled note')}</h1>` +
+    (n.folder?`<p style="color:#666"><i>Folder: ${esc(n.folder)}</i></p>`:'') +
+    (linked.length?`<p style="color:#666"><i>Documents: ${linked.map(d=>esc(d.title)).join(', ')}</i></p>`:'') +
+    `<div style="font:15px/1.7 system-ui">${md(n.text||'')}</div>` +
+    imgs.map(b=>`<img src="${b.data}" style="max-width:100%;margin:10px 0">`).join('') +
+    `<hr><p style="color:#666;font-size:12px">Printed ${new Date().toLocaleString('en-IN')}</p>`;
+  window.print();
+});
 
 /* ============================================================================
    DOCUMENTS & RENEWALS
