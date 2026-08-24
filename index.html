@@ -866,10 +866,22 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
       Code for the hidden Financial page. Stored encrypted with everything else, so once
       you change it here it is no longer readable in the page source.</p>
+    <div class="field" style="margin-bottom:10px"><label for="vcCur">Current code</label>
+      <input type="password" id="vcCur" autocomplete="off"></div>
     <div class="field" style="margin-bottom:10px"><label for="vcNew">New code</label>
       <input type="password" id="vcNew" autocomplete="off"></div>
     <button class="btn ghost" id="vcChange" style="width:100%">Update code</button>
     <div class="lock-err" id="vcMsg" style="color:var(--ink-soft)"></div>
+
+    <!-- ---- Legacy recovery ---- -->
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px" id="recoverWrap"></div>
+    <div class="flabel" style="margin-bottom:8px">Recover legacy data</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
+      Pulls your original pre-encryption data from the old <code>Data</code> tab of the Sheet
+      and re-imports it under your current passphrase. Safe to run more than once —
+      it never overwrites anything newer.</p>
+    <button class="btn ghost" id="recoverBtn" style="width:100%">Recover from old Data tab</button>
+    <div class="lock-err" id="recoverMsg" style="color:var(--ink-soft)"></div>
 
     <div style="border-top:1px solid var(--line);margin-top:18px;padding-top:14px;
       font-size:11.5px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace">
@@ -1022,15 +1034,21 @@ async function fetchMeta(){
     return d.meta.salt ? d.meta : null;
   }catch(e){ return null; }
 }
-async function uploadMeta(){
+/* rotate=true only when deliberately changing the passphrase. Otherwise the
+   server refuses to replace an existing salt, which protects existing records. */
+async function uploadMeta(rotate){
   if(!cloudOn() || !online) return false;
   try{
     const r = await fetch(cloud.url, {
       method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ action:'setmeta', token:cloud.token,
+      body: JSON.stringify({ action:'setmeta', token:cloud.token, rotate: !!rotate,
         meta:{ salt: localStorage.getItem(LS+'salt'), verifier: localStorage.getItem(LS+'verify') } })
     });
     const d = await r.json();
+    if(d.error === 'salt_exists'){
+      // The Sheet already has data under another key — don't orphan it.
+      return { conflict:true, salt:d.salt, verifier:d.verifier };
+    }
     return !!d.ok;
   }catch(e){ return false; }
 }
@@ -1146,7 +1164,7 @@ async function pullCloud(){
     const res = await fetch(url);
     const data = await res.json();
     if(data.error) throw new Error(data.error);
-    let merged = 0;
+    let merged = 0, unreadable = 0;
     for(const row of (data.records||[])){
       const local = records[row.id];
       // newest write wins, per record
@@ -1154,11 +1172,26 @@ async function pullCloud(){
       try{
         const rec = JSON.parse(await decryptStr(row.payload));
         records[row.id] = rec; merged++;
-      }catch(e){ /* encrypted with a different passphrase */ }
+      }catch(e){ unreadable++; }
     }
     lastSync = nowMs();
-    setStatus('connected','Synced');
     if(merged){ await persistLocal(); renderAll(); }
+
+    // Never fail silently: undecryptable rows mean the salt or passphrase
+    // does not match what wrote them, and the user needs to know.
+    if(unreadable){
+      setStatus('error', unreadable+' unreadable');
+      $('cloudStatus').title = unreadable+' record(s) in your Sheet were encrypted with a different '+
+        'passphrase/salt and cannot be read. Use Settings → Recover legacy data.';
+      if(!pullCloud._warned){
+        pullCloud._warned = true;
+        toast(`${unreadable} record(s) in your Sheet can't be decrypted with this passphrase.`,
+              'Recover', ()=>{ $('syncOv').classList.add('open'); $('recoverWrap').scrollIntoView(); });
+      }
+    } else {
+      setStatus('connected','Synced');
+      $('cloudStatus').title = '';
+    }
     updateSyncInfo();
     return true;
   }catch(e){
@@ -2296,7 +2329,7 @@ $('ppChange').addEventListener('click', async ()=>{
   setSalt(newSalt);
   await setVerifier();
   await persistLocal();               // local cache re-encrypted
-  await uploadMeta();                 // share the new salt with other devices
+  await uploadMeta(true);             // explicit rotation: replaces the shared salt
   await pushCloud(true);              // force-push every record re-encrypted
 
   $('ppCur').value = $('ppNew').value = $('ppNew2').value = '';
@@ -2310,15 +2343,67 @@ $('ppChange').addEventListener('click', async ()=>{
 
 /* ---------- change financial code ---------- */
 $('vcChange').addEventListener('click', ()=>{
-  const v = $('vcNew').value.trim();
+  const cur = $('vcCur').value, v = $('vcNew').value.trim();
   const msg = $('vcMsg');
-  if(!v){ msg.style.color='var(--seal)'; msg.textContent='Enter a code.'; return; }
+  msg.style.color='var(--seal)';
+  if(!cur || !v){ msg.textContent='Enter both the current and the new code.'; return; }
+  if(cur !== vaultCode()){ msg.textContent='Current code is wrong.'; return; }
   const s = settingsRec();
   s.vaultCode = v;
   put(s, true);
-  $('vcNew').value = '';
+  $('vcCur').value = ''; $('vcNew').value = '';
   msg.style.color='var(--forest)'; msg.textContent='Code updated.';
   toast('Financial code updated.');
+});
+
+/* ---------- recover the pre-encryption Data tab ---------- */
+$('recoverBtn').addEventListener('click', async ()=>{
+  const msg = $('recoverMsg');
+  if(!cloudOn()){ msg.style.color='var(--seal)'; msg.textContent='Connect sync first.'; return; }
+  msg.style.color='var(--ink-soft)'; msg.textContent='Fetching…';
+  let legacy;
+  try{
+    const r = await fetch(cloud.url + '?action=legacy&token=' + encodeURIComponent(cloud.token));
+    const d = await r.json();
+    if(d.error) throw new Error(d.error);
+    legacy = d.legacy || {};
+  }catch(e){ msg.style.color='var(--seal)'; msg.textContent='Could not reach the Sheet.'; return; }
+
+  const now = nowMs();
+  let added = 0;
+  const push = r => { if(!records[r.id]){ records[r.id] = r; added++; } };
+
+  const parse = k => { try{ return legacy[k] ? JSON.parse(legacy[k]) : []; }catch(e){ return []; } };
+
+  parse('tasks-v1').forEach(o=> push({
+    id:o.id||uid('t'), type:'task', title:o.title||'', category:fixCat(o.category||'Work'),
+    priority:PRIOS[o.priority]?o.priority:'Medium', dueDate:o.dueDate||null,
+    status:o.status||'active', notes:o.notes||'', repeat:o.recurring||'none', subs:[],
+    aiFiled:!!o.aiFiled, completedOn:o.completedOn||null,
+    completedAt:o.completedOn?Date.parse(o.completedOn):null,
+    createdAt:o.createdAt||now, updatedAt:now, deleted:false }));
+
+  parse('notes-v1').forEach(o=> push({
+    id:o.id||uid('n'), type:'note', title:o.title||'', text:o.text||'',
+    color:o.color||'note-c1', pinned:!!o.pinned,
+    createdAt:o.createdAt||now, updatedAt:now, deleted:false }));
+
+  parse('finance-v1').forEach(o=> push({
+    id:o.id||uid('f'), type:'fin', desc:o.desc||'', amount:Number(o.amount)||0,
+    kind:o.type||'expense', category:o.category||'', date:o.date||todayISO(), who:'',
+    recurring:false, settled:false, createdAt:o.createdAt||now, updatedAt:now, deleted:false }));
+
+  parse('keydates-v1').forEach(o=> push({
+    id:o.id||uid('d'), type:'date', label:o.label||'', when:o.when||'',
+    repeat:o.repeat||'once', createdAt:now, updatedAt:now, deleted:false }));
+
+  if(!added){ msg.style.color='var(--seal)'; msg.textContent='Nothing found in the old Data tab.'; return; }
+  await persistLocal();
+  renderAll();
+  await pushCloud(true);
+  msg.style.color='var(--forest)';
+  msg.textContent = `Recovered ${added} record(s).`;
+  toast(`Recovered ${added} record(s) from the old Data tab.`);
 });
 
 /* backup: plain JSON, unencrypted, for your own safekeeping */
@@ -2522,7 +2607,26 @@ async function submitLock(){
     }
     cryptoKey = await deriveKey(pass, getSalt());
     await setVerifier();
-    await uploadMeta();          // share the salt so other devices can decrypt
+    const up = await uploadMeta();
+    if(up && up.conflict){
+      // The Sheet already holds data encrypted under a different salt.
+      // Adopt that salt and re-derive, so existing records stay readable.
+      await adoptMeta({ salt: up.salt, verifier: up.verifier });
+      cryptoKey = await deriveKey(pass, up.salt);
+      const ok = await checkVerifier();
+      $('lockBtn').disabled=false; $('lockBtn').textContent='Create';
+      if(!ok){
+        cryptoKey = null;
+        lockMode = 'enter';
+        $('lockErr').textContent = 'That Sheet already has data. Enter its existing passphrase.';
+        await initLock();
+        $('lockErr').textContent = 'That Sheet already has data. Enter its existing passphrase.';
+        return;
+      }
+      await afterUnlock();
+      toast('Connected to existing data.');
+      return;
+    }
     $('lockBtn').disabled=false; $('lockBtn').textContent='Create';
     await afterUnlock();
     toast('Passphrase set. Write it down somewhere safe.');
