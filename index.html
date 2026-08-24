@@ -365,18 +365,6 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 .fr-amt.neutral{color:var(--ink-soft)}
 
 /* ============================================================
-   REVIEW
-   ============================================================ */
-.review-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:18px}
-.review-card{border:1px solid var(--line-strong);background:var(--card);border-radius:2px;overflow:hidden}
-.review-head{padding:11px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;
-  text-transform:uppercase;letter-spacing:.05em;color:#fff}
-.review-item{padding:10px 14px;border-bottom:1px solid var(--line);font-size:13.5px}
-.review-item:last-child{border-bottom:none}
-.review-item small{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;
-  color:var(--ink-faint);margin-top:3px}
-
-/* ============================================================
    SEARCH / TRASH / LOCK
    ============================================================ */
 .search-ov{position:fixed;inset:0;z-index:950;background:rgba(10,14,18,.6);
@@ -444,6 +432,10 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <div class="lock-alt" id="lockBioWrap" style="display:none">
       <a id="lockBio">Use Face ID / Touch ID</a>
     </div>
+    <div class="lock-alt" id="lockHint" style="display:none;color:var(--brass)"></div>
+    <div class="lock-alt" id="lockRecoverWrap" style="display:none">
+      <a id="lockRecover">Forgot your passphrase? Use recovery code</a>
+    </div>
     <div class="lock-alt" id="lockSyncWrap" style="display:none">
       <a id="lockSync">Already using Register elsewhere? Connect sync first</a>
     </div>
@@ -460,7 +452,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <button class="view-tab active" data-view="tasks">📋 Tasks</button>
     <button class="view-tab" data-view="notes">🗒 Notes</button>
     <button class="view-tab" data-view="dates">📅 Dates</button>
-    <button class="view-tab" data-view="review">📊 Review</button>
+    <button class="view-tab" data-view="docs">📁 Documents</button>
     <button class="view-tab" data-view="finance" id="financeTab" style="display:none">💰 Financial</button>
     <div class="spacer"></div>
     <span class="offline-badge" id="offlineBadge" style="display:none">offline</span>
@@ -577,24 +569,37 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <div class="rows" id="datesList"></div>
   </div>
 
-  <!-- ========== WEEKLY REVIEW ========== -->
-  <div id="reviewView" style="display:none">
+  <!-- ========== DOCUMENTS & RENEWALS ========== -->
+  <div id="docsView" style="display:none">
     <div class="cover">
-      <div class="cover-top">
-        <div>
-          <div class="eyebrow">Last 7 days</div><h1>Weekly Review</h1>
-          <div class="sub">What got done, what slipped, and what you took on.</div>
-        </div>
-        <div class="datebox" id="reviewRange"></div>
+      <div class="cover-top"><div>
+        <div class="eyebrow">Papers &amp; Policies</div><h1>Documents</h1>
+        <div class="sub">Policy numbers, registrations, warranties, memberships — with expiry
+          countdowns so nothing lapses unnoticed.</div>
+      </div></div>
+      <div class="inline-form">
+        <input type="text" class="grow" id="docTitle" placeholder="e.g. Car insurance — Creta" aria-label="Document title">
+        <select id="docType" aria-label="Type">
+          <option>Insurance</option><option>Vehicle</option><option>Identity</option>
+          <option>Warranty</option><option>Membership</option><option>Property</option>
+          <option>Financial</option><option>Other</option>
+        </select>
+        <input type="text" id="docNumber" placeholder="Number / ID (optional)" aria-label="Number">
+        <input type="date" id="docExpiry" aria-label="Expiry date">
+        <button class="btn" id="addDocBtn">Add</button>
       </div>
-      <div class="stats">
-        <div class="stat"><div class="n" id="rvDone">0</div><div class="l">Completed</div></div>
-        <div class="stat"><div class="n" id="rvSlipped">0</div><div class="l">Slipped</div></div>
-        <div class="stat"><div class="n" id="rvAdded">0</div><div class="l">Added</div></div>
-        <div class="stat"><div class="n" id="rvRate">0%</div><div class="l">Completion</div></div>
-      </div>
+      <div class="add-hint">Expiry is optional — leave it blank for things that don't lapse.</div>
     </div>
-    <div class="review-grid" id="reviewGrid"></div>
+    <div class="toolbar" style="margin-top:16px;border-radius:2px">
+      <select id="docFilter" aria-label="Filter by type">
+        <option value="">All types</option>
+        <option>Insurance</option><option>Vehicle</option><option>Identity</option>
+        <option>Warranty</option><option>Membership</option><option>Property</option>
+        <option>Financial</option><option>Other</option>
+      </select>
+      <input type="search" id="docSearch" placeholder="Search documents…" aria-label="Search documents">
+    </div>
+    <div class="rows" id="docsList"></div>
   </div>
 
   <!-- ========== FINANCIAL (hidden) ========== -->
@@ -808,6 +813,56 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
   </div>
 </div>
 
+<!-- ========== DOCUMENT EDIT ========== -->
+<div class="ov" id="docOv">
+  <div class="ov-card" style="max-width:560px">
+    <div class="ov-head"><h2>Edit document</h2><button class="ov-close" id="docOvClose" aria-label="Close">✕</button></div>
+    <div class="field" style="margin-bottom:12px"><label for="edocTitle">Title</label>
+      <input type="text" id="edocTitle"></div>
+    <div class="edit-grid" style="grid-template-columns:repeat(2,1fr)">
+      <div class="field"><label for="edocType">Type</label><select id="edocType">
+        <option>Insurance</option><option>Vehicle</option><option>Identity</option>
+        <option>Warranty</option><option>Membership</option><option>Property</option>
+        <option>Financial</option><option>Other</option></select></div>
+      <div class="field"><label for="edocExpiry">Expiry</label><input type="date" id="edocExpiry"></div>
+      <div class="field"><label for="edocNumber">Number / ID</label><input type="text" id="edocNumber"></div>
+      <div class="field"><label for="edocIssuer">Issuer</label><input type="text" id="edocIssuer"></div>
+    </div>
+    <div class="field" style="margin-top:12px"><label for="edocNotes">Notes</label>
+      <textarea class="edit-notes" id="edocNotes" placeholder="Anything worth remembering…"></textarea></div>
+    <div class="edit-foot">
+      <button class="btn ghost small" id="edocRemind">📅 Add expiry to Key Dates</button>
+      <div class="spacer"></div>
+      <button class="btn ghost small danger" id="edocDelete">Delete</button>
+      <button class="btn small" id="edocSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== RECOVERY CODE (shown once) ========== -->
+<div class="ov" id="rcOv" style="z-index:970">
+  <div class="ov-card narrow" style="text-align:left;max-width:440px">
+    <h2 id="rcTitle" style="font-family:'Source Serif 4',serif;font-size:20px;margin:0 0 6px">Your recovery code</h2>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 14px;line-height:1.55">
+      This is the <b>only</b> way back in if you forget your passphrase. It is shown once and
+      never again — the Sheet holds it only in encrypted form. Print it or write it down and
+      keep it somewhere physical.</p>
+    <div id="rcValue" style="font-family:'IBM Plex Mono',monospace;font-size:17px;letter-spacing:.06em;
+      text-align:center;padding:16px;background:var(--field-bg);border:1px solid var(--brass);
+      border-radius:3px;margin-bottom:14px;word-break:break-all"></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn ghost small" id="rcCopy" style="flex:1">⧉ Copy</button>
+      <button class="btn ghost small" id="rcPrint" style="flex:1">🖨 Print</button>
+    </div>
+    <label style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--ink-soft);
+      line-height:1.5;margin-bottom:14px;cursor:pointer">
+      <input type="checkbox" id="rcAck" style="width:auto;margin-top:3px">
+      <span>I have written this down or printed it. I understand it will not be shown again.</span>
+    </label>
+    <button class="btn" id="rcDone" style="width:100%" disabled>Continue</button>
+  </div>
+</div>
+
 <!-- ========== VAULT ========== -->
 <div class="ov" id="vaultOv" style="z-index:960">
   <div class="ov-card narrow" id="vaultCard">
@@ -862,6 +917,23 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <div class="lock-err" id="ppMsg" style="color:var(--ink-soft)"></div>
 
     <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Recovery code</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
+      Your way back in if the passphrase is ever forgotten. Generating a new one
+      immediately invalidates the old.</p>
+    <button class="btn ghost" id="rcRegen" style="width:100%">Generate a new recovery code</button>
+
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
+    <div class="flabel" style="margin-bottom:8px">Passphrase hint</div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 10px;line-height:1.5">
+      Shown on the lock screen. Stored unencrypted, so make it a nudge, not the answer.</p>
+    <div class="field" style="margin-bottom:10px">
+      <input type="text" id="hintInput" placeholder="e.g. the usual one, with the year"></div>
+    <button class="btn ghost" id="hintSave" style="width:100%">Save hint</button>
+    <div class="lock-err" id="hintMsg" style="color:var(--ink-soft)"></div>
+
+    <div id="finCodeSection" style="display:none">
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
     <div class="flabel" style="margin-bottom:8px">Financial section code</div>
     <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5">
       Code for the hidden Financial page. Stored encrypted with everything else, so once
@@ -872,6 +944,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <input type="password" id="vcNew" autocomplete="off"></div>
     <button class="btn ghost" id="vcChange" style="width:100%">Update code</button>
     <div class="lock-err" id="vcMsg" style="color:var(--ink-soft)"></div>
+    </div>
 
     <!-- ---- Legacy recovery ---- -->
     <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px" id="recoverWrap"></div>
@@ -915,7 +988,6 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 
 const LS = 'reg_';                       // localStorage namespace
 const PBKDF2_ITERS = 250000;             // key-stretching cost
-let cryptoKey = null;                    // CryptoKey, in memory only
 let records = {};                        // id -> record (decrypted)
 let cloud = { url:'', token:'' };
 let lastSync = 0;
@@ -969,104 +1041,228 @@ $('toastAction').addEventListener('click', ()=>{
 });
 
 /* ============================================================================
-   ENCRYPTION  (AES-GCM 256, key derived from the passphrase via PBKDF2)
+   ENCRYPTION PRIMITIVES
    ========================================================================== */
 const enc = new TextEncoder(), dec = new TextDecoder();
 const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const unb64 = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
 
-async function deriveKey(passphrase, saltB64){
-  const salt = unb64(saltB64);
-  const base = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+/* ---------------------------------------------------------------------------
+   KEY ARCHITECTURE (v17)
+
+   One random 256-bit MASTER KEY encrypts every record. That key is never
+   derived from anything — it is generated once and then stored as several
+   independently *wrapped* copies:
+
+     wrapPass  — master key encrypted with a key derived from your passphrase
+     wrapRec   — master key encrypted with a key derived from your recovery code
+     bioKey    — master key held locally, released after Face ID / Touch ID
+
+   Consequences that matter:
+     • Changing the passphrase re-wraps one small key. Records are untouched,
+       so it is instant and cannot half-fail partway through.
+     • A lost passphrase is recoverable with the printed recovery code.
+     • Every wrapper opens the same master key, so devices always agree.
+
+   The wrapped copies and salts live in the Sheet's Meta tab. None of them is
+   secret on its own — each is useless without the passphrase or recovery code.
+   ------------------------------------------------------------------------- */
+
+let masterKey = null;          // CryptoKey — the thing that actually encrypts records
+let metaCache = {};            // mirror of the Sheet's Meta tab
+
+function loadMetaCache(){
+  try{ metaCache = JSON.parse(localStorage.getItem(LS+'meta')||'{}'); }catch(e){ metaCache = {}; }
+  return metaCache;
+}
+function saveMetaCache(m){
+  metaCache = m || {};
+  localStorage.setItem(LS+'meta', JSON.stringify(metaCache));
+}
+
+const randB64 = n => b64(crypto.getRandomValues(new Uint8Array(n)));
+
+/* Derive a wrapping key (KEK) from a human secret. */
+async function deriveKEK(secret, saltB64){
+  const base = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    { name:'PBKDF2', salt, iterations:PBKDF2_ITERS, hash:'SHA-256' },
+    { name:'PBKDF2', salt: unb64(saltB64), iterations: PBKDF2_ITERS, hash:'SHA-256' },
+    base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
+  );
+}
+async function wrapKey(key, kek){
+  const raw = await crypto.subtle.exportKey('raw', key);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, kek, raw);
+  const out = new Uint8Array(iv.length + ct.byteLength);
+  out.set(iv,0); out.set(new Uint8Array(ct), iv.length);
+  return b64(out);
+}
+async function unwrapKey(payload, kek){
+  const raw = unb64(payload);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv: raw.slice(0,12)}, kek, raw.slice(12));
+  return crypto.subtle.importKey('raw', pt, 'AES-GCM', true, ['encrypt','decrypt']);
+}
+
+/* Recovery codes: 20 chars from an unambiguous alphabet, grouped for reading.
+   Deliberately excludes 0/O/1/I/L so it can be copied off paper reliably. */
+const RC_ALPHA = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+function makeRecoveryCode(){
+  const bytes = crypto.getRandomValues(new Uint8Array(20));
+  let s = '';
+  for(let i=0;i<20;i++) s += RC_ALPHA[bytes[i] % RC_ALPHA.length];
+  return 'REG-' + s.match(/.{1,5}/g).join('-');
+}
+const normRC = s => s.toUpperCase().replace(/[^A-Z0-9]/g,'');
+
+/* ---- building / opening the key set ---- */
+
+async function createKeySet(passphrase){
+  masterKey = await crypto.subtle.generateKey({name:'AES-GCM', length:256}, true, ['encrypt','decrypt']);
+  const recovery = makeRecoveryCode();
+  const saltPass = randB64(16), saltRec = randB64(16);
+  const meta = {
+    ver: 2,
+    mkId: randB64(8),                       // public id, only used to detect key mismatch
+    saltPass, saltRec,
+    wrapPass: await wrapKey(masterKey, await deriveKEK(passphrase, saltPass)),
+    wrapRec:  await wrapKey(masterKey, await deriveKEK(normRC(recovery), saltRec)),
+    hint: ''
+  };
+  saveMetaCache(meta);
+  await uploadMeta();
+  return recovery;                          // shown once, then it is on the user
+}
+
+async function openWithPassphrase(passphrase){
+  const m = metaCache;
+  if(m.ver === 2 && m.wrapPass){
+    try{
+      masterKey = await unwrapKey(m.wrapPass, await deriveKEK(passphrase, m.saltPass));
+      return true;
+    }catch(e){ return false; }
+  }
+  // ---- legacy (v14–v16): the derived key WAS the master key ----
+  if(m.salt && m.verifier){
+    try{
+      const legacy = await deriveKEK_extractable(passphrase, m.salt);
+      const iv = unb64(m.verifier).slice(0,12), ct = unb64(m.verifier).slice(12);
+      const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, legacy, ct);
+      if(dec.decode(pt) !== 'REGISTER_OK') return false;
+      masterKey = legacy;
+      await upgradeLegacyKeySet(passphrase);   // adopt it, no re-encryption needed
+      return true;
+    }catch(e){ return false; }
+  }
+  return false;
+}
+/* legacy keys must be extractable so they can be re-wrapped during upgrade */
+async function deriveKEK_extractable(secret, saltB64){
+  const base = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt: unb64(saltB64), iterations: PBKDF2_ITERS, hash:'SHA-256' },
     base, { name:'AES-GCM', length:256 }, true, ['encrypt','decrypt']
   );
 }
+/* Wrap the existing (legacy) master key under the new scheme. Records stay
+   exactly as they are — only the key storage format changes. */
+async function upgradeLegacyKeySet(passphrase){
+  const recovery = makeRecoveryCode();
+  const saltPass = randB64(16), saltRec = randB64(16);
+  const meta = {
+    ver: 2,
+    mkId: randB64(8),
+    saltPass, saltRec,
+    wrapPass: await wrapKey(masterKey, await deriveKEK(passphrase, saltPass)),
+    wrapRec:  await wrapKey(masterKey, await deriveKEK(normRC(recovery), saltRec)),
+    hint: metaCache.hint || '',
+    salt: metaCache.salt, verifier: metaCache.verifier   // kept so older devices still work
+  };
+  saveMetaCache(meta);
+  await uploadMeta(true);
+  pendingRecoveryCode = recovery;    // surfaced to the user right after unlock
+}
+
+async function openWithRecovery(code){
+  const m = metaCache;
+  if(!m.wrapRec || !m.saltRec) return false;
+  try{
+    masterKey = await unwrapKey(m.wrapRec, await deriveKEK(normRC(code), m.saltRec));
+    return true;
+  }catch(e){ return false; }
+}
+
+/* Re-wrap the master key under a new passphrase. Instant: no record touched. */
+async function rewrapPassphrase(newPass){
+  const saltPass = randB64(16);
+  const m = { ...metaCache, ver:2,
+    saltPass, wrapPass: await wrapKey(masterKey, await deriveKEK(newPass, saltPass)) };
+  if(!m.mkId) m.mkId = randB64(8);
+  saveMetaCache(m);
+  return uploadMeta(true);
+}
+async function regenerateRecovery(){
+  const recovery = makeRecoveryCode();
+  const saltRec = randB64(16);
+  const m = { ...metaCache, saltRec,
+    wrapRec: await wrapKey(masterKey, await deriveKEK(normRC(recovery), saltRec)) };
+  saveMetaCache(m);
+  await uploadMeta(true);
+  return recovery;
+}
+
+/* ---- record encryption uses the master key ---- */
 async function encryptStr(plain){
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, cryptoKey, enc.encode(plain));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, masterKey, enc.encode(plain));
   const out = new Uint8Array(iv.length + ct.byteLength);
   out.set(iv,0); out.set(new Uint8Array(ct), iv.length);
   return b64(out);
 }
 async function decryptStr(payload){
   const raw = unb64(payload);
-  const iv = raw.slice(0,12), ct = raw.slice(12);
-  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, cryptoKey, ct);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv: raw.slice(0,12)}, masterKey, raw.slice(12));
   return dec.decode(pt);
 }
 
-/* ---------------------------------------------------------------------------
-   Salt + verifier.
-   The salt must be the SAME on every device, otherwise the same passphrase
-   would derive a different key on each one and no device could read another's
-   data. So the salt lives in the Sheet (a "Meta" tab) and is mirrored locally
-   for offline use. Neither value is secret: a salt is public by design, and
-   the verifier is just a known string encrypted with your key. Your protection
-   is the passphrase itself plus 250k PBKDF2 iterations.
-   ------------------------------------------------------------------------- */
-function getSalt(){
-  let s = localStorage.getItem(LS+'salt');
-  if(!s){ s = b64(crypto.getRandomValues(new Uint8Array(16))); localStorage.setItem(LS+'salt', s); }
-  return s;
-}
-function setSalt(s){ localStorage.setItem(LS+'salt', s); }
-async function setVerifier(){
-  const v = await encryptStr('REGISTER_OK');
-  localStorage.setItem(LS+'verify', v);
-  return v;
-}
-async function checkVerifier(){
-  const v = localStorage.getItem(LS+'verify');
-  if(!v) return null;                        // no passphrase set on this device yet
-  try{ return (await decryptStr(v)) === 'REGISTER_OK'; }catch(e){ return false; }
-}
-
-/* Pull the shared salt/verifier down from the Sheet. Called before the lock
-   screen so a brand-new device can unlock with the passphrase you already use. */
+/* ---- Meta sync ---- */
 async function fetchMeta(){
   if(!cloudOn() || !online) return null;
   try{
     const r = await fetch(cloud.url + '?action=meta&token=' + encodeURIComponent(cloud.token));
     const d = await r.json();
     if(d.error || !d.meta) return null;
-    return d.meta.salt ? d.meta : null;
+    return (d.meta.wrapPass || d.meta.salt) ? d.meta : null;
   }catch(e){ return null; }
 }
-/* rotate=true only when deliberately changing the passphrase. Otherwise the
-   server refuses to replace an existing salt, which protects existing records. */
 async function uploadMeta(rotate){
   if(!cloudOn() || !online) return false;
   try{
     const r = await fetch(cloud.url, {
       method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ action:'setmeta', token:cloud.token, rotate: !!rotate,
-        meta:{ salt: localStorage.getItem(LS+'salt'), verifier: localStorage.getItem(LS+'verify') } })
+      body: JSON.stringify({ action:'setmeta', token:cloud.token, rotate: !!rotate, meta: metaCache })
     });
     const d = await r.json();
-    if(d.error === 'salt_exists'){
-      // The Sheet already has data under another key — don't orphan it.
-      return { conflict:true, salt:d.salt, verifier:d.verifier };
-    }
+    if(d.error === 'mk_exists' || d.error === 'salt_exists') return { conflict:true, meta:d.meta };
     return !!d.ok;
   }catch(e){ return false; }
 }
-/* Adopt the Sheet's salt/verifier as authoritative on this device. */
+/* Adopt the Sheet's key set as authoritative on this device. */
 async function adoptMeta(meta){
-  if(!meta || !meta.salt) return false;
-  const localSalt = localStorage.getItem(LS+'salt');
-  if(localSalt && localSalt !== meta.salt){
-    // This device had its own passphrase; the Sheet wins so sync works.
-    cryptoKey = null;
+  if(!meta) return false;
+  const cur = metaCache;
+  const changed = (cur.mkId && meta.mkId && cur.mkId !== meta.mkId) ||
+                  (cur.salt && meta.salt && cur.salt !== meta.salt);
+  if(changed){
+    masterKey = null;
     localStorage.removeItem(LS+'recs');
     localStorage.removeItem(LS+'bioKey');
     localStorage.removeItem(LS+'bioId');
   }
-  setSalt(meta.salt);
-  if(meta.verifier) localStorage.setItem(LS+'verify', meta.verifier);
+  saveMetaCache(meta);
   return true;
 }
+let pendingRecoveryCode = null;
 
 /* ============================================================================
    RECORD STORE  (local cache = encrypted, decrypted into memory on unlock)
@@ -2073,36 +2269,108 @@ function dl(blob, name){
 }
 
 /* ============================================================================
-   WEEKLY REVIEW
+   DOCUMENTS & RENEWALS
    ========================================================================== */
-function renderReview(){
-  const weekAgo = nowMs() - 7*86400000;
-  const tasks = all('task');
-  const done = tasks.filter(t=> t.completedAt && t.completedAt>weekAgo);
-  const added = tasks.filter(t=> t.createdAt>weekAgo);
-  const slipped = tasks.filter(t=> isOverdue(t));
-  const rate = added.length ? Math.round(done.length/(done.length+slipped.length||1)*100) : 0;
+const DOC_COLORS = { Insurance:'#1B4B8F', Vehicle:'#B45309', Identity:'#9C2963', Warranty:'#3F4F8C',
+  Membership:'#2c6e6a', Property:'#6b3f5c', Financial:'#B8860B', Other:'#77818E' };
+let openDocId = null;
 
-  $('reviewRange').innerHTML = `<b>${new Date(weekAgo).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})} – ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</b>7 days`;
-  $('rvDone').textContent = done.length;
-  $('rvSlipped').textContent = slipped.length;
-  $('rvAdded').textContent = added.length;
-  $('rvRate').textContent = rate+'%';
-
-  const card = (title, color, items, emptyMsg) => `
-    <div class="review-card">
-      <div class="review-head" style="background:${color}">${title} (${items.length})</div>
-      ${items.length ? items.slice(0,12).map(t=>`
-        <div class="review-item">${esc(t.title)}
-          <small>${t.category}${t.dueDate?' · due '+fmtDate(t.dueDate):''}${t.completedOn?' · done '+fmtDate(t.completedOn):''}</small>
-        </div>`).join('')
-        : `<div class="review-item" style="color:var(--ink-faint);font-style:italic">${emptyMsg}</div>`}
-    </div>`;
-  $('reviewGrid').innerHTML =
-    card('Completed', 'var(--forest)', done, 'Nothing completed this week.') +
-    card('Slipped / overdue', 'var(--seal)', slipped, 'Nothing overdue — good.') +
-    card('Newly added', 'var(--cat-work)', added, 'No new tasks this week.');
+function addDoc(){
+  const title = $('docTitle').value.trim();
+  if(!title){ toast('Give the document a name.'); return; }
+  put({ id:uid('doc'), type:'doc', title,
+        docType:$('docType').value,
+        number:$('docNumber').value.trim(),
+        expiry:$('docExpiry').value || null,
+        issuer:'', notes:'',
+        createdAt:nowMs(), deleted:false });
+  $('docTitle').value=''; $('docNumber').value=''; $('docExpiry').value='';
+  toast('Document added.');
 }
+$('addDocBtn').addEventListener('click', addDoc);
+$('docTitle').addEventListener('keydown', e=>{ if(e.key==='Enter') addDoc(); });
+$('docFilter').addEventListener('change', renderDocs);
+$('docSearch').addEventListener('input', renderDocs);
+
+function renderDocs(){
+  const f = $('docFilter').value, q = $('docSearch').value.toLowerCase();
+  let list = all('doc').filter(d=>{
+    if(f && d.docType!==f) return false;
+    if(q && !(d.title.toLowerCase().includes(q) || (d.number||'').toLowerCase().includes(q)
+              || (d.notes||'').toLowerCase().includes(q))) return false;
+    return true;
+  });
+  // expiring soonest first; undated sink to the bottom
+  list.sort((a,b)=>{
+    if(!a.expiry && !b.expiry) return a.title.localeCompare(b.title);
+    if(!a.expiry) return 1;
+    if(!b.expiry) return -1;
+    return a.expiry.localeCompare(b.expiry);
+  });
+
+  $('docsList').innerHTML = list.length ? list.map(d=>{
+    let cls='', big='—', unit='no expiry';
+    if(d.expiry){
+      const days = Math.round((new Date(d.expiry+'T00:00:00') - new Date(new Date().setHours(0,0,0,0)))/86400000);
+      cls = days<0?'imminent':days<=30?'soon':'';
+      big = days<0?'!':days===0?'Today':days;
+      unit = days<0?'expired':days===0?'':days===1?'day':'days';
+    }
+    return `<div class="date-row ${cls}" data-doc="${d.id}" style="cursor:pointer;border-left-color:${DOC_COLORS[d.docType]||'#77818E'}">
+      <div class="date-countdown">${big}<small>${unit}</small></div>
+      <div class="date-main">
+        <div class="dm-label">${esc(d.title)}</div>
+        <div class="dm-when">${d.docType}${d.number?' · '+esc(d.number):''}${d.expiry?' · expires '+fmtDate(d.expiry):''}</div>
+      </div>
+      ${d.notes?'<span class="pill">note</span>':''}
+      <button class="icon-btn" data-docdel="${d.id}" aria-label="Delete document">✕</button>
+    </div>`;
+  }).join('') : '<div class="empty"><b>No documents yet</b>Add policies, registrations or warranties above.</div>';
+
+  $('docsList').querySelectorAll('[data-doc]').forEach(r=>
+    r.addEventListener('click', e=>{ if(e.target.closest('button')) return; openDoc(r.dataset.doc); }));
+  $('docsList').querySelectorAll('[data-docdel]').forEach(b=> b.addEventListener('click', e=>{
+    e.stopPropagation(); const id=b.dataset.docdel, d=records[id];
+    softDelete(id); toast(`Deleted "${d.title.slice(0,24)}".`, 'Undo', ()=> restore(id));
+  }));
+}
+
+function openDoc(id){
+  const d = records[id]; if(!d) return;
+  openDocId = id;
+  $('edocTitle').value = d.title;
+  $('edocType').value = d.docType;
+  $('edocNumber').value = d.number||'';
+  $('edocIssuer').value = d.issuer||'';
+  $('edocExpiry').value = d.expiry||'';
+  $('edocNotes').value = d.notes||'';
+  $('docOv').classList.add('open');
+}
+$('docOvClose').addEventListener('click', ()=> $('docOv').classList.remove('open'));
+$('edocSave').addEventListener('click', ()=>{
+  const d = records[openDocId]; if(!d) return;
+  d.title = $('edocTitle').value.trim()||d.title;
+  d.docType = $('edocType').value;
+  d.number = $('edocNumber').value.trim();
+  d.issuer = $('edocIssuer').value.trim();
+  d.expiry = $('edocExpiry').value || null;
+  d.notes = $('edocNotes').value;
+  put(d); $('docOv').classList.remove('open'); toast('Saved.');
+});
+$('edocDelete').addEventListener('click', ()=>{
+  const id = openDocId; softDelete(id); $('docOv').classList.remove('open');
+  toast('Deleted.', 'Undo', ()=> restore(id));
+});
+/* mirror an expiry into Key Dates so it shows up in the countdown list too */
+$('edocRemind').addEventListener('click', ()=>{
+  const d = records[openDocId];
+  if(!d || !d.expiry){ toast('Set an expiry date first.'); return; }
+  const existing = all('date').find(x=> x.docRef === d.id);
+  if(existing){ toast('Already in Key Dates.'); return; }
+  put({ id:uid('d'), type:'date', label:d.title+' — expiry', when:d.expiry,
+        repeat:'once', docRef:d.id, createdAt:nowMs(), deleted:false });
+  toast('Added to Key Dates.');
+});
 
 /* ============================================================================
    GLOBAL SEARCH
@@ -2130,6 +2398,11 @@ function runSearch(){
   all('date').forEach(d=>{
     if(d.label.toLowerCase().includes(q)) hits.push({ kind:'date', id:d.id, text:d.label, sub:d.when });
   });
+  all('doc').forEach(o=>{
+    if(o.title.toLowerCase().includes(q) || (o.number||'').toLowerCase().includes(q)
+       || (o.notes||'').toLowerCase().includes(q))
+      hits.push({ kind:'doc', id:o.id, text:o.title, sub:o.docType });
+  });
   all('fin').forEach(f=>{
     if(f.desc.toLowerCase().includes(q) || (f.who||'').toLowerCase().includes(q))
       hits.push({ kind:'fin', id:f.id, text:f.desc+' · '+fmtMoney(f.amount), sub:f.date });
@@ -2153,6 +2426,7 @@ function gotoHit(h){
   if(h.kind==='task'){ showView('tasks'); openTask(h.id); }
   else if(h.kind==='note'){ showView('notes'); openNote(h.id); }
   else if(h.kind==='date'){ showView('dates'); openDate(h.id); }
+  else if(h.kind==='doc'){ showView('docs'); openDoc(h.id); }
   else if(h.kind==='fin'){
     if(!financeUnlocked){ toast('Unlock the Financial section first.'); return; }
     const f = records[h.id];
@@ -2172,7 +2446,7 @@ $('searchBtn').addEventListener('click', openSearch);
 /* ============================================================================
    VIEWS
    ========================================================================== */
-const VIEWS = { tasks:'taskView', notes:'notesView', dates:'datesView', review:'reviewView', finance:'financeView' };
+const VIEWS = { tasks:'taskView', notes:'notesView', dates:'datesView', docs:'docsView', finance:'financeView' };
 let currentView = 'tasks';
 function showView(v){
   currentView = v;
@@ -2186,7 +2460,7 @@ function renderAll(){
   if(currentView==='tasks') renderTasks();
   else if(currentView==='notes') renderNotes();
   else if(currentView==='dates') renderDates();
-  else if(currentView==='review') renderReview();
+  else if(currentView==='docs') renderDocs();
   else if(currentView==='finance') renderFinance();
   updateSyncInfo();
 }
@@ -2259,7 +2533,12 @@ applyTheme(localStorage.getItem(LS+'theme') || 'light');
    ========================================================================== */
 $('syncBtn').addEventListener('click', ()=>{
   $('syncUrl').value = cloud.url; $('syncToken').value = cloud.token;
-  $('syncMsg').textContent=''; updateSyncInfo(); $('syncOv').classList.add('open');
+  $('syncMsg').textContent=''; updateSyncInfo();
+  // Only reveal the Financial code controls once that section is already open —
+  // otherwise Settings would betray that the section exists at all.
+  $('finCodeSection').style.display = financeUnlocked ? '' : 'none';
+  $('hintInput').value = metaCache.hint || '';
+  $('syncOv').classList.add('open');
 });
 $('syncOvClose').addEventListener('click', ()=> $('syncOv').classList.remove('open'));
 $('syncSave').addEventListener('click', async ()=>{
@@ -2271,7 +2550,7 @@ $('syncSave').addEventListener('click', async ()=>{
   const meta = await fetchMeta();
 
   // Pre-unlock path: adopt the shared salt, then let the user enter their passphrase.
-  if(!cryptoKey){
+  if(!masterKey){
     if(meta){
       await adoptMeta(meta);
       $('syncMsg').textContent = 'Connected. Now enter your existing passphrase.';
@@ -2302,7 +2581,7 @@ $('syncOff').addEventListener('click', ()=>{
 });
 $('syncNowBtn').addEventListener('click', async ()=>{ await pullCloud(); await pushCloud(); toast('Synced.'); });
 
-/* ---------- change passphrase ---------- */
+/* ---------- change passphrase (instant: re-wraps the master key) ---------- */
 $('ppChange').addEventListener('click', async ()=>{
   const cur = $('ppCur').value, nw = $('ppNew').value, nw2 = $('ppNew2').value;
   const msg = $('ppMsg');
@@ -2310,35 +2589,36 @@ $('ppChange').addEventListener('click', async ()=>{
   if(!cur || !nw){ msg.textContent = 'Fill in every field.'; return; }
   if(nw !== nw2){ msg.textContent = "New passphrases don't match."; return; }
 
-  // verify the current one against the existing salt
   msg.style.color='var(--ink-soft)'; msg.textContent = 'Verifying…';
-  const testKey = await deriveKey(cur, getSalt());
-  const saved = cryptoKey;
-  cryptoKey = testKey;
-  const ok = await checkVerifier();
-  if(!ok){
-    cryptoKey = saved;
-    msg.style.color='var(--seal)'; msg.textContent = 'Current passphrase is wrong.';
-    return;
-  }
+  // Confirm the current passphrase unwraps the same master key we're holding.
+  let ok = false;
+  try{
+    const test = await unwrapKey(metaCache.wrapPass, await deriveKEK(cur, metaCache.saltPass));
+    const a = await crypto.subtle.exportKey('raw', test);
+    const b = await crypto.subtle.exportKey('raw', masterKey);
+    ok = b64(a) === b64(b);
+  }catch(e){ ok = false; }
+  if(!ok){ msg.style.color='var(--seal)'; msg.textContent='Current passphrase is wrong.'; return; }
 
-  msg.textContent = 'Re-encrypting everything…';
-  // fresh salt + key, then rewrite every record under the new key
-  const newSalt = b64(crypto.getRandomValues(new Uint8Array(16)));
-  cryptoKey = await deriveKey(nw, newSalt);
-  setSalt(newSalt);
-  await setVerifier();
-  await persistLocal();               // local cache re-encrypted
-  await uploadMeta(true);             // explicit rotation: replaces the shared salt
-  await pushCloud(true);              // force-push every record re-encrypted
-
+  await rewrapPassphrase(nw);
   $('ppCur').value = $('ppNew').value = $('ppNew2').value = '';
-  // biometric key material is stale now — re-enrol on next unlock
-  localStorage.removeItem(LS+'bioKey'); localStorage.removeItem(LS+'bioId');
-  localStorage.removeItem(LS+'bioAsked');
   msg.style.color='var(--forest)';
-  msg.textContent = 'Done. Write the new one down.';
-  toast('Passphrase changed and everything re-encrypted.');
+  msg.textContent = 'Changed. Your records were not touched.';
+  toast('Passphrase changed.');
+});
+
+/* ---------- recovery code ---------- */
+$('rcRegen').addEventListener('click', async ()=>{
+  if(!confirm('Generate a new recovery code? The old one stops working immediately.')) return;
+  const code = await regenerateRecovery();
+  showRecoveryCode(code, 'New recovery code');
+});
+$('hintSave').addEventListener('click', async ()=>{
+  const m = { ...metaCache, hint: $('hintInput').value.trim() };
+  saveMetaCache(m);
+  await uploadMeta(true);
+  $('hintMsg').style.color='var(--forest)';
+  $('hintMsg').textContent = 'Hint saved.';
 });
 
 /* ---------- change financial code ---------- */
@@ -2473,7 +2753,7 @@ function resetIdle(){
   document.addEventListener(ev, resetIdle, { passive:true }));
 
 function lockNow(){
-  cryptoKey = null; records = {};
+  masterKey = null; records = {};
   financeUnlocked = false; $('financeTab').style.display='none';
   currentView = 'tasks';
   document.querySelectorAll('.ov.open').forEach(o=>o.classList.remove('open'));
@@ -2482,6 +2762,17 @@ function lockNow(){
   clearTimeout(idleTimer);
   initLock();
 }
+$('lockRecover').addEventListener('click', ()=>{ lockMode='recover'; initLock(); });
+$('lockReset').addEventListener('click', ()=>{
+  const warn = 'This wipes the encrypted data on THIS DEVICE.\n\n' +
+    'If you still have your passphrase or recovery code, cancel — you do not need this.\n\n' +
+    'Type ERASE to confirm.';
+  if(prompt(warn) !== 'ERASE') return;
+  ['recs','meta','bioKey','bioId','lastSync','salt','verify'].forEach(k=> localStorage.removeItem(LS+k));
+  records = {}; masterKey = null; metaCache = {}; lockMode = 'set';
+  alert('Local data erased. Anything in your Sheet is still there but unreadable without the passphrase or recovery code.');
+  initLock();
+});
 $('lockNowBtn').addEventListener('click', lockNow);
 
 /* ============================================================================
@@ -2496,7 +2787,7 @@ const bioAvailable = () => !!(window.PublicKeyCredential && navigator.credential
 function bioEnrolled(){ return !!localStorage.getItem(LS+'bioKey'); }
 
 async function bioEnroll(){
-  if(!bioAvailable() || !cryptoKey) return false;
+  if(!bioAvailable() || !masterKey) return false;
   try{
     const cred = await navigator.credentials.create({ publicKey:{
       challenge: crypto.getRandomValues(new Uint8Array(32)),
@@ -2507,7 +2798,7 @@ async function bioEnroll(){
       timeout:60000
     }});
     if(!cred) return false;
-    const raw = await crypto.subtle.exportKey('raw', cryptoKey);
+    const raw = await crypto.subtle.exportKey('raw', masterKey);
     localStorage.setItem(LS+'bioKey', b64(raw));
     localStorage.setItem(LS+'bioId', b64(cred.rawId));
     return true;
@@ -2522,7 +2813,7 @@ async function bioUnlock(){
       userVerification:'required', timeout:60000
     }});
     const raw = unb64(localStorage.getItem(LS+'bioKey'));
-    cryptoKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt','decrypt']);
+    masterKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt','decrypt']);
     return true;
   }catch(e){ console.error('bio unlock failed', e); return false; }
 }
@@ -2549,25 +2840,48 @@ $('lockInput').addEventListener('input', ()=>{
 });
 
 async function initLock(){
-  const hasVerifier = !!localStorage.getItem(LS+'verify');
-  lockMode = hasVerifier ? 'enter' : 'set';
+  loadMetaCache();
+  const hasKeySet = !!(metaCache.wrapPass || metaCache.salt);
+  if(lockMode !== 'recover') lockMode = hasKeySet ? 'enter' : 'set';
   $('lockInput').value=''; $('lockConfirm').value=''; $('lockErr').textContent='';
+  $('lockInput').type = 'password';
+
   if(lockMode==='set'){
     $('lockTitle').textContent = 'Create your passphrase';
-    $('lockSub').innerHTML = 'This encrypts everything. <b>Write it down</b> — if you lose it, the data cannot be recovered by anyone.';
+    $('lockSub').innerHTML = 'This protects everything. You will get a printable recovery code straight after.';
     $('lockConfirm').style.display=''; $('lockStrength').style.display='';
     $('lockBtn').textContent = 'Create';
-    $('lockBioWrap').style.display='none'; $('lockResetWrap').style.display='none';
-    // On a brand-new device, offer to pull the shared salt from the Sheet first.
+    $('lockInput').placeholder = 'Passphrase';
+    $('lockBioWrap').style.display='none';
+    $('lockResetWrap').style.display='none';
+    $('lockRecoverWrap').style.display='none';
     $('lockSyncWrap').style.display = cloudOn() ? 'none' : '';
-  } else {
+    $('lockHint').style.display='none';
+  } else if(lockMode==='recover'){
+    $('lockTitle').textContent = 'Enter recovery code';
+    $('lockSub').textContent = 'The REG-… code you printed when you set this up.';
+    $('lockConfirm').style.display='none'; $('lockStrength').style.display='none';
+    $('lockBtn').textContent = 'Recover';
+    $('lockInput').placeholder = 'REG-XXXXX-XXXXX-XXXXX-XXXXX';
+    $('lockInput').type = 'text';
+    $('lockBioWrap').style.display='none';
     $('lockSyncWrap').style.display='none';
+    $('lockRecoverWrap').style.display='none';
+    $('lockResetWrap').style.display='';
+    $('lockHint').style.display='none';
+  } else {
     $('lockTitle').textContent = 'Unlock Register';
     $('lockSub').textContent = 'Enter your passphrase.';
     $('lockConfirm').style.display='none'; $('lockStrength').style.display='none';
     $('lockBtn').textContent = 'Unlock';
+    $('lockInput').placeholder = 'Passphrase';
     $('lockBioWrap').style.display = (bioAvailable() && bioEnrolled()) ? '' : 'none';
+    $('lockSyncWrap').style.display='none';
+    $('lockRecoverWrap').style.display = metaCache.wrapRec ? '' : 'none';
     $('lockResetWrap').style.display='';
+    if(metaCache.hint){
+      $('lockHint').style.display=''; $('lockHint').textContent = 'Hint: ' + metaCache.hint;
+    } else $('lockHint').style.display='none';
   }
   $('lockInput').focus();
 }
@@ -2578,9 +2892,9 @@ async function afterUnlock(){
   await loadLocal();
   if(purgeOldTrash()) await persistLocal();
   loadCloudCfg();
+  $('hintInput').value = metaCache.hint || '';
   showView('tasks');
   resetIdle();
-  if(cloudOn() && !(await fetchMeta())) await uploadMeta();
   await pullCloud();
   await pushCloud();
   // offer biometrics once, after a successful passphrase unlock
@@ -2605,46 +2919,81 @@ async function submitLock(){
       $('lockErr').textContent="Passphrases don't match.";
       $('lockBtn').disabled=false; $('lockBtn').textContent='Create'; return;
     }
-    cryptoKey = await deriveKey(pass, getSalt());
-    await setVerifier();
-    const up = await uploadMeta();
-    if(up && up.conflict){
-      // The Sheet already holds data encrypted under a different salt.
-      // Adopt that salt and re-derive, so existing records stay readable.
-      await adoptMeta({ salt: up.salt, verifier: up.verifier });
-      cryptoKey = await deriveKey(pass, up.salt);
-      const ok = await checkVerifier();
+    // If the Sheet already holds a key set, never create a competing one.
+    const remote = await fetchMeta();
+    if(remote){
+      await adoptMeta(remote);
+      const ok = await openWithPassphrase(pass);
       $('lockBtn').disabled=false; $('lockBtn').textContent='Create';
       if(!ok){
-        cryptoKey = null;
-        lockMode = 'enter';
-        $('lockErr').textContent = 'That Sheet already has data. Enter its existing passphrase.';
-        await initLock();
-        $('lockErr').textContent = 'That Sheet already has data. Enter its existing passphrase.';
+        lockMode='enter'; await initLock();
+        $('lockErr').textContent='That Sheet already has data — enter its existing passphrase.';
         return;
       }
-      await afterUnlock();
-      toast('Connected to existing data.');
-      return;
+      await afterUnlock(); toast('Connected to your existing data.'); return;
     }
+    const code = await createKeySet(pass);
     $('lockBtn').disabled=false; $('lockBtn').textContent='Create';
     await afterUnlock();
-    toast('Passphrase set. Write it down somewhere safe.');
+    showRecoveryCode(code, 'Your recovery code');
     return;
   }
 
-  cryptoKey = await deriveKey(pass, getSalt());
-  const ok = await checkVerifier();
+  if(lockMode==='recover'){
+    const ok = await openWithRecovery(pass);
+    $('lockBtn').disabled=false;
+    if(!ok){
+      $('lockErr').textContent='That recovery code is not valid.';
+      const cd=$('lockCard'); cd.classList.add('shake'); setTimeout(()=>cd.classList.remove('shake'),400);
+      $('lockInput').value=''; $('lockInput').focus(); return;
+    }
+    await afterUnlock();
+    toast('Recovered. Set a new passphrase in Settings now.');
+    setTimeout(()=>{ $('syncOv').classList.add('open'); $('ppNew').focus(); }, 700);
+    return;
+  }
+
+  const ok = await openWithPassphrase(pass);
   $('lockBtn').disabled=false; $('lockBtn').textContent='Unlock';
   if(!ok){
-    cryptoKey = null;
+    masterKey = null;
     $('lockErr').textContent='Incorrect passphrase.';
-    const c=$('lockCard'); c.classList.add('shake'); setTimeout(()=>c.classList.remove('shake'),400);
+    const cd=$('lockCard'); cd.classList.add('shake'); setTimeout(()=>cd.classList.remove('shake'),400);
     $('lockInput').value=''; $('lockInput').focus();
     return;
   }
   await afterUnlock();
+  if(pendingRecoveryCode){
+    const code = pendingRecoveryCode; pendingRecoveryCode = null;
+    showRecoveryCode(code, 'Save your recovery code');
+  }
 }
+
+/* Shown once, after setup or regeneration. This is the only time it exists in
+   readable form — the Sheet only ever holds the wrapped version. */
+function showRecoveryCode(code, title){
+  $('rcTitle').textContent = title;
+  $('rcValue').textContent = code;
+  $('rcAck').checked = false;
+  $('rcDone').disabled = true;
+  $('rcOv').classList.add('open');
+}
+$('rcAck').addEventListener('change', ()=> $('rcDone').disabled = !$('rcAck').checked);
+$('rcDone').addEventListener('click', ()=> $('rcOv').classList.remove('open'));
+$('rcCopy').addEventListener('click', async ()=>{
+  try{ await navigator.clipboard.writeText($('rcValue').textContent); toast('Copied.'); }
+  catch(e){ toast('Select the code and copy it manually.'); }
+});
+$('rcPrint').addEventListener('click', ()=>{
+  const w = window.open('', '_blank');
+  if(!w){ toast('Allow pop-ups to print.'); return; }
+  w.document.write('<pre style="font:16px/1.8 monospace;padding:40px">'+
+    'REGISTER — RECOVERY CODE\n\n' + $('rcValue').textContent +
+    '\n\nGenerated ' + new Date().toLocaleString('en-IN') +
+    '\n\nKeep this on paper, somewhere safe.\nIt is the only way back in if you forget your passphrase.</pre>');
+  w.document.close(); w.print();
+});
+
 $('lockBtn').addEventListener('click', submitLock);
 $('lockInput').addEventListener('keydown', e=>{
   if(e.key==='Enter'){ if(lockMode==='set') $('lockConfirm').focus(); else submitLock(); }
@@ -2660,19 +3009,6 @@ $('lockSync').addEventListener('click', ()=>{
   $('syncMsg').textContent = 'Connect, then enter the passphrase you already use.';
   $('syncOv').classList.add('open');
   setTimeout(()=> $('syncUrl').focus(), 40);
-});
-$('lockReset').addEventListener('click', ()=>{
-  const warn = 'This DESTROYS all encrypted data on this device permanently.\n\n' +
-    'There is no recovery — not by me, not by Anthropic, not by Google.\n\n' +
-    'Type ERASE to confirm.';
-  const ans = prompt(warn);
-  if(ans !== 'ERASE') return;
-  localStorage.removeItem(LS+'verify'); localStorage.removeItem(LS+'salt');
-  localStorage.removeItem(LS+'recs'); localStorage.removeItem(LS+'bioKey');
-  localStorage.removeItem(LS+'bioId'); localStorage.removeItem(LS+'lastSync');
-  records = {}; cryptoKey = null;
-  alert('Local data erased. Anything already in your Sheet stays there but can no longer be read.');
-  initLock();
 });
 
 /* ---------- misc UI wiring ---------- */
