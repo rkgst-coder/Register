@@ -417,6 +417,8 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 .note-swatches{display:flex;gap:7px;margin-bottom:12px}
 .note-body{width:100%;min-height:300px;font-size:15px;line-height:1.7;padding:14px;
   border:1px solid var(--line-strong);border-radius:2px;outline:none;resize:vertical}
+#noteOv .ov-card.full{max-width:100%;width:100%;height:100%;max-height:100%;border-radius:0}
+#noteOv .ov-card.full #enBody,#noteOv .ov-card.full #enPreview{min-height:calc(100vh - 280px)}
 .md-preview{min-height:300px;padding:14px;border:1px solid var(--line-strong);border-radius:2px;
   font-size:15px;line-height:1.7;overflow-wrap:break-word}
 .md-preview h1,.md-preview h2,.md-preview h3{font-family:'Source Serif 4',serif;margin:.7em 0 .35em}
@@ -525,7 +527,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 .bar-track{height:9px;background:var(--line);border-radius:5px;overflow:hidden}
 .bar-fill{height:100%;border-radius:5px;transition:width .4s}
 .bar-fill.over{background:var(--neg)!important}
-.fin-row{display:flex;align-items:center;gap:11px;padding:12px 15px;border-bottom:1px solid var(--line);
+.fin-row{display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding:12px 15px;border-bottom:1px solid var(--line);
   border-left:3px solid transparent;cursor:pointer}
 .fin-row:last-child{border-bottom:none}
 .fin-row:hover{background:rgba(128,128,128,.05)}
@@ -539,6 +541,8 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 .fr-amt{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;flex:none}
 .fr-amt.pos{color:var(--pos)}.fr-amt.neg{color:var(--neg)}
 .fr-amt.neutral{color:var(--ink-soft)}
+.udh-amt{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:6px 8px;width:90px;flex:none;
+  border:1px solid var(--line-strong);border-radius:3px;background:var(--field-bg,var(--card));color:var(--ink)}
 
 /* ============================================================
    SEARCH / TRASH / LOCK
@@ -964,6 +968,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <input type="text" class="edit-title" id="enTitle" placeholder="Untitled note"
              style="margin-bottom:0" aria-label="Note title">
       <span class="saved-flag" id="noteSaved">saved ✓</span>
+      <button class="ov-close" id="enFullToggle" title="Full-screen editing" aria-label="Toggle full-screen">⛶</button>
       <button class="ov-close" id="noteOvClose" aria-label="Close">✕</button>
     </div>
     <div class="note-swatches" id="enSwatches"></div>
@@ -987,6 +992,8 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <button class="md-btn" data-md="quote" title="Quote">❝</button>
       <button class="md-btn" data-md="code" title="Code">&lt;/&gt;</button>
       <button class="md-btn" data-md="link" title="Link">🔗</button>
+      <button class="md-btn" id="enUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
+      <button class="md-btn" id="enRedo" title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
       <div class="spacer"></div>
       <button class="md-btn" id="enAddImg" title="Add an image">🖼 Image</button>
       <input type="file" id="enImgFile" accept="image/*" multiple style="display:none">
@@ -1050,6 +1057,7 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
         <option>Other</option></select></div>
       <div class="field"><label for="efDate">Date</label><input type="date" id="efDate"></div>
       <div class="field"><label for="efWho">Person</label><input type="text" id="efWho" placeholder="For udhaar"></div>
+      <div class="field"><label for="efPaid">Paid so far ₹ (udhaar)</label><input type="number" id="efPaid" step="0.01" placeholder="0"></div>
       <div class="field"><label for="efSettled">Settled?</label><select id="efSettled">
         <option value="no">Outstanding</option><option value="yes">Settled</option></select></div>
     </div>
@@ -1256,6 +1264,32 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <p style="font-size:12px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5">
       Your Apps Script Web App URL and token. Everything is encrypted in this browser before it is sent —
       the Sheet only ever holds ciphertext.</p>
+
+    <div class="flabel" style="margin-bottom:8px">Preferences</div>
+    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
+      margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="prefQcOn" style="width:auto">
+      <span>Show the "Jot something down" popup when the app opens</span>
+    </label>
+    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
+      margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="prefSubsExpand" style="width:auto">
+      <span>Show every task's steps expanded by default</span>
+    </label>
+    <label style="display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink-soft);
+      margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="prefNoteFull" style="width:auto">
+      <span>Open notes in full-screen editing view</span>
+    </label>
+    <div class="field" style="margin-bottom:4px"><label for="prefDefaultView">Page to open on startup</label>
+      <select id="prefDefaultView">
+        <option value="tasks">Tasks</option>
+        <option value="notes">Notes</option>
+        <option value="dates">Dates</option>
+        <option value="docs">Documents</option>
+      </select></div>
+
+    <div style="border-top:1px solid var(--line);margin-top:20px;padding-top:16px"></div>
     <!-- ---- keyless mode: device key + pairing ---- -->
     <div id="keylessSection" style="display:none">
     <div class="flabel" style="margin-bottom:8px">Device key</div>
@@ -1407,6 +1441,16 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <div style="margin-top:4px">Records: <span id="recCount">0</span></div>
     </div>
   </div>
+</div>
+
+<!-- ========== IMAGE LIGHTBOX ========== -->
+<div class="ov" id="imgLightbox" style="z-index:960;background:rgba(6,8,10,.92);padding:0">
+  <button class="ov-close" id="imgLightboxClose" aria-label="Close image"
+    style="position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:16px;
+    font-size:26px;color:#fff;z-index:2;background:rgba(0,0,0,.35);border-radius:50%;
+    width:40px;height:40px;line-height:1;">✕</button>
+  <img id="imgLightboxImg" src="" alt="attachment"
+    style="max-width:94vw;max-height:92vh;object-fit:contain;border-radius:2px">
 </div>
 
 <!-- ========== GLOBAL SEARCH ========== -->
@@ -2168,8 +2212,14 @@ function taskHtml(t, showCat){
   // earliest still-open step with a date — the thing actually due next
   const nextSub = subs.filter(s=>!s.done && s.dueDate)
                       .sort((a,b)=> a.dueDate.localeCompare(b.dueDate))[0];
-  // An overdue step is worth surfacing without being asked.
-  const open = expandedTasks.has(t.id) || (lateSubs > 0 && !expandedTasks.has('!'+t.id));
+  // Steps are expanded by default (see Settings → Preferences); '!id' records
+  // a deliberate collapse so it doesn't spring back open on every render. In
+  // the opposite (collapsed-by-default) mode, an overdue step still surfaces
+  // itself without being asked.
+  const collapsedDefault = localStorage.getItem(LS+'subsCollapsed') === '1';
+  const open = collapsedDefault
+    ? (expandedTasks.has(t.id) || (lateSubs > 0 && !expandedTasks.has('!'+t.id)))
+    : !expandedTasks.has('!'+t.id);
   return `<div class="task prio-${t.priority} ${t.status==='done'?'done':''} ${od?'overdue':''}"
        data-id="${t.id}" draggable="true">
     <div class="check ${t.status==='done'?'checked':''} ${t.status==='inprogress'?'inprog':''}"
@@ -2744,9 +2794,18 @@ function openNote(id, selectTitle){
   $('folderList').innerHTML = folderList().map(f=>`<option value="${esc(f)}">`).join('');
   renderDocLinks();
   renderNoteImgs();
+  const full = localStorage.getItem(LS+'noteFullDefault') === '1';
+  $('noteOv').querySelector('.ov-card').classList.toggle('full', full);
+  $('enFullToggle').textContent = full ? '⤡' : '⛶';
+  resetNoteUndo();
   $('noteOv').classList.add('open');
   setTimeout(()=>{ const t=$('enTitle'); t.focus(); if(selectTitle) t.select(); }, 40);
 }
+$('enFullToggle').addEventListener('click', ()=>{
+  const card = $('noteOv').querySelector('.ov-card');
+  const full = card.classList.toggle('full');
+  $('enFullToggle').textContent = full ? '⤡' : '⛶';
+});
 function enSave(){
   const n = records[openNoteId]; if(!n) return;
   n.title = $('enTitle').value; n.text = $('enBody').value;
@@ -2757,7 +2816,7 @@ function enSave(){
 }
 function enQueue(){ clearTimeout(enTimer); enTimer = setTimeout(enSave, 450); }
 $('enTitle').addEventListener('input', enQueue);
-$('enBody').addEventListener('input', enQueue);
+$('enBody').addEventListener('input', ()=>{ enQueue(); noteUndoOnType(); });
 $('enFolder').addEventListener('input', enQueue);
 $('enBody').addEventListener('paste', e=>{
   const imgs = [...(e.clipboardData?.items||[])]
@@ -2914,7 +2973,7 @@ function addFin(){
         date:$('finDate').value||todayISO(),            // optional → defaults to today
         who:$('finWho').value.trim()||'',
         recurring: $('finRecur').checked,
-        settled:false, createdAt:nowMs(), deleted:false });
+        paidAmount:0, settled:false, createdAt:nowMs(), deleted:false });
   $('finDesc').value=''; $('finAmt').value=''; $('finWho').value=''; $('finRecur').checked=false;
   toast('Recorded.');
 }
@@ -2945,9 +3004,11 @@ function renderFinance(){
   const inSum  = month.filter(e=>e.kind==='income').reduce((s,e)=>s+e.amount,0);
   const outSum = month.filter(e=>e.kind==='expense').reduce((s,e)=>s+e.amount,0);
   const net = inSum-outSum;
-  // Udhaar is all-time, not month-bound: lent (owed to you) minus borrowed (you owe)
-  const lent = entries.filter(e=>e.kind==='lent' && !e.settled).reduce((s,e)=>s+e.amount,0);
-  const borrowed = entries.filter(e=>e.kind==='borrowed' && !e.settled).reduce((s,e)=>s+e.amount,0);
+  // Udhaar is all-time, not month-bound: lent (owed to you) minus borrowed (you owe).
+  // Outstanding = amount minus whatever has already been paid back partially.
+  const outstandingOf = e => Math.max(0, e.amount - (e.paidAmount||0));
+  const lent = entries.filter(e=>e.kind==='lent' && !e.settled).reduce((s,e)=>s+outstandingOf(e),0);
+  const borrowed = entries.filter(e=>e.kind==='borrowed' && !e.settled).reduce((s,e)=>s+outstandingOf(e),0);
   const udh = lent-borrowed;
 
   $('finIn').textContent = fmtMoney(inSum);
@@ -2980,19 +3041,37 @@ function renderFinance(){
   // outstanding udhaar
   const open = entries.filter(e=>(e.kind==='lent'||e.kind==='borrowed') && !e.settled);
   $('udhaarPanel').style.display = open.length ? '' : 'none';
-  $('udhaarList').innerHTML = open.map(e=>`
+  $('udhaarList').innerHTML = open.map(e=>{
+    const paid = e.paidAmount||0, rem = outstandingOf(e);
+    return `
     <div class="fin-row ${e.kind}" data-fin="${e.id}">
       <span class="fr-date">${fmtDate(e.date)}</span>
-      <span class="fr-desc">${esc(e.who||'—')} · ${esc(e.desc)}</span>
+      <span class="fr-desc">${esc(e.who||'—')} · ${esc(e.desc)}${paid>0?` · ${fmtMoney(paid)} paid so far`:''}</span>
       <span class="pill">${e.kind==='lent'?'they owe you':'you owe'}</span>
-      <span class="fr-amt ${e.kind==='lent'?'pos':'neg'}">${fmtMoney(e.amount)}</span>
+      <span class="fr-amt ${e.kind==='lent'?'pos':'neg'}">${fmtMoney(rem)}</span>
+      <input type="number" class="udh-amt" data-udhamt="${e.id}" step="0.01"
+        placeholder="${rem}" aria-label="Payment amount" title="Amount received/paid — leave blank to settle in full">
       <button class="btn ghost small" data-settle="${e.id}">Settle</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   $('udhaarList').querySelectorAll('[data-settle]').forEach(b=> b.addEventListener('click', e=>{
-    e.stopPropagation(); const r = records[b.dataset.settle]; r.settled = true; put(r); toast('Marked settled.');
+    e.stopPropagation();
+    const id = b.dataset.settle, r = records[id]; if(!r) return;
+    const row = b.closest('.fin-row');
+    const input = row ? row.querySelector('[data-udhamt]') : null;
+    const rem = outstandingOf(r);
+    let amt = parseFloat(input && input.value);
+    if(isNaN(amt) || amt<=0) amt = rem;         // blank/invalid → settle the rest in full
+    amt = Math.min(amt, rem);                   // never let a payment overshoot what's owed
+    r.paidAmount = +(((r.paidAmount||0) + amt).toFixed(2));
+    if(r.paidAmount >= r.amount - 0.005){ r.paidAmount = r.amount; r.settled = true; }
+    put(r);
+    toast(r.settled
+      ? 'Marked settled.'
+      : `Partial payment of ${fmtMoney(amt)} recorded — ${fmtMoney(r.amount - r.paidAmount)} still outstanding.`);
   }));
   $('udhaarList').querySelectorAll('[data-fin]').forEach(r=> r.addEventListener('click', e=>{
-    if(e.target.closest('button')) return; openFin(r.dataset.fin);
+    if(e.target.closest('button')||e.target.closest('input')) return; openFin(r.dataset.fin);
   }));
 
   // ledger for the visible month
@@ -3000,11 +3079,14 @@ function renderFinance(){
   $('finLedger').innerHTML = sorted.length ? sorted.map(e=>{
     const sign = e.kind==='income'?'+':e.kind==='expense'?'−':'';
     const cls = e.kind==='income'?'pos':e.kind==='expense'?'neg':'neutral';
+    const isUdhaar = e.kind==='lent'||e.kind==='borrowed';
+    const partiallyPaid = isUdhaar && !e.settled && (e.paidAmount||0) > 0;
     return `<div class="fin-row ${e.kind} ${e.settled?'settled':''}" data-fin="${e.id}">
       <span class="fr-date">${fmtDate(e.date)}</span>
       <span class="fr-desc">${esc(e.desc)}${e.who?` · ${esc(e.who)}`:''}</span>
       ${e.category?`<span class="pill">${e.category}</span>`:''}
       ${e.recurring?'<span class="pill">monthly</span>':''}
+      ${partiallyPaid?`<span class="pill">${fmtMoney(e.paidAmount)} paid</span>`:''}
       <span class="fr-amt ${cls}">${sign}${fmtMoney(e.amount)}</span>
     </div>`;
   }).join('') : '<div class="empty"><b>Nothing this month</b>Record an entry above, or use ‹ › to change month.</div>';
@@ -3017,7 +3099,8 @@ function openFin(id){
   openFinId = id;
   $('efDesc').value = e.desc; $('efAmt').value = e.amount; $('efType').value = e.kind;
   $('efCat').value = e.category||''; $('efDate').value = e.date||'';
-  $('efWho').value = e.who||''; $('efSettled').value = e.settled?'yes':'no';
+  $('efWho').value = e.who||''; $('efPaid').value = e.paidAmount||0;
+  $('efSettled').value = e.settled?'yes':'no';
   $('finOv').classList.add('open');
 }
 $('finOvClose').addEventListener('click', ()=> $('finOv').classList.remove('open'));
@@ -3027,7 +3110,9 @@ $('efSave').addEventListener('click', ()=>{
   e.amount = parseFloat($('efAmt').value)||e.amount;
   e.kind = $('efType').value; e.category = $('efCat').value;
   e.date = $('efDate').value || e.date; e.who = $('efWho').value.trim();
+  e.paidAmount = Math.max(0, Math.min(parseFloat($('efPaid').value)||0, e.amount));
   e.settled = $('efSettled').value==='yes';
+  if(e.settled) e.paidAmount = e.amount;         // fully settled always means fully paid
   put(e); $('finOv').classList.remove('open'); toast('Saved.');
 });
 $('efDelete').addEventListener('click', ()=>{
@@ -3054,9 +3139,10 @@ function rollRecurring(){
 }
 
 $('finCsvBtn').addEventListener('click', ()=>{
-  const rows = [['Date','Description','Type','Category','Person','Amount','Settled']];
+  const rows = [['Date','Description','Type','Category','Person','Amount','Paid','Outstanding','Settled']];
   all('fin').sort((a,b)=>(a.date||'').localeCompare(b.date||''))
-    .forEach(e=> rows.push([e.date, e.desc, e.kind, e.category||'', e.who||'', e.amount, e.settled?'yes':'no']));
+    .forEach(e=> rows.push([e.date, e.desc, e.kind, e.category||'', e.who||'', e.amount,
+      e.paidAmount||0, +(e.amount-(e.paidAmount||0)).toFixed(2), e.settled?'yes':'no']));
   const csv = rows.map(r=> r.map(c=> `"${String(c==null?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');
   dl(new Blob([csv],{type:'text/csv'}), 'register-ledger-'+todayISO()+'.csv');
   toast('CSV exported.');
@@ -3501,19 +3587,92 @@ function renderNoteImgs(){
   }));
   wrap.querySelectorAll('img[data-full]').forEach(im=> im.addEventListener('click', ()=>{
     if(!im.src) return;
-    const w = window.open('');
-    if(w) w.document.write('<img src="'+im.src+'" style="max-width:100%">');
+    openImageLightbox(im.src);
   }));
 }
+/* In-app viewer instead of window.open(): on a browser tab, a new tab is fine,
+   but wrapped as a mobile app it opens full-screen with no chrome and no way
+   back. This overlay always has its own close button and works either way. */
+function openImageLightbox(src){
+  $('imgLightboxImg').src = src;
+  $('imgLightbox').classList.add('open');
+}
+function closeImageLightbox(){
+  $('imgLightbox').classList.remove('open');
+  $('imgLightboxImg').src = '';
+}
+$('imgLightboxClose').addEventListener('click', closeImageLightbox);
 $('enAddImg').addEventListener('click', ()=> $('enImgFile').click());
 $('enImgFile').addEventListener('change', e=>{
   if(e.target.files.length) attachImages([...e.target.files]);
   e.target.value='';
 });
 
-/* ---- markdown toolbar ---- */
+/* ---- markdown toolbar ----
+   Clicking a toolbar button normally steals focus from the textarea first,
+   which on many browsers/webviews collapses the selection to the end of the
+   text — so the "bold" markers landed at the bottom of the note and the view
+   jumped there with them. Blocking the default mousedown/touchstart keeps
+   focus (and the real selection) on the textarea the whole time. */
+document.querySelectorAll('.md-btn').forEach(b=>{
+  b.addEventListener('mousedown', e=> e.preventDefault());
+  b.addEventListener('touchstart', e=> e.preventDefault(), { passive:false });
+});
+
+/* ---- undo / redo ----
+   Rewriting ta.value directly (the old approach) wipes the browser's native
+   undo history, which is also why Ctrl+Z stopped doing anything useful after
+   using a toolbar button. This keeps its own small history instead, so Undo
+   works the same way regardless of browser/webview quirks. Rapid typing is
+   coalesced into one step (committed after a short pause); each toolbar
+   action is always its own step. */
+let noteUndoStack = [], noteRedoStack = [], noteUndoTimer = null, noteUndoPrev = '';
+function resetNoteUndo(){
+  noteUndoStack = []; noteRedoStack = [];
+  noteUndoPrev = $('enBody').value;
+  clearTimeout(noteUndoTimer);
+}
+function noteUndoPush(beforeValue){
+  noteUndoStack.push(beforeValue);
+  if(noteUndoStack.length > 100) noteUndoStack.shift();
+  noteRedoStack = [];
+}
+function noteUndoCommitNow(){
+  clearTimeout(noteUndoTimer);
+  const v = $('enBody').value;
+  if(v !== noteUndoPrev){ noteUndoPush(noteUndoPrev); noteUndoPrev = v; }
+}
+function noteUndoOnType(){
+  clearTimeout(noteUndoTimer);
+  noteUndoTimer = setTimeout(()=>{
+    const v = $('enBody').value;
+    if(v !== noteUndoPrev){ noteUndoPush(noteUndoPrev); noteUndoPrev = v; }
+  }, 500);
+}
+function doNoteUndo(){
+  noteUndoCommitNow();
+  if(!noteUndoStack.length) return;
+  const ta = $('enBody'), cur = ta.value, prev = noteUndoStack.pop();
+  noteRedoStack.push(cur);
+  ta.value = prev; noteUndoPrev = prev;
+  ta.focus(); ta.setSelectionRange(prev.length, prev.length);
+  enQueue();
+}
+function doNoteRedo(){
+  if(!noteRedoStack.length) return;
+  const ta = $('enBody'), cur = ta.value, next = noteRedoStack.pop();
+  noteUndoStack.push(cur);
+  ta.value = next; noteUndoPrev = next;
+  ta.focus(); ta.setSelectionRange(next.length, next.length);
+  enQueue();
+}
+$('enUndo').addEventListener('click', doNoteUndo);
+$('enRedo').addEventListener('click', doNoteRedo);
+
 function wrapSel(before, after, blockPrefix){
   const ta = $('enBody');
+  noteUndoCommitNow();
+  const beforeVal = ta.value;
   const s = ta.selectionStart, e = ta.selectionEnd;
   const sel = ta.value.slice(s, e);
   let ins;
@@ -3523,9 +3682,11 @@ function wrapSel(before, after, blockPrefix){
   } else {
     ins = before + (sel || 'text') + after;
   }
-  ta.value = ta.value.slice(0,s) + ins + ta.value.slice(e);
   ta.focus();
-  ta.selectionStart = s; ta.selectionEnd = s + ins.length;
+  // setRangeText replaces just the selection in place (no full-value reset,
+  // no scroll jump) and 'select' re-highlights the inserted text, same as before.
+  ta.setRangeText(ins, s, e, 'select');
+  if(ta.value !== beforeVal){ noteUndoPush(beforeVal); noteUndoPrev = ta.value; }
   enQueue();
 }
 document.querySelectorAll('.md-btn[data-md]').forEach(b=> b.addEventListener('click', ()=>{
@@ -3540,6 +3701,20 @@ document.querySelectorAll('.md-btn[data-md]').forEach(b=> b.addEventListener('cl
   else if(k==='code') wrapSel('`','`');
   else if(k==='link') wrapSel('[','](https://)');
 }));
+
+/* ---- keyboard shortcuts, scoped to the note body so they don't clash with
+   the app's global single-key shortcuts ---- */
+$('enBody').addEventListener('keydown', e=>{
+  const mod = e.ctrlKey || e.metaKey;
+  if(!mod) return;
+  const k = e.key.toLowerCase();
+  if(k==='b'){ e.preventDefault(); wrapSel('**','**'); }
+  else if(k==='i'){ e.preventDefault(); wrapSel('*','*'); }
+  else if(k==='k'){ e.preventDefault(); wrapSel('[','](https://)'); }
+  else if(k==='z' && e.shiftKey){ e.preventDefault(); doNoteRedo(); }
+  else if(k==='z'){ e.preventDefault(); doNoteUndo(); }
+  else if(k==='y'){ e.preventDefault(); doNoteRedo(); }
+});
 
 /* ---- document linking ---- */
 function renderDocLinks(){
@@ -3987,6 +4162,10 @@ applyTheme(localStorage.getItem(LS+'theme') || 'light');
 $('syncBtn').addEventListener('click', ()=>{
   $('syncUrl').value = cloud.url; $('syncToken').value = cloud.token;
   $('syncMsg').textContent=''; updateSyncInfo();
+  $('prefQcOn').checked = localStorage.getItem(LS+'qcOff') !== '1';
+  $('prefSubsExpand').checked = localStorage.getItem(LS+'subsCollapsed') !== '1';
+  $('prefNoteFull').checked = localStorage.getItem(LS+'noteFullDefault') === '1';
+  $('prefDefaultView').value = localStorage.getItem(LS+'defaultView') || 'tasks';
   // Only reveal the Financial code controls once that section is already open —
   // otherwise Settings would betray that the section exists at all.
   $('finCodeSection').style.display = financeUnlocked ? '' : 'none';
@@ -4465,7 +4644,7 @@ async function afterUnlock(){
   if(purgeOldTrash()) await persistLocal();
   loadCloudCfg();
   $('hintInput').value = metaCache.hint || '';
-  showView('tasks');
+  showView(localStorage.getItem(LS+'defaultView') || 'tasks');
   resetIdle();
   if(localStorage.getItem(LS+'qcOff') !== '1') setTimeout(openQC, 600);
   await pullCloud();
@@ -4665,6 +4844,21 @@ $('decoyOn').addEventListener('change', ()=>{
 $('decoyIdle').addEventListener('change', ()=>{
   localStorage.setItem(LS+'decoyIdle', $('decoyIdle').checked ? '1' : '0');
   resetIdle();
+});
+
+/* ---------- general preferences ---------- */
+$('prefQcOn').addEventListener('change', ()=>{
+  localStorage.setItem(LS+'qcOff', $('prefQcOn').checked ? '0' : '1');
+});
+$('prefSubsExpand').addEventListener('change', ()=>{
+  localStorage.setItem(LS+'subsCollapsed', $('prefSubsExpand').checked ? '0' : '1');
+  renderTasks();
+});
+$('prefNoteFull').addEventListener('change', ()=>{
+  localStorage.setItem(LS+'noteFullDefault', $('prefNoteFull').checked ? '1' : '0');
+});
+$('prefDefaultView').addEventListener('change', ()=>{
+  localStorage.setItem(LS+'defaultView', $('prefDefaultView').value);
 });
 
 /* ---------- Drive image storage ---------- */
