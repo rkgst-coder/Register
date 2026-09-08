@@ -152,6 +152,20 @@ h1{font-family:'Source Serif 4',serif;font-weight:700;font-size:clamp(26px,4vw,3
 .hbtn:hover{color:var(--brass);border-color:var(--brass)}
 .secret-trigger{cursor:default;user-select:none;-webkit-user-select:none}
 
+/* universal search — always on screen, above every view's own heading, so it
+   doesn't hide behind a small icon among the other header buttons */
+.universal-search-bar{display:flex;align-items:center;gap:10px;margin-bottom:16px;
+  padding:12px 16px;border:1px solid var(--line-strong);border-radius:24px;
+  background:var(--card);box-shadow:var(--shadow);cursor:text}
+.universal-search-bar:focus-within{border-color:var(--brass)}
+.universal-search-bar .usb-icon{font-size:15px;color:var(--ink-faint);flex:none}
+.universal-search-bar input{flex:1;border:none;outline:none;background:transparent;
+  font-size:14.5px;color:var(--ink);font-family:inherit;min-width:0}
+.universal-search-bar input::placeholder{color:var(--ink-faint)}
+.universal-search-bar .usb-hint{flex:none;font-family:'IBM Plex Mono',monospace;font-size:10.5px;
+  color:var(--ink-faint);border:1px solid var(--line-strong);border-radius:4px;padding:2px 6px}
+@media(max-width:640px){ .universal-search-bar .usb-hint{display:none} }
+
 /* ============================================================
    TOOLBAR / TABS
    ============================================================ */
@@ -429,6 +443,13 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
 .md-preview ul,.md-preview ol{padding-left:1.4em;margin:.5em 0}
 .md-preview a{color:var(--brass)}
 .md-preview blockquote{border-left:3px solid var(--brass-soft);margin:.6em 0;padding-left:12px;color:var(--ink-soft)}
+/* the read-only note preview: a calmer, document-like reading layout —
+   closer to a word processor page than a plain markdown dump */
+.md-preview.note-doc{border:none;padding:4px 2px 0;min-height:120px;font-size:15.5px;
+  line-height:1.75;font-family:'Source Serif 4',serif;color:var(--ink)}
+.md-preview.note-doc p{margin:0 0 .9em}
+.md-preview.note-doc li{margin:.25em 0}
+.md-preview.note-doc h1,.md-preview.note-doc h2,.md-preview.note-doc h3{margin:.9em 0 .4em}
 
 /* notes: folders, chips, images, toolbar */
 .folder-bar{display:flex;gap:5px;margin-top:14px;overflow-x:auto;padding-bottom:2px}
@@ -667,11 +688,18 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
     <div class="spacer"></div>
     <span class="offline-badge" id="offlineBadge" style="display:none">offline</span>
     <div class="cloud-status" id="cloudStatus"><span class="cloud-dot"></span><span id="cloudStatusText">Local only</span></div>
-    <button class="hbtn" id="searchBtn" title="Search (press /)" aria-label="Search everything">🔍</button>
     <button class="hbtn" id="themeBtn" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
     <button class="hbtn" id="syncBtn" title="Sync settings" aria-label="Sync settings">⚙</button>
     <button class="hbtn" id="lockNowBtn" title="Lock now" aria-label="Lock the app now">🔒</button>
   </div>
+
+  <!-- ========== UNIVERSAL SEARCH (always visible, above every view's heading) ========== -->
+  <label class="universal-search-bar" id="universalSearchBar" for="universalSearchInput">
+    <span class="usb-icon">🔍</span>
+    <input type="text" id="universalSearchInput" placeholder="Search tasks, notes, dates, ledger…"
+           aria-label="Search everything" autocomplete="off">
+    <span class="usb-hint">/</span>
+  </label>
 
   <!-- ========== TASKS ========== -->
   <div id="taskView">
@@ -920,6 +948,24 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
   </div>
 </div>
 
+<!-- ========== TASK PREVIEW (read-only; tap it to edit) ========== -->
+<div class="ov" id="taskPreviewOv">
+  <div class="ov-card" style="max-width:600px;cursor:pointer" id="taskPreviewBody">
+    <div class="ov-head">
+      <h2 id="tpTitle" style="font-family:'Source Serif 4',serif;font-weight:600;font-size:20px;flex:1"></h2>
+      <button class="ov-close" id="taskPreviewClose" aria-label="Close">✕</button>
+    </div>
+    <div id="tpMeta" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+      font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft);margin-bottom:16px"></div>
+    <div id="tpSubsWrap"></div>
+    <div id="tpNotesWrap"></div>
+    <div class="edit-foot" style="margin-top:18px">
+      <span style="font-size:11.5px;color:var(--ink-faint);flex:1">Tap anywhere to edit</span>
+      <button class="btn small" id="tpEditBtn">✎ Edit</button>
+    </div>
+  </div>
+</div>
+
 <!-- ========== TASK EDIT MODAL ========== -->
 <div class="ov" id="taskOv">
   <div class="ov-card">
@@ -957,6 +1003,24 @@ html[data-theme="dark"] .note-c5{background:#1F2A36}
       <div class="spacer"></div>
       <button class="btn ghost small danger" id="etDelete">Delete</button>
       <button class="btn small" id="etDone">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== NOTE PREVIEW (read-only; tap it to edit) ========== -->
+<div class="ov" id="notePreviewOv">
+  <div class="ov-card" style="max-width:720px;cursor:pointer" id="notePreviewBody">
+    <div class="ov-head">
+      <h2 id="npTitle" style="flex:1"></h2>
+      <button class="ov-close" id="notePreviewClose" aria-label="Close">✕</button>
+    </div>
+    <div id="npMeta" style="margin:-10px 0 16px;font-family:'IBM Plex Mono',monospace;
+      font-size:11px;color:var(--ink-faint)"></div>
+    <div class="md-preview note-doc" id="npBody"></div>
+    <div class="note-imgs" id="npImgs" style="margin-top:14px"></div>
+    <div class="edit-foot" style="margin-top:18px">
+      <span style="font-size:11.5px;color:var(--ink-faint);flex:1">Tap anywhere to edit</span>
+      <button class="btn small" id="npEditBtn">✎ Edit</button>
     </div>
   </div>
 </div>
@@ -2382,7 +2446,7 @@ function wireTasks(){
 
     el.addEventListener('click', e=>{
       if(e.target.closest('.task-subs') || e.target.closest('button')) return;
-      openTask(id);
+      previewTask(id);
     });
     el.addEventListener('dragstart', e=>{
       e.dataTransfer.setData('text/plain', id); el.classList.add('dragging');
@@ -2404,6 +2468,54 @@ function wireTasks(){
     });
   });
 }
+
+/* ============================================================================
+   TASK PREVIEW — read-only view opened by a first click; the preview itself
+   opens the real editor on a second click, so a quick glance never risks an
+   accidental edit.
+   ========================================================================== */
+let previewTaskId = null;
+function previewTask(id){
+  const t = records[id]; if(!t) return;
+  previewTaskId = id;
+  const subs = (t.subs||[]).map(normSub);
+  const doneSubs = subs.filter(s=>s.done).length;
+  $('tpTitle').textContent = t.title || '(untitled task)';
+  $('tpMeta').innerHTML = `
+    <span class="stamp" style="background:${catColor(t.category)}">${esc(t.category)}</span>
+    <span>${t.priority} priority</span>
+    ${t.dueDate?`<span>📅 ${fmtDate(t.dueDate)}${isOverdue(t)?' · overdue':isDueToday(t)?' · today':''}</span>`:''}
+    ${t.status==='inprogress'?'<span>◐ in progress</span>':''}
+    ${t.status==='done'?`<span>✓ done${t.completedOn?' '+fmtDate(t.completedOn):''}</span>`:''}
+    ${t.repeat&&t.repeat!=='none'?`<span>🔁 ${t.repeat}</span>`:''}`;
+  $('tpSubsWrap').innerHTML = subs.length ? `
+    <div class="flabel" style="margin-bottom:7px">Steps ${doneSubs}/${subs.length}</div>
+    ${subs.map((s,i)=> subRowHtml(s,i)).join('')}` : '';
+  $('tpSubsWrap').querySelectorAll('[data-tsub]').forEach(sc=> sc.addEventListener('click', e=>{
+    e.stopPropagation();
+    const i = +sc.dataset.tsub, tt = records[id]; if(!tt) return;
+    tt.subs = (tt.subs||[]).map(normSub);
+    if(!tt.subs[i]) return;
+    tt.subs[i].done = !tt.subs[i].done;
+    put(tt);
+    previewTask(id);
+  }));
+  $('tpNotesWrap').innerHTML = t.notes ? `
+    <div class="flabel" style="margin:16px 0 7px">Notes</div>
+    <div style="white-space:pre-wrap;font-size:14px;line-height:1.65;color:var(--ink-soft)">${esc(t.notes)}</div>` : '';
+  $('taskPreviewOv').classList.add('open');
+}
+$('taskPreviewClose').addEventListener('click', e=>{ e.stopPropagation(); $('taskPreviewOv').classList.remove('open'); });
+$('taskPreviewBody').addEventListener('click', e=>{
+  if(e.target.closest('#taskPreviewClose') || e.target.closest('[data-tsub]')) return;
+  $('taskPreviewOv').classList.remove('open');
+  openTask(previewTaskId);
+});
+$('tpEditBtn').addEventListener('click', e=>{
+  e.stopPropagation();
+  $('taskPreviewOv').classList.remove('open');
+  openTask(previewTaskId);
+});
 
 /* ============================================================================
    TASK EDIT MODAL
@@ -2755,7 +2867,7 @@ function noteCardHtml(n, dups){
 
 function wireNoteCards(board){
   board.querySelectorAll('.note-card').forEach(c=>{
-    c.addEventListener('click', e=>{ if(e.target.closest('button')) return; openNote(c.dataset.note); });
+    c.addEventListener('click', e=>{ if(e.target.closest('button')) return; previewNote(c.dataset.note); });
   });
   board.querySelectorAll('[data-npin]').forEach(b=> b.addEventListener('click', e=>{
     e.stopPropagation(); const n = records[b.dataset.npin]; n.pinned = !n.pinned; put(n);
@@ -2765,6 +2877,42 @@ function wireNoteCards(board){
     softDelete(id); toast(`Deleted "${(n.title||'note').slice(0,24)}".`, 'Undo', ()=> restore(id));
   }));
 }
+
+/* ============================================================================
+   NOTE PREVIEW — read-only, nicely typeset rendering opened by a first click;
+   tapping the preview itself opens the real (markdown-source) editor.
+   ========================================================================== */
+let previewNoteId = null;
+function previewNote(id){
+  const n = records[id]; if(!n) return;
+  previewNoteId = id;
+  $('npTitle').textContent = n.title || '(untitled note)';
+  $('npMeta').textContent = [noteFolder(n), n.pinned?'📌 pinned':'', 'Edited '+timeAgo(n.updatedAt)]
+    .filter(Boolean).join(' · ');
+  $('npBody').innerHTML = n.text
+    ? md(n.text)
+    : '<p style="color:var(--ink-faint);font-style:italic">Empty note — tap to start writing.</p>';
+  const imgs = (n.imgs||[]).map(iid=> records[iid]).filter(b=> b && !b.deleted);
+  $('npImgs').innerHTML = imgs.map(b=>{
+    const inline = b.drive ? (driveCache.get(b.fileId) || '') : (b.data || '');
+    return inline ? `<div class="note-img"><img src="${inline}" data-full="${b.id}" alt="attachment"></div>` : '';
+  }).join('');
+  $('npImgs').querySelectorAll('img[data-full]').forEach(im=> im.addEventListener('click', e=>{
+    e.stopPropagation(); if(im.src) openImageLightbox(im.src);
+  }));
+  $('notePreviewOv').classList.add('open');
+}
+$('notePreviewClose').addEventListener('click', e=>{ e.stopPropagation(); $('notePreviewOv').classList.remove('open'); });
+$('notePreviewBody').addEventListener('click', e=>{
+  if(e.target.closest('#notePreviewClose') || e.target.closest('.note-img') || e.target.closest('a')) return;
+  $('notePreviewOv').classList.remove('open');
+  openNote(previewNoteId);
+});
+$('npEditBtn').addEventListener('click', e=>{
+  e.stopPropagation();
+  $('notePreviewOv').classList.remove('open');
+  openNote(previewNoteId);
+});
 
 function newNote(prefillText, selectTitle){
   const text = prefillText||'';
@@ -3997,13 +4145,17 @@ $('qcClose').addEventListener('click', closeQC);
    GLOBAL SEARCH
    ========================================================================== */
 let searchSel = 0, searchHits = [];
-function openSearch(){
+function openSearch(prefill){
   $('searchOv').classList.add('open');
-  $('searchInput').value=''; $('searchResults').innerHTML='';
+  $('searchInput').value = prefill||''; $('searchResults').innerHTML='';
   searchHits=[]; searchSel=0;
+  if(prefill) runSearch();
   setTimeout(()=> $('searchInput').focus(), 40);
 }
-function closeSearch(){ $('searchOv').classList.remove('open'); }
+function closeSearch(){
+  $('searchOv').classList.remove('open');
+  $('universalSearchInput').value='';
+}
 function runSearch(){
   const q = $('searchInput').value.trim().toLowerCase();
   if(!q){ $('searchResults').innerHTML=''; searchHits=[]; return; }
@@ -4044,8 +4196,8 @@ function drawSearch(){
 function gotoHit(h){
   if(!h) return;
   closeSearch();
-  if(h.kind==='task'){ showView('tasks'); openTask(h.id); }
-  else if(h.kind==='note'){ showView('notes'); openNote(h.id); }
+  if(h.kind==='task'){ showView('tasks'); previewTask(h.id); }
+  else if(h.kind==='note'){ showView('notes'); previewNote(h.id); }
   else if(h.kind==='date'){ showView('dates'); openDate(h.id); }
   else if(h.kind==='doc'){ showView('docs'); openDoc(h.id); }
   else if(h.kind==='fin'){
@@ -4062,7 +4214,22 @@ $('searchInput').addEventListener('keydown', e=>{
   else if(e.key==='Enter'){ gotoHit(searchHits[searchSel]); }
 });
 $('searchOv').addEventListener('click', e=>{ if(e.target.id==='searchOv') closeSearch(); });
-$('searchBtn').addEventListener('click', openSearch);
+
+/* the always-visible bar above the headings is a lightweight trigger for the
+   same overlay/results logic — it just forwards what's typed */
+$('universalSearchInput').addEventListener('focus', ()=> openSearch($('universalSearchInput').value));
+$('universalSearchInput').addEventListener('input', ()=>{
+  const v = $('universalSearchInput').value;
+  if(!$('searchOv').classList.contains('open')) $('searchOv').classList.add('open');
+  $('searchInput').value = v;
+  runSearch();
+});
+$('universalSearchInput').addEventListener('keydown', e=>{
+  if(e.key==='ArrowDown'){ e.preventDefault(); searchSel=Math.min(searchSel+1, searchHits.length-1); drawSearch(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); searchSel=Math.max(searchSel-1,0); drawSearch(); }
+  else if(e.key==='Enter'){ gotoHit(searchHits[searchSel]); }
+  else if(e.key==='Escape'){ $('universalSearchInput').blur(); closeSearch(); }
+});
 
 /* ============================================================================
    VIEWS
