@@ -1,13 +1,14 @@
 {
-  "name": "Register — Daily Task Ledger",
+  "id": "./",
+  "name": "Register",
   "short_name": "Register",
-  "description": "Private task, note, date and financial register.",
+  "description": "Tasks, notes, dates, documents and a private ledger.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
   "background_color": "#F2EEE3",
-  "theme_color": "#1C2B39",
+  "theme_color": "#F2EEE3",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

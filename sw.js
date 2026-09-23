@@ -1,43 +1,38 @@
-/* Register service worker — caches the app shell so it opens instantly and
-   works with no network. Data itself lives in localStorage (encrypted) and
-   syncs to the Sheet when a connection is available.
-   Bump CACHE when you deploy a new index.html. */
-const CACHE = 'register-v23';
-const SHELL = [
-  './', './index.html', './manifest.json',
-  './icon-192.png', './icon-512.png', './icon-180.png'
-];
+/* Register service worker — app shell offline.
+   The page itself is fetched network-first (so a new version shows on the
+   next launch, not the one after); icons are cache-first. The Apps Script
+   API is never cached. Bump CACHE with every deploy. */
+const CACHE = 'register-v2.0.0';
+const SHELL = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
 
-self.addEventListener('install', e=>{
-  e.waitUntil(caches.open(CACHE).then(c=> c.addAll(SHELL)).then(()=> self.skipWaiting()));
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));
 });
-
-self.addEventListener('activate', e=>{
-  e.waitUntil(
-    caches.keys().then(keys=> Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-      .then(()=> self.clients.claim())
-  );
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
-
-self.addEventListener('fetch', e=>{
-  const url = new URL(e.request.url);
-  // Never cache the data API or the AI endpoint — always go to network.
-  if(url.hostname.includes('script.google.com') || url.hostname.includes('api.anthropic.com')){
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;              // script.google.com etc. go straight to the network
+  const isPage = req.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('index.html');
+  if (isPage) {
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 3500);
+        const res = await fetch(req, { signal: ctl.signal, cache: 'no-cache' }); clearTimeout(t);
+        if (res.ok) cache.put('./index.html', res.clone());
+        return res;
+      } catch (err) {
+        return (await cache.match('./index.html')) || (await cache.match('./')) || Response.error();
+      }
+    })());
     return;
   }
-  if(e.request.method !== 'GET') return;
-
-  // App shell: cache first, refresh in background.
-  e.respondWith(
-    caches.match(e.request).then(hit=>{
-      const net = fetch(e.request).then(res=>{
-        if(res && res.status===200 && res.type==='basic'){
-          const copy = res.clone();
-          caches.open(CACHE).then(c=> c.put(e.request, copy));
-        }
-        return res;
-      }).catch(()=> hit);
-      return hit || net;
-    })
-  );
+  e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
+    if (res.ok && res.type === 'basic') { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
+    return res;
+  })));
 });
