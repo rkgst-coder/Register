@@ -866,7 +866,7 @@ input.sw{width:51px;min-width:51px;height:31px;padding:0;border:none;margin:0;fl
 
       <div class="group-title">Sync — Google Sheet</div>
       <div class="group" style="padding:14px">
-        <div class="field"><label>Web App URL</label><input id="setUrl" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off"></div>
+        <div class="field"><label>Deployment ID or Web App URL</label><input id="setUrl" placeholder="Deployment ID or the …/exec URL" autocapitalize="off" autocorrect="off"></div>
         <div class="field"><label>Token</label><input id="setToken" type="password" autocapitalize="off" autocorrect="off"></div>
         <div class="btn-row" style="margin-top:0"><button class="btn" id="setConnect">Connect</button><button class="btn ghost" id="setDisconnect">Disconnect</button></div>
         <div class="msg" id="setSyncMsg"></div>
@@ -925,7 +925,7 @@ input.sw{width:51px;min-width:51px;height:31px;padding:0;border:none;margin:0;fl
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.0.2';
+const APP_VERSION = '2.0.3';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -3402,7 +3402,8 @@ $('setStart').addEventListener('change', () => setPref('startTab', $('setStart')
 $('setSteps').addEventListener('change', () => { setPref('stepsOpen', $('setSteps').checked); openSteps.clear(); scheduleRender(); });
 $('setNoteEdit').addEventListener('change', () => setPref('noteEdit', $('setNoteEdit').checked));
 $('setConnect').addEventListener('click', async () => {
-  const url = $('setUrl').value.trim(), token = $('setToken').value.trim(), msg = $('setSyncMsg');
+  const url = normaliseScriptUrl($('setUrl').value), token = $('setToken').value.trim(), msg = $('setSyncMsg');
+  $('setUrl').value = url;
   if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url) && location.hostname !== 'localhost') { msg.className = 'msg err'; msg.textContent = 'That should be the https://script.google.com/macros/s/…/exec URL.'; return; }
   if (!token) { msg.className = 'msg err'; msg.textContent = 'Enter the token.'; return; }
   const oldUrl = prefs.cloudUrl;
@@ -3418,6 +3419,7 @@ $('setConnect').addEventListener('click', async () => {
     msg.textContent = 'Connected. Syncing…';
     const ok = await Sync.run();
     msg.className = 'msg ' + (ok ? 'ok' : 'err'); msg.textContent = ok ? 'Connected and synced.' : 'Connected, but the sync failed — see Download log.';
+    if (ok) { msg.textContent += ' Checking for data from the old version…'; const r = await autoMigrate(true); msg.textContent = r.text; msg.className = 'msg ' + (r.ok ? 'ok' : 'err'); }
   } catch (e) { msg.className = 'msg err'; msg.textContent = 'Could not connect: ' + e.message; RLOG.error('connect', e.message); }
 });
 $('setDisconnect').addEventListener('click', () => {
@@ -3514,7 +3516,7 @@ async function importRecords(arr, from) {
 }
 
 /* The previous version (v1) kept encrypted data in this browser's localStorage. */
-async function legacyKeyFrom(meta) {
+async function legacyKeyFrom(meta, explain) {
   const dev = localStorage.getItem('reg_devKey');
   if (dev) return crypto.subtle.importKey('raw', unb64(dev), 'AES-GCM', false, ['decrypt']);
   if (meta && meta.wrapPass && meta.saltPass) {
@@ -3528,7 +3530,9 @@ async function legacyKeyFrom(meta) {
       return crypto.subtle.importKey('raw', mk, 'AES-GCM', false, ['decrypt']);
     } catch (e) { toast('That passphrase did not work.'); return null; }
   }
-  const code = prompt('Paste the pairing code from the old app (REGKEY-…):');
+  const code = prompt(explain
+    ? 'Your old Sheet data is encrypted with the old app\'s device key, which is not on this device.\n\nIf you have the pairing code (REGKEY-…), paste it here. Otherwise tap Cancel and open Register once on the iPhone that used the old app — it will unlock and upload everything automatically.'
+    : 'Paste the pairing code from the old app (REGKEY-…):');
   if (!code) return null;
   try { const body = code.trim().replace(/^REGKEY-/i, '').replace(/\s+/g, ''); return crypto.subtle.importKey('raw', unb64(body + '='.repeat((4 - body.length % 4) % 4)), 'AES-GCM', false, ['decrypt']); }
   catch (e) { toast("That doesn't look like a pairing code."); return null; }
@@ -3552,6 +3556,63 @@ async function importLegacyLocal() {
   return n;
 }
 $('setLegacyLocal').addEventListener('click', importLegacyLocal);
+
+/* Accepts the full /exec URL, the /dev URL, or just the deployment ID (AKfy…). */
+function normaliseScriptUrl(v) {
+  v = String(v || '').trim();
+  if (/^https?:\/\//i.test(v)) return v.replace(/\/dev(\?.*)?$/, '/exec');
+  const id = (v.match(/[-\w]{30,}/) || [])[0];
+  return id ? `https://script.google.com/macros/s/${id}/exec` : v;
+}
+
+/* Bring v1 data across automatically, once:
+   1. data the old app left in this browser (decrypted with the key it also left here)
+   2. the old encrypted "Records" tab in the Sheet — readable only where the old key exists.
+   Nothing here overwrites newer data: every item keeps whichever copy is newest. */
+let migrating = false;
+async function autoMigrate(fromConnect) {
+  if (migrating) return { ok: true, text: 'Already importing…' };
+  migrating = true;
+  let total = 0, notes = [];
+  try {
+    const devKey = localStorage.getItem('reg_devKey');
+    // 1 — this device's old local data
+    if (localStorage.getItem('reg_recs') && localStorage.getItem('r2_legacyDone') !== '1' && devKey) {
+      const key = await crypto.subtle.importKey('raw', unb64(devKey), 'AES-GCM', false, ['decrypt']);
+      let packed = {}; try { packed = JSON.parse(localStorage.getItem('reg_recs')); } catch (e) {}
+      const { out } = await decryptLegacy(key, Object.values(packed));
+      if (out.length) { total += await importRecords(out, 'old app on this device'); }
+      try { localStorage.setItem('r2_legacyDone', '1'); } catch (e) {}
+    }
+    // 2 — the old Sheet tab
+    const haveData = Object.values(records).some(r => !r.deleted && r.type !== 'finkey');
+    // another device already migrated and this one received it through Records2 → nothing to do
+    if (Sync.on() && !devKey && haveData) { try { localStorage.setItem('r2_legacySheetDone', '1'); } catch (e) {} }
+    if (Sync.on() && localStorage.getItem('r2_legacySheetDone') !== '1') {
+      let d = null;
+      try { d = await Sync.call('legacy', {}, 90000); } catch (e) { notes.push('Could not read the old tab: ' + e.message); }
+      if (d && d.records && d.records.length) {
+        const meta = d.meta || {};
+        let key = null;
+        if (devKey) key = await crypto.subtle.importKey('raw', unb64(devKey), 'AES-GCM', false, ['decrypt']);
+        else if (fromConnect) key = await legacyKeyFrom(meta, true);
+        if (key) {
+          const { out, bad } = await decryptLegacy(key, d.records.map(r => r.payload).filter(Boolean));
+          if (out.length) {
+            total += await importRecords(out, 'old Sheet tab');
+            try { localStorage.setItem('r2_legacySheetDone', '1'); } catch (e) {}
+            if (bad) notes.push(`${bad} old row(s) were written with a different key and were skipped.`);
+          } else notes.push('The old Sheet rows did not open with the key on this device.');
+        } else notes.push(`The old Sheet tab has ${d.records.length} encrypted rows. Its key lives only on the device that used the old app — open Register there once and they will come across to every device.`);
+      } else if (d) { try { localStorage.setItem('r2_legacySheetDone', '1'); } catch (e) {} }
+    }
+  } catch (e) { RLOG.error('autoMigrate', e); notes.push('Import error: ' + e.message); }
+  finally { migrating = false; }
+  if (total) Sync.soon(300);
+  RLOG.info('autoMigrate', total, notes.join(' | '));
+  const text = (total ? `Connected — brought in ${total} item${total === 1 ? '' : 's'} from the old version.` : 'Connected and synced.') + (notes.length ? ' ' + notes.join(' ') : '');
+  return { ok: !notes.length || !!total, text, total };
+}
 $('setLegacySheet').addEventListener('click', async () => {
   const m = $('setDataMsg');
   if (!Sync.on()) { m.className = 'msg err'; m.textContent = 'Connect the Sheet first (same script, updated to v16).'; return; }
@@ -3585,12 +3646,23 @@ document.addEventListener('keydown', e => {
     Sync.status(Sync.on() ? (Sync.lastOk ? 'ok' : '') : '', Sync.on() ? 'Last synced ' + timeAgo(Sync.lastOk) : 'Local only');
     showTab(prefs.startTab === 'last' ? prefs.lastTab : prefs.startTab || 'tasks');
     // first run after upgrading on the same address: offer to bring the old data across
-    const empty = !Object.keys(records).length && !Object.keys(sealed).length;
-    if (empty && localStorage.getItem('reg_recs') && localStorage.getItem('r2_legacyDone') !== '1' && !Sync.on()) {
-      legacyOffer = true;                     // asked only once the decoy is out of the way
-      if (!document.documentElement.classList.contains('decoy-on')) offerLegacy();
+    // v1 kept the Sheet URL/token and Drive folder in localStorage — carry them over
+    if (!prefs.cloudUrl) {
+      try { const c = JSON.parse(localStorage.getItem('reg_cloud') || '{}'); if (c.url && c.token) { setPref('cloudUrl', normaliseScriptUrl(c.url)); setPref('cloudToken', c.token); RLOG.info('adopted v1 sync settings'); } } catch (e) {}
     }
-    if (Sync.on()) Sync.soon(400);
+    if (!prefs.driveFolder && localStorage.getItem('reg_driveFolder')) setPref('driveFolder', localStorage.getItem('reg_driveFolder'));
+    const needsMigrate = (localStorage.getItem('reg_recs') && localStorage.getItem('r2_legacyDone') !== '1' && localStorage.getItem('reg_devKey'))
+                      || (Sync.on() && localStorage.getItem('r2_legacySheetDone') !== '1' && localStorage.getItem('reg_devKey'));
+    if (Sync.on()) {
+      Sync.run().then(async () => {
+        if (!needsMigrate) return;
+        const r = await autoMigrate(false);
+        if (r.total) toast(`Brought in ${r.total} items from the old version.`, null, null, 5000);
+      });
+    } else if (localStorage.getItem('reg_recs') && localStorage.getItem('r2_legacyDone') !== '1') {
+      if (localStorage.getItem('reg_devKey')) autoMigrate(false).then(r => { if (r.total) toast(`Brought in ${r.total} items from the old version.`, null, null, 5000); });
+      else { legacyOffer = true; if (!document.documentElement.classList.contains('decoy-on')) offerLegacy(); }   // passphrase-era data: ask
+    }
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(p => RLOG.info('persistent storage', p)).catch(() => {});
     setInterval(() => { if (document.visibilityState === 'visible' && !Sheets.top()) $('todayLbl').textContent = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }); }, 60000);
   } catch (e) {
