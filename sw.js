@@ -2,7 +2,7 @@
    The page itself is fetched network-first (so a new version shows on the
    next launch, not the one after); icons are cache-first. The Apps Script
    API is never cached. Bump CACHE with every deploy. */
-const CACHE = 'register-v2.0.0';
+const CACHE = 'register-v2.0.2';
 const SHELL = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
 
 self.addEventListener('install', e => {

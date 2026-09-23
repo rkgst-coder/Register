@@ -2,7 +2,7 @@
 <html lang="en-IN" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates, documents and a private ledger.">
 <link rel="manifest" href="manifest.json">
@@ -34,11 +34,11 @@ try{ if(localStorage.getItem('r2_decoy')!=='0') document.documentElement.classLi
   --pos:#2E7D50; --neg:#A6362F;
   --cat-Work:#1B4B8F; --cat-Personal:#9C2963; --cat-Finance:#B8860B; --cat-Errands:#B45309;
   --field:#FFFFFF; --scrim:rgba(12,16,20,.45);
-  --bar:rgba(251,249,242,.92);
+  --bar:rgba(251,249,242,.97);
   --shadow:0 1px 2px rgba(28,43,57,.06),0 6px 18px rgba(28,43,57,.07);
   --r:14px; --r-sm:10px;
   --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
-  --tabbar-h:56px; --kb:0px;
+  --tabbar-h:64px; --kb:0px;
   --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --serif:ui-serif,"New York","Iowan Old Style",Georgia,serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -52,11 +52,12 @@ html[data-theme="dark"]{
   --pos:#72C28F; --neg:#E68A82;
   --cat-Work:#5B8FDD; --cat-Personal:#DE74AA; --cat-Finance:#D4AF52; --cat-Errands:#E0924F;
   --field:#151A20; --scrim:rgba(0,0,0,.6);
-  --bar:rgba(27,32,39,.92);
+  --bar:rgba(27,32,39,.97);
   --shadow:0 1px 2px rgba(0,0,0,.35),0 6px 18px rgba(0,0,0,.3);
   color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body,button,a,input,select,textarea,.row,.chip{touch-action:manipulation}
 html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var(--ink);
   font-family:var(--sans);-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -74,7 +75,7 @@ textarea{resize:none;line-height:1.55}
 .mono{font-family:var(--mono)}
 
 /* ---------- app shell ---------- */
-#app{position:fixed;inset:0;display:flex;flex-direction:column}
+#app{position:fixed;inset:0;display:flex;flex-direction:column;max-width:100vw;overflow:hidden}
 .appbar{flex:none;padding:calc(var(--safe-t) + 8px) 16px 8px;background:var(--paper);
   display:flex;align-items:center;gap:10px;z-index:5}
 .wordmark{font-family:var(--serif);font-weight:700;font-size:1.1875rem;letter-spacing:-.01em;
@@ -102,15 +103,18 @@ textarea{resize:none;line-height:1.55}
   background:rgba(128,128,128,.12);color:var(--ink-faint);font-size:1rem;text-align:left;margin-bottom:14px}
 
 /* tab bar */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;
-  padding:6px 4px calc(var(--safe-b) + 4px);background:var(--bar);
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;gap:2px;
+  padding:4px 6px calc(var(--safe-b) + 4px);background:var(--bar);
   -webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px);
   border-top:.5px solid var(--line-strong)}
-.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;color:var(--ink-faint);
-  font-size:0.65625rem;font-weight:500;position:relative}
-.tab .ti{font-size:1.3125rem;line-height:1.1;filter:grayscale(1);opacity:.75}
-.tab.on{color:var(--brass)} .tab.on .ti{filter:none;opacity:1}
-.badge{position:absolute;top:0;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;
+  padding:4px 2px;color:var(--ink-soft);font-size:0.78125rem;font-weight:600;position:relative;border-radius:14px}
+.tab .ti{width:26px;height:26px;padding:3px 14px;box-sizing:content-box;border-radius:14px;transition:background .15s}
+.tab .tl{line-height:1.1}
+.tab.on{color:var(--ink)}
+.tab.on .ti{background:rgba(147,115,31,.22);color:var(--brass)}
+.tab:active .ti{background:rgba(128,128,128,.18)}
+.badge{position:absolute;top:2px;left:calc(50% + 10px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;
   background:var(--seal);color:#fff;font-size:0.6875rem;font-weight:700;line-height:18px;text-align:center}
 
 /* floating add button */
@@ -430,6 +434,11 @@ html[data-hand="left"] #fab{right:auto;left:18px}
 html.decoy-on #decoy.hidden{display:flex!important}
 html.decoy-on #app{visibility:hidden}
 .note-body{height:calc(100vh - 330px - var(--kb));min-height:220px}
+/* settings controls: switches were being stretched by the generic input rules */
+input.sw{width:51px;min-width:51px;height:31px;padding:0;border:none;margin:0;flex:none}
+.switch-row>span,.switch-row{min-width:0}
+.set-row select{margin-left:auto;text-align:right;text-align-last:right;max-width:60%}
+.set-row>span:first-child{flex:1}
 
 </style>
 </head>
@@ -543,12 +552,12 @@ html.decoy-on #app{visibility:hidden}
 
   <button id="fab" aria-label="Add">+</button>
 
-  <nav class="tabbar" id="tabbar">
-    <button class="tab" data-tab="tasks"><span class="ti">☑︎</span>Tasks</button>
-    <button class="tab" data-tab="notes"><span class="ti">🗒</span>Notes</button>
-    <button class="tab" data-tab="dates"><span class="ti">📅</span>Dates<i class="badge hidden" id="datesBadge"></i></button>
-    <button class="tab" data-tab="docs"><span class="ti">📁</span>Docs</button>
-    <button class="tab hidden" data-tab="money" id="moneyTab"><span class="ti">₹</span>Money</button>
+  <nav class="tabbar" id="tabbar" aria-label="Sections">
+    <button class="tab" data-tab="tasks"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 12.2l2.7 2.7L16.2 9"/></svg><span class="tl">Tasks</span></button>
+    <button class="tab" data-tab="notes"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8h5M9 12h7M9 15.5h7"/></svg><span class="tl">Notes</span></button>
+    <button class="tab" data-tab="dates"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span class="tl">Dates</span><i class="badge hidden" id="datesBadge"></i></button>
+    <button class="tab" data-tab="docs"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7a2 2 0 012-2h4l2 2.2h7a2 2 0 012 2v8.8a2 2 0 01-2 2h-13a2 2 0 01-2-2z"/></svg><span class="tl">Docs</span></button>
+    <button class="tab hidden" data-tab="money" id="moneyTab"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M9 8h6M9 11h6M10.5 8c2.5 0 3 3 0 3H9l4.5 5"/></svg><span class="tl">Money</span></button>
   </nav>
 </div>
 
@@ -916,7 +925,7 @@ html.decoy-on #app{visibility:hidden}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.2';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
