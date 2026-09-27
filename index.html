@@ -578,6 +578,17 @@ html.app-hidden #app{filter:blur(24px)}
 .dv-year>summary::-webkit-details-marker{display:none}
 .dv-year>summary::before{content:'▸ ';color:var(--ink-faint)}
 .dv-year[open]>summary::before{content:'▾ '}
+
+/* v2.9 */
+.imp-row{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-bottom:.5px solid var(--line)}
+.imp-row input[type=checkbox]{-webkit-appearance:none;appearance:none;margin-top:2px;width:24px;height:24px;min-height:0;padding:0;flex:none;border-radius:7px;border:2px solid var(--ink-faint);background:var(--card);display:grid;place-content:center}
+.imp-row input[type=checkbox]:checked{background:var(--forest);border-color:var(--forest)}
+.imp-row input[type=checkbox]:checked::after{content:'✓';color:#fff;font-size:15px;font-weight:700;line-height:1}
+#docYearBar{display:flex;flex-wrap:wrap;gap:4px 14px}
+.imp-row b{font-weight:600}
+.imp-row small{display:block;color:var(--ink-faint);font-size:.75rem;line-height:1.4}
+.imp-skip{font-size:.8125rem;color:var(--ink-soft);padding:4px 12px}
+.imp-bar{position:sticky;bottom:0;background:var(--bg);padding:10px 0}
 </style>
 </head>
 <body>
@@ -648,7 +659,7 @@ html.app-hidden #app{filter:blur(24px)}
     <!-- DOCUMENTS -->
     <section class="screen" id="scr-docs">
       <div class="large-title">Documents</div>
-      <button class="btn ghost small" id="docQuickBtn" style="margin:0 0 12px">＋ Common documents</button>
+      <div class="btn-row" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn ghost small" id="docQuickBtn">＋ Common documents</button><button class="btn ghost small" id="docImportBtn">⤓ Import from Drive</button></div>
       <div class="chips" id="docChips"></div>
       <div id="docYearBar"></div>
       <div id="docFolders"></div>
@@ -913,6 +924,7 @@ html.app-hidden #app{filter:blur(24px)}
     <div class="sheet-head"><button class="sh-l" id="doDelete" style="color:var(--seal)">Delete</button><h2>Document</h2><button class="sh-r" id="doSave">Save</button></div>
     <div class="sheet-body">
       <div class="field"><label>Title</label><input id="doTitle"></div>
+      <div class="field"><label>Belongs to</label><input id="doWho" list="docWhoDl" placeholder="e.g. Rahul, Ruchi, Papa" autocomplete="off"><datalist id="docWhoDl"></datalist></div>
       <div class="field"><label>Type</label><div class="wrapchips" id="doType"></div></div>
       <div class="grid2">
         <div class="field"><label>Number / ID</label><input id="doNumber" autocapitalize="characters"></div>
@@ -1064,6 +1076,14 @@ html.app-hidden #app{filter:blur(24px)}
   </div>
 </div>
 
+<!-- bulk import -->
+<div class="sheet full" id="shImport">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Close</button><h2>Import documents</h2><span class="sh-r"></span></div>
+    <div class="sheet-body" id="impBody"></div>
+  </div>
+</div>
+
 <!-- settings -->
 <div class="sheet full" id="shSettings">
   <div class="sheet-card"><div class="sheet-grab"></div>
@@ -1113,6 +1133,7 @@ html.app-hidden #app{filter:blur(24px)}
       <div class="group">
         <button class="set-row" id="setBackup">Download backup (.json)<span class="v">⤓</span></button>
         <button class="set-row" id="setRestore">Restore / import backup<span class="v">⤒</span></button>
+        <button class="set-row" id="setImportDocs">Import documents from a Drive folder<span class="v">›</span></button>
         <label class="switch-row"><span>Weekly encrypted backup to Drive<small id="setAutoBkInfo"></small></span><input type="checkbox" class="sw" id="setAutoBk"></label>
         <button class="set-row" id="setAutoBkNow">Back up to Drive now<span class="v">⤓</span></button>
         <button class="set-row" id="setAutoBkTest">Test the latest Drive backup<span class="v">✓</span></button>
@@ -1150,7 +1171,7 @@ html.app-hidden #app{filter:blur(24px)}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.8.0';
+const APP_VERSION = '2.9.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -3079,10 +3100,12 @@ $$('#dateSeg button').forEach(b => b.addEventListener('click', () => { setPref('
 const fyOf = iso => { const y = +iso.slice(0, 4), m = +iso.slice(5, 7); const s = m >= 4 ? y : y - 1; return s + '-' + String((s + 1) % 100).padStart(2, '0'); };
 function fyList() { const cur = +fyOf(todayISO()).slice(0, 4), out = []; for (let s = cur + 1; s >= 2000; s--) out.push(s + '-' + String((s + 1) % 100).padStart(2, '0')); return out; }
 const fyOptions = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + fyList().map(f => `<option value="${f}"${f === sel ? ' selected' : ''}>FY ${f}</option>`).join('');
+const docPeople = () => [...new Set(all('doc').map(d => (d.who || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+let docWho = 'All';
 const docYears = d => [...new Set([d.fy, ...(d.byYear ? docFilesOf(d.id).map(f => f.fy) : [])].filter(Boolean))].sort().reverse();
 let docYear = 'All';
-const DOC_TYPES = ['Insurance', 'Vehicle', 'Identity', 'Education', 'Warranty', 'Membership', 'Property', 'Financial', 'Other'];
-const DOC_COLORS = { Insurance: '#1B4B8F', Vehicle: '#B45309', Identity: '#9C2963', Education: '#4F6B2F', Warranty: '#3F4F8C', Membership: '#2c6e6a', Property: '#6b3f5c', Financial: '#B8860B', Other: '#77818E' };
+const DOC_TYPES = ['Identity', 'Education', 'Exam', 'Tax', 'Financial', 'Insurance', 'Medical', 'Official', 'Property', 'Vehicle', 'Certificate', 'Photo & Signature', 'Warranty', 'Membership', 'Other'];
+const DOC_COLORS = { Tax: '#8a4b12', Medical: '#2E7D50', Official: '#2d4a6b', Exam: '#7a5c1e', Certificate: '#5b6e2f', 'Photo & Signature': '#6d5a8a', Insurance: '#1B4B8F', Vehicle: '#B45309', Identity: '#9C2963', Education: '#4F6B2F', Warranty: '#3F4F8C', Membership: '#2c6e6a', Property: '#6b3f5c', Financial: '#B8860B', Other: '#77818E' };
 let docFilter = 'All', activeDocFolder = '__all__';
 const docFolder = d => (d.folder || '').trim();
 const docFolderList = () => [...new Set(all('doc').map(docFolder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -3096,7 +3119,10 @@ function renderDocs() {
   if (docYear !== 'All' && !allYears.includes(docYear)) docYear = 'All';
   $('docYearBar').innerHTML = allYears.length ? `<div class="doc-yearbar"><span class="muted">Year</span><select id="docYearSel" aria-label="Financial year"><option value="All">All years</option>${allYears.map(y => `<option value="${y}"${y === docYear ? ' selected' : ''}>FY ${y}</option>`).join('')}</select></div>` : '';
   if ($('docYearSel')) $('docYearSel').addEventListener('change', e => { docYear = e.target.value; renderDocs(); });
-  const shown = docs.filter(d => (docFilter === 'All' || d.docType === docFilter) && (docYear === 'All' || docYears(d).includes(docYear)));
+  const people = docPeople(); if (docWho !== 'All' && !people.includes(docWho)) docWho = 'All';
+  if (people.length) { $('docYearBar').insertAdjacentHTML(allYears.length ? 'afterbegin' : 'beforeend', `<div class="doc-yearbar"><span class="muted">Person</span><select id="docWhoSel" aria-label="Belongs to"><option value="All">Everyone</option>${people.map(p => `<option${p === docWho ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select></div>`);
+    $('docWhoSel').addEventListener('change', e => { docWho = e.target.value; renderDocs(); }); }
+  const shown = docs.filter(d => (docFilter === 'All' || d.docType === docFilter) && (docYear === 'All' || docYears(d).includes(docYear)) && (docWho === 'All' || (d.who || '').trim() === docWho));
   const fbox = $('docFolders');
   if (activeDocFolder === '__all__') {
     const fs = docFolderList().filter(f => shown.some(d => docFolder(d) === f));
@@ -3124,7 +3150,7 @@ let editDocId = null;
 function openDoc(id) {
   const d = records[id]; if (!d) return;
   editDocId = id;
-  $('doTitle').value = d.title; $('doNumber').value = d.number || ''; $('doExpiry').value = d.expiry || '';
+  $('doTitle').value = d.title; $('doWho').value = d.who || ''; $('docWhoDl').innerHTML = docPeople().map(p => `<option value="${esc(p)}">`).join(''); $('doNumber').value = d.number || ''; $('doExpiry').value = d.expiry || '';
   $('doNumber').disabled = false; $('doNumber').placeholder = '';
   if (d.numEnc) { $('doNumber').disabled = true; $('doNumber').placeholder = Fin.key ? 'Opening…' : 'Locked — enter your private code to see or change';
     if (Fin.key) docNumFull(d).then(n => { if (editDocId === id) { $('doNumber').value = n; $('doNumber').disabled = false; $('doNumber').placeholder = ''; if (Sheets.onOpen.shDoc) Sheets.onOpen.shDoc(); } })
@@ -3144,6 +3170,7 @@ $('doSave').addEventListener('click', async () => {
   d.title = $('doTitle').value.trim() || d.title; d.docType = chipValue($('doType')) || d.docType;
   if (!numLocked) { d.number = $('doNumber').value.trim(); if (!d.number) { delete d.numEnc; delete d.numTail; } } d.expiry = $('doExpiry').value || null; d.issuer = $('doIssuer').value.trim(); d.notes = $('doNotes').value;
   d.folder = $('doFolder').value.trim();
+  d.who = $('doWho').value.trim();
   d.fy = $('doFy').value || null; d.byYear = $('doByYear').checked;
   if (d.lockFiles && d.number) await sealDocNumber(d);
   put(d); Sheets.close('shDoc'); toast('Saved.');
@@ -3255,7 +3282,7 @@ async function fileToBytes(file) {
 function docFileBadge(d) {
   const n = docFilesOf(d.id).length;
   const ys = d.byYear ? docYears(d).filter(y => y !== d.fy) : [];
-  return (d.fy ? `<span>FY ${d.fy}</span>` : '') + (ys.length ? `<span>${ys.length === 1 ? 'FY ' + ys[0] : ys.length + ' years · latest ' + ys[0]}</span>` : '') + (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
+  return (d.who ? `<span>👤 ${esc(d.who)}</span>` : '') + (d.fy ? `<span>FY ${d.fy}</span>` : '') + (ys.length ? `<span>${ys.length === 1 ? 'FY ' + ys[0] : ys.length + ' years · latest ' + ys[0]}</span>` : '') + (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
 }
 /* Long ID numbers show only their last 4 characters on screen (Aadhaar, PAN, passport, licence). */
 const docNumShown = d => d.number ? maskNo(d.number) : d.numEnc ? '•••• ' + (d.numTail || '') : '';
@@ -3378,7 +3405,7 @@ function openDocView(id) {
   viewDocId = id;
   $('dvTitle').textContent = d.title;
   const days = d.expiry ? daysUntilISO(d.expiry) : null;
-  $('dvMeta').innerHTML = `<span>${esc(d.docType || '')}</span>` + (docNumShown(d) ? `<span class="mono" id="dvNum">${esc(docNumShown(d))}</span>`
+  $('dvMeta').innerHTML = (d.who ? `<span>👤 ${esc(d.who)}</span>` : '') + `<span>${esc(d.docType || '')}</span>` + (docNumShown(d) ? `<span class="mono" id="dvNum">${esc(docNumShown(d))}</span>`
       + (d.numEnc || maskNo(d.number) !== d.number ? '<button class="linkbtn" id="dvNumShow" style="padding:0 2px">Show</button>' : '') + '<button class="linkbtn" id="dvNumCopy" style="padding:0 2px">Copy</button>' : '')
     + (d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : '');
   const sh = $('dvNumShow'); if (sh) sh.addEventListener('click', async () => { const on = sh.textContent === 'Show';
@@ -5228,6 +5255,134 @@ async function wipeDevice() {
 }
 
 /* ==========================================================================
+   BULK IMPORT (v2.9) — read the Docs folder named in the Apps Script (IMPORT_FOLDER_ID),
+   turn file names like TAX_Rahul_ITR-Ack_AY2025-26.pdf into documents, copy the files
+   into the Register folder on the server (nothing is downloaded to the phone).
+   ======================================================================== */
+const IMPORT_MAP = { ID: 'Identity', EDU: 'Education', EXAM: 'Exam', TAX: 'Tax', FIN: 'Financial', SALARY: 'Financial', MED: 'Medical', OFF: 'Official',
+  PROPERTY: 'Property', CERT: 'Certificate', PHOTO: 'Photo & Signature', SIGNATURE: 'Photo & Signature', DOC: 'Other' };
+const IMPORT_SKIP = { PERSONAL: 'personal / misc', MISC: 'personal / misc', VIDEO: 'not a PDF or photo' };
+const IMPORT_OK_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'webp'];
+const splitCamel = s => String(s).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/-/g, ' - ').replace(/\s+/g, ' ').trim();
+const isDateTok = t => /^(AY|FY)?\d{4}(-\d{2}){0,2}$/i.test(t) || /^(YYYY|Undated)$/i.test(t);
+function fyFromToken(t) {
+  let m;
+  const fy = s => s + '-' + String((s + 1) % 100).padStart(2, '0');
+  if ((m = t.match(/^AY(\d{4})-\d{2}$/i))) return fy(+m[1] - 1);           // assessment year → the financial year before it
+  if ((m = t.match(/^FY(\d{4})-\d{2}$/i))) return fy(+m[1]);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return fyOf(t);
+  if ((m = t.match(/^(\d{4})-\d{2}$/))) return fy(+m[1]);
+  if ((m = t.match(/^(\d{4})$/))) return fy(+m[1]);                           // a plain year: the FY that starts in it
+  return null;
+}
+function parseDocName(name) {
+  const ext = ((name.match(/\.([^.]+)$/) || [])[1] || '').toLowerCase(), base = name.replace(/\.[^.]+$/, '');
+  if (!IMPORT_OK_EXT.includes(ext)) return { skip: 'not a PDF or photo' };
+  const tk = base.split('_').filter(Boolean); if (!tk.length) return { skip: 'no name' };
+  const pre = tk[0].toUpperCase();
+  if (IMPORT_SKIP[pre]) return { skip: IMPORT_SKIP[pre] };
+  if (tk.some(t => /^(Dup\d*|Copy\d*)$/i.test(t))) return { skip: 'duplicate copy' };
+  if (tk.some(t => /^(Unknown|Unlabeled|Unlabelled)$/i.test(t))) return { skip: 'unknown / unlabelled' };
+  const type = IMPORT_MAP[pre] || 'Other';
+  let rest = tk.slice(1), who = '', fy = null;
+  const nameTok = t => /^[A-Za-z]+(-[A-Za-z]+)*$/.test(t) && !/[a-z][A-Z]/.test(t);
+  if ((rest.length >= 2 || pre === 'SIGNATURE') && rest.length && nameTok(rest[0])) {
+    who = rest.shift().split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' & ');
+  }
+  if (rest.length && isDateTok(rest[rest.length - 1])) fy = fyFromToken(rest.pop());
+  while (rest.length > 1 && /^(New|Old\d*|\d{1,2}|Final|Draft)$/i.test(rest[rest.length - 1])) rest.pop();
+  let head = rest.join(' ');
+  if (pre === 'TAX' && rest.length) { head = rest[0].split('-')[0]; if (/^ITR\d*$/i.test(head)) head = 'ITR'; }
+  let title = rest.length ? splitCamel(head) : '';
+  if (pre === 'PHOTO') title = /photo$/i.test(title) ? title : (title || 'Photo') + ' photo';
+  if (pre === 'SIGNATURE') title = 'Signature';
+  if (!title) title = splitCamel(base);
+  return { type, who, fy, title, label: splitCamel(tk.slice(1).join(' ')) || base };
+}
+function planImport(files) {
+  const groups = new Map(), skipped = [];
+  const done = new Set(all('docfile').map(f => f.srcId).filter(Boolean));
+  files.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
+    if (done.has(f.id)) { skipped.push({ name: f.name, why: 'already imported' }); return; }
+    const p = parseDocName(f.name);
+    if (p.skip) { skipped.push({ name: f.name, why: p.skip }); return; }
+    const key = [p.type, p.who, p.title.toLowerCase()].join('|');
+    if (!groups.has(key)) groups.set(key, { key, type: p.type, who: p.who, title: p.title, files: [] });
+    groups.get(key).files.push({ ...f, fy: p.fy, label: p.label });
+  });
+  const list = [...groups.values()].map(g => {
+    const ys = [...new Set(g.files.map(f => f.fy).filter(Boolean))];
+    g.byYear = g.files.length > 1 && ys.length > 0;
+    g.fy = !g.byYear && ys.length === 1 ? ys[0] : null;
+    g.years = ys.sort().reverse();
+    g.into = all('doc').find(d => d.title.toLowerCase() === g.title.toLowerCase() && (d.who || '') === g.who) || null;
+    return g;
+  }).sort((a, b) => a.type.localeCompare(b.type) || a.who.localeCompare(b.who) || a.title.localeCompare(b.title));
+  return { list, skipped };
+}
+let importPlan = null;
+function openImport() {
+  Sheets.closeAll();
+  $('impBody').innerHTML = `<p class="hint">Reads the Docs folder set as <b>IMPORT_FOLDER_ID</b> in your Apps Script (v18), and copies the chosen files into your Register folder. Your Docs folder is not changed.</p>
+    <button class="btn block" id="impRead">Read the Docs folder</button><div class="msg" id="impMsg"></div><div id="impList"></div>`;
+  $('impRead').addEventListener('click', readImport);
+  Sheets.open('shImport');
+}
+async function readImport() {
+  const m = $('impMsg');
+  if (!Sync.on()) { m.className = 'msg err'; m.textContent = 'Connect the Google Sheet first (Settings → Sync).'; return; }
+  if (!driveOn()) { m.className = 'msg err'; m.textContent = 'Set the Register Drive folder first (Settings → Sync → Drive folder).'; return; }
+  m.className = 'msg'; m.textContent = 'Reading…';
+  let d;
+  try { d = await Sync.call('driveListImport', {}, 120000); }
+  catch (e) { m.className = 'msg err'; m.textContent = /unknown action/.test(e.message) ? 'Your Apps Script is older than v18. Paste Code.gs v18, fill IMPORT_FOLDER_ID and redeploy.' : e.message; return; }
+  importPlan = planImport(d.files || []);
+  const P = importPlan, nf = P.list.reduce((s, g) => s + g.files.length, 0);
+  m.className = 'msg ok'; m.textContent = `"${d.folder}": ${(d.files || []).length} files → ${P.list.length} documents (${nf} files). ${P.skipped.length} skipped.`;
+  const byWhy = {}; P.skipped.forEach(s => { (byWhy[s.why] = byWhy[s.why] || []).push(s.name); });
+  $('impList').innerHTML = `<div class="btn-row" style="margin:8px 0"><button class="btn ghost small" id="impAll">Tick all</button><button class="btn ghost small" id="impNone">Untick all</button></div>
+    <div class="group">${P.list.map((g, i) => `<label class="imp-row"><input type="checkbox" data-imp="${i}" checked><span><b>${esc(g.title)}</b>${g.who ? ' · ' + esc(g.who) : ''}
+      <small>${esc(g.type)} · ${g.files.length} file${g.files.length > 1 ? 's' : ''}${g.byYear ? ' · by year: ' + g.years.join(', ') : g.fy ? ' · FY ' + g.fy : ''}${g.into ? ' · adds to your existing document' : ''}</small>
+      <small>${g.files.map(f => esc(f.name)).join('<br>')}</small></span></label>`).join('')}</div>
+    <details class="fold"><summary>Skipped (${P.skipped.length})</summary>${Object.entries(byWhy).map(([w, l]) => `<div class="imp-skip"><b>${esc(w)}</b> (${l.length}): ${l.map(esc).join(', ')}</div>`).join('')}</details>
+    <div class="imp-bar"><button class="btn block" id="impGo">Import ticked documents</button></div>`;
+  $('impAll').addEventListener('click', () => $$('[data-imp]').forEach(c => { c.checked = true; }));
+  $('impNone').addEventListener('click', () => $$('[data-imp]').forEach(c => { c.checked = false; }));
+  $('impGo').addEventListener('click', runImport);
+}
+async function runImport() {
+  const pick = $$('[data-imp]').filter(c => c.checked).map(c => importPlan.list[+c.dataset.imp]);
+  if (!pick.length) { toast('Tick at least one document.'); return; }
+  const m = $('impMsg'), go = $('impGo'); go.disabled = true;
+  const total = pick.reduce((s, g) => s + g.files.length, 0); let n = 0, ok = 0; const bad = [];
+  for (const g of pick) {
+    let d = g.into && records[g.into.id] && !records[g.into.id].deleted ? records[g.into.id] : null;
+    if (!d) d = put({ id: uid('doc'), type: 'doc', title: g.title, who: g.who || '', docType: g.type, number: '', expiry: null, issuer: '', notes: '', folder: '', fy: g.fy || null, byYear: g.byYear, deleted: false }, { render: false });
+    else if (g.byYear && !d.byYear) { d.byYear = true; put(d, { render: false }); }
+    for (let i = 0; i < g.files.length; i += 5) {
+      const batch = g.files.slice(i, i + 5);
+      m.className = 'msg'; m.textContent = `Copying ${Math.min(n + batch.length, total)} of ${total}… keep the app open.`;
+      let res;
+      try { res = await Sync.call('driveCopyIn', { files: batch.map(f => ({ id: f.id, name: f.name })) }, 300000); }
+      catch (e) { batch.forEach(f => bad.push(f.name + ': ' + e.message)); n += batch.length; continue; }
+      (res.done || []).forEach(r => {
+        const f = batch.find(x => x.id === r.id); n++;
+        if (!r.fileId) { bad.push((f ? f.name : r.id) + ': ' + (r.error || 'failed')); return; }
+        put({ id: uid('df'), type: 'docfile', docId: d.id, name: f.name, mime: r.mime || f.mime, bytes: r.bytes || f.size || 0, fileId: r.fileId, srcId: f.id, locked: false,
+              fy: d.byYear ? (f.fy || undefined) : undefined, deleted: false }, { render: false });
+        ok++;
+      });
+    }
+  }
+  scheduleRender(); go.disabled = false;
+  m.className = bad.length ? 'msg err' : 'msg ok';
+  m.textContent = `Imported ${ok} of ${total} files into ${pick.length} documents.` + (bad.length ? ' Not copied: ' + bad.slice(0, 8).join('; ') + (bad.length > 8 ? ` … and ${bad.length - 8} more.` : '') : ' Lock sensitive ones (Aadhaar, PAN…) from each document\'s editor.');
+  toast(`Imported ${ok} files.`);
+}
+$('setImportDocs').addEventListener('click', openImport);
+$('docImportBtn').addEventListener('click', openImport);
+
+/* ==========================================================================
    LEDGER ACCOUNTS (v2.4) — every entry says which account; Transfer moves
    money between your own accounts and is never income or spending.
    ======================================================================== */
@@ -5440,7 +5595,8 @@ function renderAddForm(focus) {
       <div class="field"><label>Type</label><div class="wrapchips" id="afType"></div></div>
       <div class="grid2"><div class="field"><label>Number / ID</label><input id="afNum" autocapitalize="characters"></div>
         <div class="field"><label>Expiry (optional)</label><input type="date" id="afDate"></div></div>
-      <div class="field"><label>Year (FY, optional)</label><select id="afFy">${fyOptions('', '— none —')}</select></div>`;
+      <div class="grid2"><div class="field"><label>Belongs to</label><input id="afDocWho" list="afWhoDl" autocomplete="off" placeholder="Rahul, Ruchi…"><datalist id="afWhoDl">${docPeople().map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
+        <div class="field"><label>Year (FY, optional)</label><select id="afFy">${fyOptions('', '— none —')}</select></div></div>`;
     AF.type = 'Insurance'; chipGroup($('afType'), DOC_TYPES, 'Insurance', v => AF.type = v, t => DOC_COLORS[t]);
   } else if (k === 'money') {
     const last = all('fin').sort((a, b) => b.createdAt - a.createdAt)[0];
@@ -5507,7 +5663,7 @@ function saveAdd(another) {
     toast('Bill added.');
   } else if (k === 'doc') {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
-    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, deleted: false });
+    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, who: v('afDocWho'), deleted: false });
     toast(docFolderForNew() ? 'Document added to ' + docFolderForNew() + '.' : 'Document added.');
   } else if (k === 'money') {
     const amt = calcAmount(v('afAmt'));
@@ -5577,7 +5733,7 @@ function runSearch() {
   if (finUnlocked()) all('snote').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder)) hits.push({ k: 'Private', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: 'private note' }); });
   all('note').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder)) hits.push({ k: 'Note', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: n.folder || '' }); });
   all('date').forEach(d => { if (has(d.label)) hits.push({ k: 'Date', id: d.id, t: hl(d.label, q), s: fmtDate(d.when) }); });
-  all('doc').forEach(d => { if (has(d.title) || has(d.number) || has(d.notes) || has(d.issuer)) hits.push({ k: 'Doc', id: d.id, t: has(d.title) ? hl(d.title, q) : esc(d.title) + '<br><small class="muted">' + (has(d.number) ? 'number ' + esc(docNumShown(d)) : hl(has(d.notes) ? d.notes : d.issuer, q)) + '</small>', s: d.docType }); });
+  all('doc').forEach(d => { if (has(d.title) || has(d.number) || has(d.notes) || has(d.issuer) || has(d.who)) hits.push({ k: 'Doc', id: d.id, t: has(d.title) ? hl(d.title, q) : esc(d.title) + '<br><small class="muted">' + (has(d.number) ? 'number ' + esc(docNumShown(d)) : hl(has(d.notes) ? d.notes : d.issuer, q)) + '</small>', s: d.docType }); });
   if (finUnlocked()) all('fin').forEach(f => { if (has(f.desc) || has(f.who)) hits.push({ k: '₹', id: f.id, t: hl(f.desc + (f.who ? ' · ' + f.who : ''), q), s: fmtMoney(f.amount) }); });
   box.innerHTML = hits.length ? hits.slice(0, 80).map(h => `<button class="sr" data-k="${h.k}" data-id="${h.id}"><span class="k">${h.k}</span><span class="t" style="white-space:normal">${h.t}</span><span class="s">${esc(h.s || '')}</span></button>`).join('')
     : '<div class="empty">No matches.</div>';
