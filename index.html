@@ -440,6 +440,25 @@ input.sw{width:51px;min-width:51px;height:31px;padding:0;border:none;margin:0;fl
 .set-row select{margin-left:auto;text-align:right;text-align-last:right;max-width:60%}
 .set-row>span:first-child{flex:1}
 
+
+/* ---------- document files (v2.1) ---------- */
+.dfiles{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.dfile{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:var(--r-sm);padding:8px 8px 8px 10px;box-shadow:var(--shadow)}
+.dficon{flex:none;width:38px;height:38px;border-radius:8px;display:grid;place-items:center;background:rgba(128,128,128,.14);font-size:.75rem;font-weight:700;color:var(--ink-soft)}
+.dfname{flex:1;min-width:0;font-size:.9375rem;word-break:break-word}
+.dfname small,.dq-sub{display:block;font-size:.75rem;color:var(--ink-faint);font-weight:400}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+.dv-meta{margin:0 2px 12px}
+.dv-file{margin:0 0 16px;background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.dv-file figcaption{font-size:.8125rem;color:var(--ink-faint);padding:9px 12px;border-bottom:.5px solid var(--line);word-break:break-word}
+.dv-body{overflow:auto;-webkit-overflow-scrolling:touch;max-height:72vh;background:#fff}
+.dv-body img,.dv-page{display:block;width:100%;height:auto;cursor:zoom-in}
+.dv-page+.dv-page{border-top:6px solid var(--paper)}
+.dv-body.zoom img,.dv-body.zoom .dv-page{width:250%;max-width:none;cursor:zoom-out}
+.dv-wait{padding:28px 14px;text-align:center;color:var(--ink-soft);font-size:.875rem;background:var(--card)}
+.dv-wait.err{color:var(--seal)}
+.dv-pass{padding:14px;background:var(--card)}
+.dv-more{display:block;width:100%;padding:12px;background:var(--card);color:var(--brass);font-weight:600}
 </style>
 </head>
 <body>
@@ -510,6 +529,7 @@ input.sw{width:51px;min-width:51px;height:31px;padding:0;border:none;margin:0;fl
     <!-- DOCUMENTS -->
     <section class="screen" id="scr-docs">
       <div class="large-title">Documents</div>
+      <button class="btn ghost small" id="docQuickBtn" style="margin:0 0 12px">＋ Common documents</button>
       <div class="chips" id="docChips"></div>
       <div class="group" id="docList"></div>
     </section>
@@ -773,7 +793,53 @@ input.sw{width:51px;min-width:51px;height:31px;padding:0;border:none;margin:0;fl
       </div>
       <div class="field"><label>Issuer</label><input id="doIssuer"></div>
       <div class="field"><label>Notes</label><textarea id="doNotes" rows="3"></textarea></div>
+      <div class="field"><label>Files</label>
+        <div class="dfiles" id="doFiles"></div>
+        <button type="button" class="btn ghost small" id="doFileBtn">＋ Add photo or PDF</button>
+        <input type="file" id="doFileIn" class="vh" accept="image/*,application/pdf,.pdf" multiple tabindex="-1" aria-hidden="true">
+        <div class="msg" id="doFileMsg"></div>
+      </div>
+      <div class="group"><label class="switch-row"><span>Lock files<small class="dq-sub">Encrypted; opens only with your private code. Use for Aadhaar, PAN, passport.</small></span><input type="checkbox" class="sw" id="doLock"></label></div>
       <button class="btn ghost block" id="doRemind">📅 Add expiry to Key dates</button>
+    </div>
+  </div>
+</div>
+
+<!-- document viewer -->
+<div class="sheet full" id="shDocView">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Close</button><h2 id="dvTitle">Document</h2><button class="sh-r" id="dvEdit">Edit</button></div>
+    <div class="sheet-body">
+      <div class="row-sub dv-meta" id="dvMeta"></div>
+      <button class="btn ghost block hidden" id="dvUnlock" style="margin-bottom:12px">🔒 Enter code to view locked files</button>
+      <div id="dvFiles"></div>
+      <button class="btn brass block" id="dvShare">Share…</button>
+    </div>
+  </div>
+</div>
+
+<!-- document share -->
+<div class="sheet" id="shDocShare">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2>Share</h2><span class="sh-r"></span></div>
+    <div class="sheet-body">
+      <div class="group" id="dsFiles"></div>
+      <div class="group"><label class="switch-row">Add a watermark<input type="checkbox" class="sw" id="dsWm"></label></div>
+      <div class="field hidden" id="dsTextWrap"><label>Watermark says</label><input id="dsText" maxlength="60" placeholder="For bank KYC only">
+        <div class="hint">Today's date is added after it. Watermarking a PDF needs internet the first time.</div></div>
+      <button class="btn brass block" id="dsGo">Share</button>
+      <div class="msg" id="dsMsg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- common documents -->
+<div class="sheet" id="shDocQuick">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2>Common documents</h2><button class="sh-r" id="dqAdd">Add</button></div>
+    <div class="sheet-body">
+      <p class="hint" style="margin:0 4px 10px">Pick the ones you have. Each becomes an entry you can attach a photo or PDF to.</p>
+      <div class="group" id="dqList"></div>
     </div>
   </div>
 </div>
@@ -1289,7 +1355,7 @@ function setPref(k, v) {
    cleared after the server has accepted that exact version — so an edit made
    offline, or during a failed upload, is never skipped.
    ======================================================================== */
-const SEALED_TYPES = new Set(['fin', 'budget']);
+const SEALED_TYPES = new Set(['fin', 'budget', 'filekey']);
 const FINKEY_ID = '__finkey__';
 let records = {};          // id -> plaintext record (money records only while unlocked)
 let sealed = {};           // id -> sealed form of money records (always present)
@@ -1402,7 +1468,7 @@ async function loadAll() {
   RLOG.info('loaded', rows.length, 'records');
 }
 const all = type => Object.values(records).filter(r => r.type === type && !r.deleted);
-const trashed = () => Object.values(records).filter(r => r.deleted && r.deletedAt && r.type !== 'blob' && r.type !== 'billpay' && r.type !== 'finkey');
+const trashed = () => Object.values(records).filter(r => r.deleted && r.deletedAt && r.type !== 'blob' && r.type !== 'billpay' && r.type !== 'finkey' && r.type !== 'docfile' && r.type !== 'filekey');
 
 /* ---------- write ---------- */
 function persist(rec) {
@@ -1447,6 +1513,9 @@ async function purgeOldTrash() {
   for (const id in records) { const r = records[id]; if (r.deleted && !r._dirty && r.deletedAt && r.deletedAt < cutoff) ids.push(id); }
   for (const id in sealed) { const s = sealed[id]; if (s.deleted && !s._dirty && s.deletedAt && s.deletedAt < cutoff && !ids.includes(id)) ids.push(id); }
   if (!ids.length) return;
+  const goneDocs = new Set(ids.filter(id => records[id] && records[id].type === 'doc'));
+  ids.forEach(id => { const r = records[id]; if (r && r.type === 'docfile' && r.fileId) driveDelete(r.fileId); });
+  if (goneDocs.size) all('docfile').forEach(f => { if (goneDocs.has(f.docId)) { driveDelete(f.fileId); softDelete(f.id, { render: false }); } });
   ids.forEach(id => { delete records[id]; delete sealed[id]; });
   await DB.delMany(ids);
   RLOG.info('purged trash', ids.length);
@@ -2770,8 +2839,8 @@ $$('#dateSeg button').forEach(b => b.addEventListener('click', () => { setPref('
 /* ==========================================================================
    DOCUMENTS
    ======================================================================== */
-const DOC_TYPES = ['Insurance', 'Vehicle', 'Identity', 'Warranty', 'Membership', 'Property', 'Financial', 'Other'];
-const DOC_COLORS = { Insurance: '#1B4B8F', Vehicle: '#B45309', Identity: '#9C2963', Warranty: '#3F4F8C', Membership: '#2c6e6a', Property: '#6b3f5c', Financial: '#B8860B', Other: '#77818E' };
+const DOC_TYPES = ['Insurance', 'Vehicle', 'Identity', 'Education', 'Warranty', 'Membership', 'Property', 'Financial', 'Other'];
+const DOC_COLORS = { Insurance: '#1B4B8F', Vehicle: '#B45309', Identity: '#9C2963', Education: '#4F6B2F', Warranty: '#3F4F8C', Membership: '#2c6e6a', Property: '#6b3f5c', Financial: '#B8860B', Other: '#77818E' };
 let docFilter = 'All';
 function renderDocs() {
   const docs = all('doc');
@@ -2786,10 +2855,10 @@ function renderDocs() {
     return swipeHtml(`<div class="row" style="border-left:4px solid ${DOC_COLORS[d.docType] || '#77818E'}">
       ${d.expiry ? countHtml(days, 'expired') : '<div class="count past" aria-label="no expiry">∞<small>no expiry</small></div>'}
       <div class="row-main"><div class="row-title">${esc(d.title)}</div>
-        <div class="row-sub"><span>${d.docType}</span>${d.number ? `<span class="mono">${esc(d.number)}</span>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
+        <div class="row-sub"><span>${d.docType}</span>${docFileBadge(d)}${d.number ? `<span class="mono">${esc(maskNo(d.number))}</span>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
       <span class="chev">›</span></div>`, '', 'Delete 🗑', `data-doc="${d.id}"`);
   }).join('') : '<div class="empty"><b>No documents</b>Policies, RC, passport, warranties — tap + to add. Expiry is optional.</div>';
-  $$('[data-doc]', $('docList')).forEach(w => { const id = w.dataset.doc; bindSwipe(w, null, () => deleteWithUndo(id)); onTap(w, () => openDoc(id)); });
+  $$('[data-doc]', $('docList')).forEach(w => { const id = w.dataset.doc; bindSwipe(w, null, () => deleteWithUndo(id)); onTap(w, () => showDoc(id)); });
 }
 let editDocId = null;
 function openDoc(id) {
@@ -2798,6 +2867,7 @@ function openDoc(id) {
   $('doTitle').value = d.title; $('doNumber').value = d.number || ''; $('doExpiry').value = d.expiry || '';
   $('doIssuer').value = d.issuer || ''; $('doNotes').value = d.notes || '';
   chipGroup($('doType'), DOC_TYPES, d.docType, () => {}, t => DOC_COLORS[t]);
+  $('doFileMsg').textContent = ''; renderDocEditFiles();
   Sheets.open('shDoc');
 }
 $('doSave').addEventListener('click', () => {
@@ -2814,6 +2884,422 @@ $('doRemind').addEventListener('click', () => {
   if (all('date').some(x => x.docRef === d.id)) { toast('Already in Key dates.'); return; }
   put({ id: uid('d'), type: 'date', label: d.title + ' — expiry', when: d.expiry, repeat: 'once', docRef: d.id, deleted: false });
   toast('Added to Key dates.');
+});
+
+/* ==========================================================================
+   DOCUMENT FILES (v2.1) — photos / PDFs attached to a document, kept in Drive.
+   A locked file is encrypted on this device with its own random key before
+   upload. That key is stored in a sealed 'filekey' record, so it is protected
+   by the private code and follows code changes automatically.
+   ======================================================================== */
+const DOCFILE_MAX = 15 * 1024 * 1024;
+const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const PDFLIB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+const PDF_PAGE_BATCH = 10;
+const docPlain = new Map();                       // docfile id -> { blob, url }, memory only
+const docFilesOf = docId => all('docfile').filter(f => f.docId === docId).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+const isPdf = f => /pdf/i.test(f.mime || '') || /\.pdf$/i.test(f.name || '');
+const fmtBytes = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const stemOf = n => String(n || 'file').replace(/\.[^.]+$/, '');
+function lockedErr() { const e = new Error('private section is locked'); e.code = 'LOCKED'; return e; }
+
+async function aesEncBytes(key, bytes) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes);
+  const out = new Uint8Array(12 + ct.byteLength); out.set(iv, 0); out.set(new Uint8Array(ct), 12);
+  return out;
+}
+async function aesDecBytes(key, raw) {
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, key, raw.slice(12)));
+}
+const importFileKey = raw => crypto.subtle.importKey('raw', unb64(raw), 'AES-GCM', false, ['encrypt', 'decrypt']);
+async function fileKeyOf(f) {
+  if (!Fin.key) throw lockedErr();
+  const k = records[f.keyId];
+  if (!k) throw new Error('the key for this locked file is missing on this device — sync, then try again');
+  return importFileKey(k.raw);
+}
+
+/* Encrypt (if asked) and upload. Returns { fileId, keyId }. */
+async function putDocBytes(bytes, name, mime, lock) {
+  let body = bytes, upMime = mime, keyId = null;
+  try {
+    if (lock) {
+      if (!Fin.key) throw lockedErr();
+      const raw = b64(crypto.getRandomValues(new Uint8Array(32)));
+      keyId = put({ id: uid('fk'), type: 'filekey', raw, deleted: false }, { render: false }).id;
+      body = await aesEncBytes(await importFileKey(raw), bytes);
+      upMime = 'application/octet-stream';
+    }
+    const data = b64(body);
+    const d = await Sync.call('driveUpload', { folderId: prefs.driveFolder, name: lock ? name + '.locked' : name, mime: upMime, data }, 240000);
+    if (!d.fileId) throw new Error('Drive did not return a file id');
+    DB.imgSet(d.fileId, 'data:' + upMime + ';base64,' + data).catch(() => {});   // locked files are cached as ciphertext only
+    return { fileId: d.fileId, keyId };
+  } catch (e) {
+    if (keyId && records[keyId]) softDelete(keyId, { render: false });
+    throw e;
+  }
+}
+async function rawDocBytes(f) {
+  let url = null;
+  try { url = await DB.imgGet(f.fileId); } catch (e) {}
+  if (!url) {
+    if (!Sync.on()) throw new Error('sync is not set up, so the file cannot be fetched from Drive');
+    const d = await Sync.call('driveGet', { fileId: f.fileId }, 240000);
+    if (!d.data) throw new Error('Drive returned an empty file');
+    url = 'data:' + (d.mime || 'application/octet-stream') + ';base64,' + d.data;
+    DB.imgSet(f.fileId, url).catch(() => {});
+  }
+  return unb64(url.slice(url.indexOf(',') + 1));
+}
+async function docFileBlob(f) {
+  if (docPlain.has(f.id)) return docPlain.get(f.id);
+  if (f.locked && !Fin.key) throw lockedErr();
+  let bytes = await rawDocBytes(f);
+  if (f.locked) {
+    try { bytes = await aesDecBytes(await fileKeyOf(f), bytes); }
+    catch (e) { if (e.code === 'LOCKED') throw e; throw new Error(/key/.test(e.message) ? e.message : 'could not decrypt this file'); }
+  }
+  const blob = new Blob([bytes], { type: f.mime || 'application/octet-stream' });
+  const v = { blob, url: URL.createObjectURL(blob) };
+  docPlain.set(f.id, v);
+  return v;
+}
+function forgetLockedPlain() {
+  for (const [id, v] of docPlain) {
+    const f = records[id];
+    if (!f || f.locked) { URL.revokeObjectURL(v.url); docPlain.delete(id); }
+  }
+}
+async function fileToBytes(file) {
+  if (/^image\//.test(file.type) && !/gif|svg/.test(file.type)) {
+    const dataUrl = await prepForDrive(file);                 // very large photos are shrunk to 2400 px JPEG
+    return { bytes: unb64(dataUrl.slice(dataUrl.indexOf(',') + 1)), mime: dataUrl.slice(5, dataUrl.indexOf(';')) };
+  }
+  return { bytes: new Uint8Array(await file.arrayBuffer()), mime: file.type || 'application/pdf' };
+}
+function docFileBadge(d) {
+  const n = docFilesOf(d.id).length;
+  return (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
+}
+/* Long ID numbers show only their last 4 characters on screen (Aadhaar, PAN, passport, licence). */
+function maskNo(n) { const s = String(n || '').trim(); return s.replace(/[\s-]/g, '').length >= 8 ? '•••• ' + s.replace(/[\s-]/g, '').slice(-4) : s; }
+function showDoc(id) { if (docFilesOf(id).length) openDocView(id); else openDoc(id); }
+
+/* ---------- editor: file list, add, remove, lock ---------- */
+function renderDocEditFiles() {
+  const d = records[editDocId]; if (!d) return;
+  const fs = docFilesOf(d.id);
+  $('doLock').checked = !!d.lockFiles;
+  const mismatch = fs.filter(f => !!f.locked !== !!d.lockFiles).length;
+  $('doFiles').innerHTML = (fs.length ? fs.map(f => `<div class="dfile">
+      <span class="dficon" aria-hidden="true">${f.locked ? '🔒' : isPdf(f) ? 'PDF' : 'IMG'}</span>
+      <span class="dfname">${esc(f.name)}<small>${fmtBytes(f.bytes || 0)}${f.locked ? ' · locked' : ''}</small></span>
+      <button class="icon-btn" data-dfrm="${f.id}" aria-label="Remove ${esc(f.name)}" style="width:34px;height:34px;font-size:14px">✕</button></div>`).join('')
+    : '<div class="hint" style="margin:0 4px 4px">No files yet.</div>')
+    + (mismatch ? `<button class="linkbtn" id="doFinish">Finish ${d.lockFiles ? 'locking' : 'unlocking'} (${mismatch} left)</button>` : '');
+  $$('[data-dfrm]', $('doFiles')).forEach(b => b.addEventListener('click', () => removeDocFile(b.dataset.dfrm)));
+  const fin = $('doFinish'); if (fin) fin.addEventListener('click', () => convertDocFiles(d));
+}
+async function addDocFiles(docId, files) {
+  const d = records[docId]; if (!d) return;
+  const msg = $('doFileMsg');
+  if (!driveOn()) { msg.className = 'msg err'; msg.textContent = 'Files are kept in your Google Drive folder. Set it in Settings (Drive folder), tap Test, then try again.'; return; }
+  if (d.lockFiles && !Fin.key) { msg.className = 'msg err'; msg.textContent = 'This document locks its files. Enter your private code first (tap "Register" three times).'; return; }
+  let ok = 0; const bad = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    msg.className = 'msg'; msg.textContent = `Uploading ${i + 1} of ${files.length}…`;
+    try {
+      const pdf = /pdf/i.test(file.type) || /\.pdf$/i.test(file.name || '');
+      if (!pdf && !/^image\//.test(file.type)) throw new Error('only photos and PDFs can be added');
+      if (file.size > DOCFILE_MAX) throw new Error('larger than 15 MB');
+      const { bytes, mime } = await fileToBytes(file);
+      if (bytes.length > DOCFILE_MAX) throw new Error('larger than 15 MB');
+      const ext = /jpeg/.test(mime) ? '.jpg' : /png/.test(mime) ? '.png' : /pdf/.test(mime) ? '.pdf' : '';
+      const base = (d.title || 'Document').replace(/[\\/:*?"<>|]/g, '-').trim().slice(0, 50) || 'Document';
+      const taken = new Set(docFilesOf(docId).map(x => (x.name || '').toLowerCase()));
+      let name = base + ext, k = 2;
+      while (taken.has(name.toLowerCase())) name = `${base} (${k++})${ext}`;
+      const up = await putDocBytes(bytes, todayISO() + '-' + name, mime, !!d.lockFiles);
+      put({ id: uid('df'), type: 'docfile', docId, name, mime, bytes: bytes.length, fileId: up.fileId, keyId: up.keyId, locked: !!d.lockFiles, deleted: false }, { render: false });
+      ok++;
+    } catch (e) { RLOG.warn('doc file add failed', e.message); bad.push(`${file.name || 'file'}: ${e.message}`); }
+  }
+  msg.className = bad.length ? 'msg err' : 'msg ok';
+  msg.textContent = (ok ? `${ok} file${ok > 1 ? 's' : ''} added${d.lockFiles ? ' and locked' : ''}. ` : '') + (bad.length ? 'Not added: ' + bad.join('; ') : '');
+  renderDocEditFiles(); scheduleRender();
+}
+function removeDocFile(id) {
+  const f = records[id]; if (!f) return;
+  softDelete(id, { render: false });
+  renderDocEditFiles(); scheduleRender();
+  toast('File removed', 'Undo', () => { restore(id); renderDocEditFiles(); });
+  setTimeout(() => {
+    const r = records[id];
+    if (r && r.deleted) { driveDelete(r.fileId); if (r.keyId && records[r.keyId]) softDelete(r.keyId, { render: false }); }
+  }, 7000);
+}
+/* Re-upload every file whose locked state differs from the document's setting. */
+async function convertDocFiles(d) {
+  const want = !!d.lockFiles, msg = $('doFileMsg');
+  const fs = docFilesOf(d.id).filter(f => !!f.locked !== want);
+  if (!fs.length) { msg.className = 'msg ok'; msg.textContent = want ? 'New files for this document will be locked.' : 'New files will not be locked.'; renderDocEditFiles(); return; }
+  if (!driveOn()) { msg.className = 'msg err'; msg.textContent = 'Drive is not set up, so existing files cannot be converted yet.'; renderDocEditFiles(); return; }
+  let n = 0;
+  for (const f of fs) {
+    msg.className = 'msg'; msg.textContent = `${want ? 'Locking' : 'Unlocking'} file ${++n} of ${fs.length}…`;
+    try {
+      const { blob } = await docFileBlob(f);
+      const up = await putDocBytes(new Uint8Array(await blob.arrayBuffer()), todayISO() + '-' + f.name, f.mime, want);
+      const oldFile = f.fileId, oldKey = f.keyId;
+      f.fileId = up.fileId; f.keyId = up.keyId; f.locked = want;
+      put(f, { render: false });
+      driveDelete(oldFile);                                   // also clears this device's cached copy
+      if (oldKey && records[oldKey]) softDelete(oldKey, { render: false });
+    } catch (e) {
+      RLOG.warn('lock convert failed', e.message);
+      msg.className = 'msg err'; msg.textContent = `Stopped at file ${n}: ${e.message}. Tap "Finish" to retry.`;
+      renderDocEditFiles(); scheduleRender(); return;
+    }
+  }
+  msg.className = 'msg ok'; msg.textContent = want ? 'Files are now locked.' : 'Files are no longer locked.';
+  renderDocEditFiles(); scheduleRender();
+}
+$('doFileBtn').addEventListener('click', () => $('doFileIn').click());
+$('doFileIn').addEventListener('change', e => { const files = [...e.target.files]; e.target.value = ''; if (files.length) addDocFiles(editDocId, files); });
+$('doLock').addEventListener('change', () => {
+  const d = records[editDocId]; if (!d) return;
+  const want = $('doLock').checked;
+  if (!Fin.key) { $('doLock').checked = !want; toast('Enter your private code first — tap "Register" three times.'); return; }
+  d.lockFiles = want; put(d, { render: false });
+  convertDocFiles(d);
+});
+
+/* ---------- viewer ---------- */
+let viewDocId = null, docReturn = null;
+function openDocView(id) {
+  const d = records[id]; if (!d) return;
+  viewDocId = id;
+  $('dvTitle').textContent = d.title;
+  const days = d.expiry ? daysUntilISO(d.expiry) : null;
+  $('dvMeta').innerHTML = `<span>${esc(d.docType || '')}</span>` + (d.number ? `<span class="mono" id="dvNum">${esc(maskNo(d.number))}</span>`
+      + (maskNo(d.number) !== d.number ? '<button class="linkbtn" id="dvNumShow" style="padding:0 2px">Show</button>' : '') + '<button class="linkbtn" id="dvNumCopy" style="padding:0 2px">Copy</button>' : '')
+    + (d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : '');
+  const sh = $('dvNumShow'); if (sh) sh.addEventListener('click', () => { const on = sh.textContent === 'Show'; $('dvNum').textContent = on ? d.number : maskNo(d.number); sh.textContent = on ? 'Hide' : 'Show'; });
+  const cp = $('dvNumCopy'); if (cp) cp.addEventListener('click', async () => { try { await navigator.clipboard.writeText(d.number); toast('Number copied.'); } catch (e) { toast('Could not copy — tap Show and select it.'); } });
+  const fs = docFilesOf(id);
+  $('dvFiles').innerHTML = fs.length ? fs.map(f => `<figure class="dv-file" data-dvf="${f.id}"><figcaption>${f.locked ? '🔒 ' : ''}${esc(f.name)}</figcaption>
+      <div class="dv-body"><div class="dv-wait">${f.locked && !Fin.key ? 'Locked. Enter the code to view.' : 'Loading…'}</div></div></figure>`).join('')
+    : '<div class="empty"><b>No files</b>Tap Edit to attach a photo or PDF.</div>';
+  $('dvUnlock').classList.toggle('hidden', !(fs.some(f => f.locked) && !Fin.key));
+  $('dvShare').classList.toggle('hidden', !fs.length);
+  Sheets.open('shDocView');
+  fs.forEach(f => { if (!f.locked || Fin.key) showDocFile(f); });
+}
+async function showDocFile(f) {
+  const box = document.querySelector(`[data-dvf="${f.id}"] .dv-body`); if (!box) return;
+  try {
+    const { blob, url } = await docFileBlob(f);
+    if (viewDocId !== f.docId || !box.isConnected) return;
+    if (isPdf(f)) { await renderPdfInto(box, blob); return; }
+    box.innerHTML = `<img alt="${esc(f.name)}" src="${url}">`;
+    box.addEventListener('click', e => { if (e.target.tagName === 'IMG') box.classList.toggle('zoom'); });
+  } catch (e) {
+    RLOG.warn('doc view failed', e.message);
+    box.innerHTML = `<div class="dv-wait err">${e.code === 'LOCKED' ? 'Locked. Enter the code to view.' : 'Could not open: ' + esc(e.message)}</div>`;
+  }
+}
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const had = [...document.scripts].find(s => s.src === src);
+    if (had && had.dataset.ok) return res();
+    const s = document.createElement('script'); s.crossOrigin = 'anonymous'; s.src = src; s.async = true;
+    s.onload = () => { s.dataset.ok = '1'; res(); };
+    s.onerror = () => { s.remove(); rej(new Error('needs internet the first time')); };
+    document.head.appendChild(s);
+  });
+}
+let pdfjsReady = null;
+function pdfjs() {
+  pdfjsReady = pdfjsReady || (async () => {
+    await loadScript(PDFJS_URL);
+    const src = await (await fetch(PDFJS_WORKER)).text();       // a worker must be same-origin, so run it from a blob
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    return window.pdfjsLib;
+  })().catch(e => { pdfjsReady = null; throw e; });
+  return pdfjsReady;
+}
+async function renderPdfInto(box, blob, password) {
+  box.innerHTML = '<div class="dv-wait">Opening PDF…</div>';
+  let lib, doc;
+  try { lib = await pdfjs(); }
+  catch (e) { box.innerHTML = `<div class="dv-wait">The PDF viewer could not load (${esc(e.message)}). Use Share, then "Save to Files", to open it.</div>`; return; }
+  try { doc = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), password: password || undefined, isEvalSupported: false }).promise; }
+  catch (e) {
+    if (e && e.name === 'PasswordException') {
+      box.innerHTML = `<div class="dv-pass"><div class="hint" style="margin:0 0 8px">${password ? 'That password did not work. ' : ''}This PDF has its own password (e-Aadhaar PDFs do). It is not saved.</div>
+        <div style="display:flex;gap:8px"><input type="password" placeholder="PDF password" autocapitalize="characters" autocomplete="off" style="flex:1;min-width:0"><button class="btn small">Open</button></div></div>`;
+      const inp = box.querySelector('input'), go = () => renderPdfInto(box, blob, inp.value);
+      box.querySelector('button').addEventListener('click', go);
+      inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); go(); } });
+      return;
+    }
+    box.innerHTML = `<div class="dv-wait err">Could not read this PDF: ${esc(e.message || String(e))}</div>`; return;
+  }
+  box.innerHTML = '';
+  box.onclick = e => { if (e.target.tagName === 'CANVAS') box.classList.toggle('zoom'); };
+  const width = Math.max(280, Math.min(box.clientWidth || 600, 900));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let next = 1;
+  const batch = async () => {
+    const more = box.querySelector('.dv-more'); if (more) more.remove();
+    const end = Math.min(doc.numPages, next + PDF_PAGE_BATCH - 1);
+    for (; next <= end; next++) {
+      const page = await doc.getPage(next);
+      const vp = page.getViewport({ scale: width / page.getViewport({ scale: 1 }).width * dpr });
+      const cv = document.createElement('canvas'); cv.className = 'dv-page'; cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+      cv.setAttribute('aria-label', `Page ${next} of ${doc.numPages}`);
+      box.appendChild(cv);
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    }
+    if (next <= doc.numPages) {
+      const b = document.createElement('button'); b.className = 'dv-more'; b.textContent = `Show more pages (${doc.numPages - next + 1} left)`;
+      b.addEventListener('click', ev => { ev.stopPropagation(); batch(); }); box.appendChild(b);
+    }
+  };
+  await batch();
+}
+$('dvEdit').addEventListener('click', () => { const id = viewDocId; Sheets.close('shDocView', true); openDoc(id); });
+$('dvUnlock').addEventListener('click', () => { docReturn = viewDocId; openVault('unlock'); });
+$('dvShare').addEventListener('click', () => openDocShare());
+
+/* ---------- share (optional watermark) ---------- */
+let shareReady = null;
+const shareDate = () => new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+function openDocShare() {
+  const d = records[viewDocId]; if (!d) return;
+  const fs = docFilesOf(d.id);
+  $('dsFiles').innerHTML = fs.map(f => `<label class="switch-row"><span>${f.locked ? '🔒 ' : ''}${esc(f.name)}</span><input type="checkbox" class="sw" data-dsf="${f.id}" checked></label>`).join('');
+  $('dsWm').checked = false; $('dsText').value = ''; $('dsTextWrap').classList.add('hidden');
+  resetShare();
+  Sheets.open('shDocShare');
+}
+function resetShare() { shareReady = null; $('dsGo').textContent = 'Share'; $('dsMsg').className = 'msg'; $('dsMsg').textContent = ''; }
+$('dsWm').addEventListener('change', () => { $('dsTextWrap').classList.toggle('hidden', !$('dsWm').checked); resetShare(); });
+$('shDocShare').addEventListener('input', e => { if (e.target.id !== 'dsWm') resetShare(); });
+function stampCanvas(g, w, h, text) {
+  const fs = Math.max(14, Math.round(Math.min(w, h) / 20));
+  g.save();
+  g.translate(w / 2, h / 2); g.rotate(-Math.atan2(h, w));
+  g.font = `600 ${fs}px -apple-system, "Segoe UI", Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(166,54,47,0.28)';
+  const unit = text + '     ', diag = Math.hypot(w, h);
+  const line = unit.repeat(Math.ceil(diag / Math.max(1, g.measureText(unit).width)) + 1);
+  for (let y = -diag / 2; y <= diag / 2; y += fs * 4) g.fillText(line, 0, y);
+  g.restore();
+  const bh = Math.round(fs * 1.9);
+  g.fillStyle = 'rgba(255,255,255,0.88)'; g.fillRect(0, h - bh, w, bh);
+  g.fillStyle = '#A6362F'; g.font = `700 ${Math.round(fs * 0.8)}px -apple-system, "Segoe UI", Arial, sans-serif`;
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w / 2, h - bh / 2, w - 20);
+}
+async function watermarkImage(blob, text) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('not a picture')); i.src = url; });
+    const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    const g = cv.getContext('2d'); g.drawImage(img, 0, 0);
+    stampCanvas(g, cv.width, cv.height, text);
+    return await new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('could not save the picture')), 'image/jpeg', 0.9));
+  } finally { URL.revokeObjectURL(url); }
+}
+async function watermarkPdf(blob, text) {
+  try { await loadScript(PDFLIB_URL); } catch (e) { throw new Error('the PDF tool ' + e.message); }
+  const { PDFDocument, StandardFonts, rgb, degrees } = window.PDFLib;
+  let pdf;
+  try { pdf = await PDFDocument.load(await blob.arrayBuffer()); }
+  catch (e) { throw new Error(/encrypt/i.test(e.message || '') ? 'it is password-protected' : 'it could not be edited'); }
+  const font = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const t = text.replace(/₹/g, 'Rs ').replace(/[^\x20-\x7E\xA0-\xFF]/g, '-');
+  const red = rgb(0.65, 0.21, 0.18);
+  pdf.getPages().forEach(p => {
+    const { width: w, height: h } = p.getSize();
+    const size = Math.max(10, Math.min(w, h) / 22), a = Math.atan2(h, w), cos = Math.cos(a), sin = Math.sin(a);
+    const unit = t + '     ', diag = Math.hypot(w, h);
+    const line = unit.repeat(Math.ceil(diag / font.widthOfTextAtSize(unit, size)) + 1);
+    const lw = font.widthOfTextAtSize(line, size);
+    for (let k = -Math.ceil(diag / (size * 4) / 2); k <= Math.ceil(diag / (size * 4) / 2); k++) {
+      const cx = w / 2 - k * size * 4 * sin, cy = h / 2 + k * size * 4 * cos;
+      p.drawText(line, { x: cx - cos * lw / 2, y: cy - sin * lw / 2, size, font, color: red, opacity: 0.28, rotate: degrees(a * 180 / Math.PI) });
+    }
+    const bh = size * 1.9;
+    p.drawRectangle({ x: 0, y: 0, width: w, height: bh, color: rgb(1, 1, 1), opacity: 0.88 });
+    const bs = size * 0.8, tw = font.widthOfTextAtSize(t, bs);
+    p.drawText(t, { x: Math.max(6, (w - tw) / 2), y: bh / 2 - bs * 0.35, size: bs, font, color: red });
+  });
+  return new Blob([await pdf.save()], { type: 'application/pdf' });
+}
+async function doShare(files, firstTry) {
+  const title = (records[viewDocId] && records[viewDocId].title) || 'Document';
+  try {
+    if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title }); Sheets.close('shDocShare'); return; }
+    files.forEach(f => dl(f, f.name)); Sheets.close('shDocShare'); return;
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+    if (e && e.name === 'NotAllowedError' && firstTry) {           // iPhone wants a fresh tap after slow preparation
+      $('dsGo').textContent = 'Share now'; $('dsMsg').className = 'msg ok';
+      $('dsMsg').textContent = ($('dsMsg').textContent + ' Ready. Tap "Share now".').trim(); return;
+    }
+    $('dsMsg').className = 'msg err'; $('dsMsg').textContent = 'Sharing failed: ' + (e.message || e);
+  }
+}
+$('dsGo').addEventListener('click', async () => {
+  if (shareReady) { await doShare(shareReady, false); return; }
+  const ids = $$('[data-dsf]', $('dsFiles')).filter(c => c.checked).map(c => c.dataset.dsf);
+  const msg = $('dsMsg');
+  if (!ids.length) { msg.className = 'msg err'; msg.textContent = 'Pick at least one file.'; return; }
+  const wm = $('dsWm').checked ? `${$('dsText').value.trim() || 'Shared copy'} · ${shareDate()}` : '';
+  $('dsGo').disabled = true; msg.className = 'msg'; msg.textContent = 'Preparing…';
+  const files = [], notes = [];
+  try {
+    for (const id of ids) {
+      const f = records[id]; if (!f) continue;
+      const { blob } = await docFileBlob(f);
+      if (!wm) { files.push(new File([blob], f.name, { type: f.mime })); continue; }
+      if (isPdf(f)) {
+        try { files.push(new File([await watermarkPdf(blob, wm)], stemOf(f.name) + '-shared.pdf', { type: 'application/pdf' })); }
+        catch (e) { notes.push(`${f.name} sent without a watermark because ${e.message}.`); files.push(new File([blob], f.name, { type: f.mime })); }
+      } else files.push(new File([await watermarkImage(blob, wm)], stemOf(f.name) + '-shared.jpg', { type: 'image/jpeg' }));
+    }
+  } catch (e) {
+    $('dsGo').disabled = false; msg.className = 'msg err';
+    msg.textContent = e.code === 'LOCKED' ? 'Enter your private code first to share locked files.' : 'Could not prepare: ' + e.message; return;
+  }
+  $('dsGo').disabled = false; shareReady = files;
+  msg.className = notes.length ? 'msg err' : 'msg'; msg.textContent = notes.join(' ');
+  await doShare(files, true);
+});
+
+/* ---------- common documents quick add ---------- */
+const COMMON_DOCS = [['Aadhaar card', 'Identity'], ['PAN card', 'Identity'], ['Driving licence', 'Identity'], ['Passport', 'Identity'],
+  ['Voter ID', 'Identity'], ['10th marksheet', 'Education'], ['12th marksheet', 'Education'], ['Degree certificate', 'Education'], ['Vehicle RC', 'Vehicle']];
+function openDocQuick() {
+  const have = new Set(all('doc').map(d => (d.title || '').trim().toLowerCase()));
+  $('dqList').innerHTML = COMMON_DOCS.map(([t, ty], i) => {
+    const got = have.has(t.toLowerCase());
+    return `<label class="switch-row"><span>${t}<small class="dq-sub">${got ? 'Already in your list' : ty}</small></span><input type="checkbox" class="sw" data-dq="${i}"${got ? ' disabled' : ''}></label>`;
+  }).join('');
+  Sheets.open('shDocQuick');
+}
+$('docQuickBtn').addEventListener('click', openDocQuick);
+$('dqAdd').addEventListener('click', () => {
+  const picks = $$('[data-dq]', $('dqList')).filter(c => c.checked && !c.disabled).map(c => COMMON_DOCS[+c.dataset.dq]);
+  if (!picks.length) { toast('Pick at least one.'); return; }
+  picks.forEach(([t, ty]) => put({ id: uid('doc'), type: 'doc', title: t, docType: ty, number: '', expiry: null, issuer: '', notes: '', deleted: false }, { render: false }));
+  Sheets.close('shDocQuick'); scheduleRender();
+  toast(`Added ${picks.length}. Tap one to attach its file.`);
 });
 
 /* ==========================================================================
@@ -3250,7 +3736,7 @@ function runSearch() {
     else if (k === 'Note') { showTab('notes'); previewNote(id); }
     else if (k === 'Date') { setPref('dateSeg', 'dates'); showTab('dates'); openDate(id); }
     else if (k === 'Bill') { setPref('dateSeg', 'bills'); showTab('dates'); openBill(id); }
-    else if (k === 'Doc') { showTab('docs'); openDoc(id); }
+    else if (k === 'Doc') { showTab('docs'); showDoc(id); }
     else if (k === '₹') { const f = records[id]; if (f && f.date) finMonth = f.date.slice(0, 7); setPref('moneySeg', 'ledger'); showTab('money'); openFin(id); }
   }));
 }
@@ -3346,11 +3832,14 @@ async function vaultSubmit() {
 function afterFinanceUnlock() {
   $('moneyTab').classList.remove('hidden');
   flushPendingPosts(); rollRecurring();
+  const back = docReturn; docReturn = null;
+  if (back && Sheets.isOpen('shDocView')) { openDocView(back); return; }
   showTab('money');
 }
 function onFinanceLocked(silent) {
   $('moneyTab').classList.add('hidden');
-  ['shFin', 'shSettle', 'shBudget'].forEach(id => Sheets.close(id, true));
+  ['shFin', 'shSettle', 'shBudget', 'shDocView', 'shDocShare'].forEach(id => Sheets.close(id, true));
+  forgetLockedPlain();
   if (currentTab === 'money') showTab(prefs.lastTab || 'tasks');
   if (!silent) toast('Private section locked.');
 }
