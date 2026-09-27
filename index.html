@@ -567,6 +567,17 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
 html.app-hidden #app{filter:blur(24px)}
 .bio-btn{margin-top:8px}
 .bill-bulk{display:block;margin:4px 2px 8px;font-size:.8125rem}
+
+/* v2.8 */
+.doc-yearbar{display:flex;align-items:center;gap:8px;margin:0 2px 10px;font-size:.875rem}
+.doc-yearbar select{width:auto;padding:6px 8px;font-size:.875rem}
+.dfyear{font-size:.75rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);margin:10px 4px 4px}
+.dffy{width:auto;padding:2px 4px;font-size:.75rem;min-height:0}
+.dv-year{margin:10px 0}
+.dv-year>summary{font-weight:700;font-size:.9375rem;padding:10px 4px;cursor:pointer;list-style:none}
+.dv-year>summary::-webkit-details-marker{display:none}
+.dv-year>summary::before{content:'▸ ';color:var(--ink-faint)}
+.dv-year[open]>summary::before{content:'▾ '}
 </style>
 </head>
 <body>
@@ -620,16 +631,16 @@ html.app-hidden #app{filter:blur(24px)}
     <!-- DATES + BILLS -->
     <section class="screen" id="scr-dates">
       <div class="large-title">Dates</div>
-      <div class="seg" id="dateSeg">
+      <div class="seg hidden" id="dateSeg">
         <button data-v="bills" class="on">Bills &amp; EMIs</button>
         <button data-v="dates">Key dates</button>
       </div>
-      <div id="billsPane">
+      <div id="billsPane" class="hidden">
         <div class="month-nav"><button id="billPrev">‹</button><b id="billMonthLbl"></b><button id="billNext">›</button></div>
         <div class="group" id="billList"></div>
         <p class="hint">Swipe a bill right to mark it paid. Missed months from earlier stay at the top until you settle or skip them.</p>
       </div>
-      <div id="datesPane" class="hidden">
+      <div id="datesPane">
         <div class="group" id="dateList"></div>
       </div>
     </section>
@@ -639,6 +650,7 @@ html.app-hidden #app{filter:blur(24px)}
       <div class="large-title">Documents</div>
       <button class="btn ghost small" id="docQuickBtn" style="margin:0 0 12px">＋ Common documents</button>
       <div class="chips" id="docChips"></div>
+      <div id="docYearBar"></div>
       <div id="docFolders"></div>
       <div class="group" id="docList"></div>
     </section>
@@ -908,9 +920,12 @@ html.app-hidden #app{filter:blur(24px)}
       </div>
       <div class="field"><label>Issuer</label><input id="doIssuer"></div>
       <div class="field"><label>Folder</label><input id="doFolder" list="docFolderDl" placeholder="e.g. Car, Wife's documents" autocomplete="off"><datalist id="docFolderDl"></datalist></div>
+      <div class="grid2"><div class="field"><label>Year (FY)</label><select id="doFy"></select></div>
+        <div class="field"><label>Yearly files</label><label class="switch-row" style="padding:6px 0;min-height:0"><span style="font-size:.8125rem">Files by year<small>ITR, statements…</small></span><input type="checkbox" class="sw" id="doByYear"></label></div></div>
       <div class="field"><label>Notes</label><textarea id="doNotes" rows="3"></textarea></div>
       <div class="field"><label>Files</label>
         <div class="dfiles" id="doFiles"></div>
+        <div class="field hidden" id="doFileFyW" style="margin:6px 0"><label>Year for the next files</label><select id="doFileFy"></select></div>
         <button type="button" class="btn ghost small" id="doFileBtn">＋ Add photo or PDF</button>
         <input type="file" id="doFileIn" class="vh" accept="image/*,application/pdf,.pdf" multiple tabindex="-1" aria-hidden="true">
         <div class="msg" id="doFileMsg"></div>
@@ -1135,7 +1150,7 @@ html.app-hidden #app{filter:blur(24px)}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.8.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -3006,6 +3021,11 @@ function bulkPaid(id) {
   scheduleRender();
   toast(`${l.length} months marked paid.`, 'Undo', () => { made.forEach(x => softDelete(x, { render: false })); scheduleRender(); });
 }
+function retireBills() {
+  const l = all('bill'); if (!l.length) return;
+  l.forEach(b => put({ ...records[b.id], type: 'oldbill', retiredOn: todayISO() }, { render: false }));
+  RLOG.info('bills retired (v2.8)', l.length);
+}
 function postBillToMoney(b, pay) {
   put({ id: uid('f'), type: 'fin', desc: b.label + ' — ' + monthShort(pay.period), amount: pay.amount, kind: 'expense', category: b.category || 'Bills',
         date: pay.paidOn, who: '', recurring: false, settled: false, billRef: b.id, deleted: false }, { render: false });
@@ -3044,7 +3064,7 @@ $('beSave').addEventListener('click', () => {
 $('beDelete').addEventListener('click', () => { const id = editBillId; Sheets.close('shBill', true); deleteWithUndo(id); });
 
 function renderDatesTab() {
-  const seg = prefs.dateSeg;
+  const seg = 'dates';                                  // v2.8: Bills & EMIs moved out — Money → Recurring
   $$('#dateSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === seg));
   $('billsPane').classList.toggle('hidden', seg !== 'bills');
   $('datesPane').classList.toggle('hidden', seg !== 'dates');
@@ -3055,6 +3075,12 @@ $$('#dateSeg button').forEach(b => b.addEventListener('click', () => { setPref('
 /* ==========================================================================
    DOCUMENTS
    ======================================================================== */
+/* Financial years (Apr–Mar) as "2024-25"; newest first. */
+const fyOf = iso => { const y = +iso.slice(0, 4), m = +iso.slice(5, 7); const s = m >= 4 ? y : y - 1; return s + '-' + String((s + 1) % 100).padStart(2, '0'); };
+function fyList() { const cur = +fyOf(todayISO()).slice(0, 4), out = []; for (let s = cur + 1; s >= 2000; s--) out.push(s + '-' + String((s + 1) % 100).padStart(2, '0')); return out; }
+const fyOptions = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + fyList().map(f => `<option value="${f}"${f === sel ? ' selected' : ''}>FY ${f}</option>`).join('');
+const docYears = d => [...new Set([d.fy, ...(d.byYear ? docFilesOf(d.id).map(f => f.fy) : [])].filter(Boolean))].sort().reverse();
+let docYear = 'All';
 const DOC_TYPES = ['Insurance', 'Vehicle', 'Identity', 'Education', 'Warranty', 'Membership', 'Property', 'Financial', 'Other'];
 const DOC_COLORS = { Insurance: '#1B4B8F', Vehicle: '#B45309', Identity: '#9C2963', Education: '#4F6B2F', Warranty: '#3F4F8C', Membership: '#2c6e6a', Property: '#6b3f5c', Financial: '#B8860B', Other: '#77818E' };
 let docFilter = 'All', activeDocFolder = '__all__';
@@ -3066,7 +3092,11 @@ function renderDocs() {
   if (activeDocFolder !== '__all__' && !docs.some(d => docFolder(d) === activeDocFolder)) activeDocFolder = '__all__';
   chipGroup($('docChips'), ['All', ...DOC_TYPES.filter(t => docs.some(d => d.docType === t))].map(t => ({ v: t, l: t + ' ' + (t === 'All' ? docs.length : docs.filter(d => d.docType === t).length) })),
     docFilter, v => { docFilter = v; renderDocs(); }, t => DOC_COLORS[t] || 'var(--ink-faint)');
-  const shown = docs.filter(d => docFilter === 'All' || d.docType === docFilter);
+  const allYears = [...new Set(docs.flatMap(docYears))].sort().reverse();
+  if (docYear !== 'All' && !allYears.includes(docYear)) docYear = 'All';
+  $('docYearBar').innerHTML = allYears.length ? `<div class="doc-yearbar"><span class="muted">Year</span><select id="docYearSel" aria-label="Financial year"><option value="All">All years</option>${allYears.map(y => `<option value="${y}"${y === docYear ? ' selected' : ''}>FY ${y}</option>`).join('')}</select></div>` : '';
+  if ($('docYearSel')) $('docYearSel').addEventListener('change', e => { docYear = e.target.value; renderDocs(); });
+  const shown = docs.filter(d => (docFilter === 'All' || d.docType === docFilter) && (docYear === 'All' || docYears(d).includes(docYear)));
   const fbox = $('docFolders');
   if (activeDocFolder === '__all__') {
     const fs = docFolderList().filter(f => shown.some(d => docFolder(d) === f));
@@ -3100,7 +3130,10 @@ function openDoc(id) {
     if (Fin.key) docNumFull(d).then(n => { if (editDocId === id) { $('doNumber').value = n; $('doNumber').disabled = false; $('doNumber').placeholder = ''; if (Sheets.onOpen.shDoc) Sheets.onOpen.shDoc(); } })
       .catch(() => { if (editDocId === id) $('doNumber').placeholder = 'Locked under an older code — unchanged'; }); }
   $('doIssuer').value = d.issuer || ''; $('doNotes').value = d.notes || '';
-  $('doFolder').value = d.folder || ''; $('docFolderDl').innerHTML = docFolderList().map(f => `<option value="${esc(f)}">`).join('');
+  $('doFolder').value = d.folder || '';
+  $('doFy').innerHTML = fyOptions(d.fy || '', '— none —'); $('doByYear').checked = !!d.byYear;
+  $('doFileFy').innerHTML = fyOptions((docYear !== 'All' ? docYear : null) || docYears(d)[0] || fyOf(todayISO()));
+  $('doFileFyW').classList.toggle('hidden', !d.byYear); $('docFolderDl').innerHTML = docFolderList().map(f => `<option value="${esc(f)}">`).join('');
   chipGroup($('doType'), DOC_TYPES, d.docType, () => {}, t => DOC_COLORS[t]);
   $('doFileMsg').textContent = ''; renderDocEditFiles();
   Sheets.open('shDoc');
@@ -3111,6 +3144,7 @@ $('doSave').addEventListener('click', async () => {
   d.title = $('doTitle').value.trim() || d.title; d.docType = chipValue($('doType')) || d.docType;
   if (!numLocked) { d.number = $('doNumber').value.trim(); if (!d.number) { delete d.numEnc; delete d.numTail; } } d.expiry = $('doExpiry').value || null; d.issuer = $('doIssuer').value.trim(); d.notes = $('doNotes').value;
   d.folder = $('doFolder').value.trim();
+  d.fy = $('doFy').value || null; d.byYear = $('doByYear').checked;
   if (d.lockFiles && d.number) await sealDocNumber(d);
   put(d); Sheets.close('shDoc'); toast('Saved.');
 });
@@ -3220,7 +3254,8 @@ async function fileToBytes(file) {
 }
 function docFileBadge(d) {
   const n = docFilesOf(d.id).length;
-  return (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
+  const ys = d.byYear ? docYears(d).filter(y => y !== d.fy) : [];
+  return (d.fy ? `<span>FY ${d.fy}</span>` : '') + (ys.length ? `<span>${ys.length === 1 ? 'FY ' + ys[0] : ys.length + ' years · latest ' + ys[0]}</span>` : '') + (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
 }
 /* Long ID numbers show only their last 4 characters on screen (Aadhaar, PAN, passport, licence). */
 const docNumShown = d => d.number ? maskNo(d.number) : d.numEnc ? '•••• ' + (d.numTail || '') : '';
@@ -3241,13 +3276,16 @@ function renderDocEditFiles() {
   const fs = docFilesOf(d.id);
   $('doLock').checked = !!d.lockFiles;
   const mismatch = fs.filter(f => !!f.locked !== !!d.lockFiles).length;
-  $('doFiles').innerHTML = (fs.length ? fs.map(f => `<div class="dfile">
+  const row = f => `<div class="dfile">
       <span class="dficon" aria-hidden="true">${f.locked ? '🔒' : isPdf(f) ? 'PDF' : 'IMG'}</span>
-      <span class="dfname">${esc(f.name)}<small>${fmtBytes(f.bytes || 0)}${f.locked ? ' · locked' : ''}</small></span>
-      <button class="icon-btn" data-dfrm="${f.id}" aria-label="Remove ${esc(f.name)}" style="width:34px;height:34px;font-size:14px">✕</button></div>`).join('')
+      <span class="dfname">${esc(f.name)}<small>${fmtBytes(f.bytes || 0)}${f.locked ? ' · locked' : ''}</small>${d.byYear ? `<select class="dffy" data-dffy="${f.id}" aria-label="Year">${fyOptions(f.fy || '', 'No year')}</select>` : ''}</span>
+      <button class="icon-btn" data-dfrm="${f.id}" aria-label="Remove ${esc(f.name)}" style="width:34px;height:34px;font-size:14px">✕</button></div>`;
+  const groups = d.byYear ? [...new Set(fs.map(f => f.fy || ''))].sort().reverse() : [null];
+  $('doFiles').innerHTML = (fs.length ? groups.map(g => (g === null ? '' : `<div class="dfyear">${g ? 'FY ' + g : 'No year'}</div>`) + fs.filter(f => g === null || (f.fy || '') === g).map(row).join('')).join('')
     : '<div class="hint" style="margin:0 4px 4px">No files yet.</div>')
     + (mismatch ? `<button class="linkbtn" id="doFinish">Finish ${d.lockFiles ? 'locking' : 'unlocking'} (${mismatch} left)</button>` : '');
   $$('[data-dfrm]', $('doFiles')).forEach(b => b.addEventListener('click', () => removeDocFile(b.dataset.dfrm)));
+  $$('[data-dffy]', $('doFiles')).forEach(s => s.addEventListener('change', () => { const f = records[s.dataset.dffy]; f.fy = s.value || undefined; put(f, { render: false }); renderDocEditFiles(); scheduleRender(); }));
   const fin = $('doFinish'); if (fin) fin.addEventListener('click', () => convertDocFiles(d));
 }
 async function addDocFiles(docId, files) {
@@ -3266,12 +3304,13 @@ async function addDocFiles(docId, files) {
       const { bytes, mime } = await fileToBytes(file);
       if (bytes.length > DOCFILE_MAX) throw new Error('larger than 15 MB');
       const ext = /jpeg/.test(mime) ? '.jpg' : /png/.test(mime) ? '.png' : /pdf/.test(mime) ? '.pdf' : '';
-      const base = (d.title || 'Document').replace(/[\\/:*?"<>|]/g, '-').trim().slice(0, 50) || 'Document';
+      const fy = d.byYear ? $('doFileFy').value : null;
+      const base = ((d.title || 'Document') + (fy ? ' FY ' + fy : '')).replace(/[\\/:*?"<>|]/g, '-').trim().slice(0, 60) || 'Document';
       const taken = new Set(docFilesOf(docId).map(x => (x.name || '').toLowerCase()));
       let name = base + ext, k = 2;
       while (taken.has(name.toLowerCase())) name = `${base} (${k++})${ext}`;
       const up = await putDocBytes(bytes, todayISO() + '-' + name, mime, !!d.lockFiles);
-      put({ id: uid('df'), type: 'docfile', docId, name, mime, bytes: bytes.length, fileId: up.fileId, keyId: up.keyId, locked: !!d.lockFiles, deleted: false }, { render: false });
+      put({ id: uid('df'), type: 'docfile', docId, name, mime, bytes: bytes.length, fileId: up.fileId, keyId: up.keyId, locked: !!d.lockFiles, fy: fy || undefined, deleted: false }, { render: false });
       ok++;
     } catch (e) { RLOG.warn('doc file add failed', e.message); bad.push(`${file.name || 'file'}: ${e.message}`); }
   }
@@ -3316,6 +3355,12 @@ async function convertDocFiles(d) {
   renderDocEditFiles(); scheduleRender();
 }
 $('doFileBtn').addEventListener('click', () => $('doFileIn').click());
+$('doByYear').addEventListener('change', () => {
+  const d = records[editDocId]; if (!d) return;
+  d.byYear = $('doByYear').checked; put(d, { render: false });
+  if (d.byYear) docFilesOf(d.id).forEach(f => { if (!f.fy) { f.fy = d.fy || fyOf(f.createdAt ? isoLocal(new Date(f.createdAt)) : todayISO()); put(f, { render: false }); } });   // existing files get a year to start with
+  $('doFileFyW').classList.toggle('hidden', !d.byYear); renderDocEditFiles(); scheduleRender();
+});
 $('doFileIn').addEventListener('change', e => { const files = [...e.target.files]; e.target.value = ''; if (files.length) addDocFiles(editDocId, files); });
 $('doLock').addEventListener('change', () => {
   const d = records[editDocId]; if (!d) return;
@@ -3347,7 +3392,17 @@ function openDocView(id) {
   $('dvUnlock').classList.toggle('hidden', !(fs.some(f => f.locked) && !Fin.key));
   $('dvShare').classList.toggle('hidden', !fs.length);
   Sheets.open('shDocView');
-  fs.forEach(f => { if (!f.locked || Fin.key) showDocFile(f); });
+  if (d.byYear && fs.length) docViewByYear(d, fs); else fs.forEach(f => { if (!f.locked || Fin.key) showDocFile(f); });
+}
+function docViewByYear(d, fs) {
+  const years = [...new Set(fs.map(f => f.fy || ''))].sort().reverse(), first = docYear !== 'All' && years.includes(docYear) ? docYear : years[0];
+  const fig = f => `<figure class="dv-file" data-dvf="${f.id}"><figcaption>${f.locked ? '🔒 ' : ''}${esc(f.name)}</figcaption>
+      <div class="dv-body"><div class="dv-wait">${f.locked && !Fin.key ? 'Locked. Enter the code to view.' : 'Tap to load'}</div></div></figure>`;
+  $('dvFiles').innerHTML = years.map(y => { const list = fs.filter(f => (f.fy || '') === y);
+    return `<details class="dv-year" data-dvy="${esc(y)}"${y === first ? ' open' : ''}><summary>${y ? 'FY ' + y : 'No year'} · ${list.length} file${list.length > 1 ? 's' : ''}</summary>${list.map(fig).join('')}</details>`; }).join('');
+  const load = y => fs.filter(f => (f.fy || '') === y).forEach(f => { if (!f.locked || Fin.key) showDocFile(f); });
+  $$('.dv-year', $('dvFiles')).forEach(det => det.addEventListener('toggle', () => { if (det.open && !det.dataset.loaded) { det.dataset.loaded = '1'; load(det.dataset.dvy); } }));
+  const open = $('dvFiles').querySelector('.dv-year[open]'); if (open) { open.dataset.loaded = '1'; load(open.dataset.dvy); }
 }
 async function showDocFile(f) {
   const box = document.querySelector(`[data-dvf="${f.id}"] .dv-body`); if (!box) return;
@@ -5277,7 +5332,7 @@ function rollRecurring() {
    Picks the type that matches the tab you're on.
    ======================================================================== */
 const ADD_TYPES = [
-  { k: 'task', i: '☑︎', l: 'Task' }, { k: 'note', i: '🗒', l: 'Note' }, { k: 'bill', i: '🔁', l: 'Bill/EMI' },
+  { k: 'task', i: '☑︎', l: 'Task' }, { k: 'note', i: '🗒', l: 'Note' },
   { k: 'date', i: '📅', l: 'Key date' }, { k: 'doc', i: '📁', l: 'Document' }, { k: 'money', i: '₹', l: 'Money', priv: true }
 ];
 let addKind = 'task';
@@ -5303,7 +5358,7 @@ function openAdd(kind) {
   }
   if (!kind) {
     const tab = currentTab;
-    kind = tab === 'notes' ? 'note' : tab === 'dates' ? (prefs.dateSeg === 'dates' ? 'date' : 'bill') : tab === 'docs' ? 'doc' : tab === 'money' ? 'money' : 'task';
+    kind = tab === 'notes' ? 'note' : tab === 'dates' ? 'date' : tab === 'docs' ? 'doc' : tab === 'money' ? 'money' : 'task';
   }
   if (kind === 'money' && !finUnlocked()) kind = 'task';
   addKind = kind;
@@ -5384,7 +5439,8 @@ function renderAddForm(focus) {
     f.innerHTML = `<div class="field"><input id="afTitle" placeholder="e.g. Car insurance — Creta" autocomplete="off"></div>
       <div class="field"><label>Type</label><div class="wrapchips" id="afType"></div></div>
       <div class="grid2"><div class="field"><label>Number / ID</label><input id="afNum" autocapitalize="characters"></div>
-        <div class="field"><label>Expiry (optional)</label><input type="date" id="afDate"></div></div>`;
+        <div class="field"><label>Expiry (optional)</label><input type="date" id="afDate"></div></div>
+      <div class="field"><label>Year (FY, optional)</label><select id="afFy">${fyOptions('', '— none —')}</select></div>`;
     AF.type = 'Insurance'; chipGroup($('afType'), DOC_TYPES, 'Insurance', v => AF.type = v, t => DOC_COLORS[t]);
   } else if (k === 'money') {
     const last = all('fin').sort((a, b) => b.createdAt - a.createdAt)[0];
@@ -5451,7 +5507,7 @@ function saveAdd(another) {
     toast('Bill added.');
   } else if (k === 'doc') {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
-    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), deleted: false });
+    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, deleted: false });
     toast(docFolderForNew() ? 'Document added to ' + docFolderForNew() + '.' : 'Document added.');
   } else if (k === 'money') {
     const amt = calcAmount(v('afAmt'));
@@ -5492,7 +5548,7 @@ $$('.tab').forEach(t => t.addEventListener('click', () => {
 function renderAll() {
   const n = new Date();
   $('todayLbl').textContent = n.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
-  const pend = pendingCount(), b = $('datesBadge');
+  const pend = 0, b = $('datesBadge');
   b.classList.toggle('hidden', !pend); b.textContent = pend;
   b.setAttribute('aria-label', pend + ' bills pending');
   if (currentTab === 'tasks') renderTasks();
@@ -5511,7 +5567,7 @@ function hl(text, q) {
 }
 function runSearch() {
   const q = $('searchIn').value.trim().toLowerCase(), box = $('searchRes');
-  if (!q) { box.innerHTML = '<div class="empty">Type to search tasks, steps, notes, dates, bills and documents' + (finUnlocked() ? ' — and Money' : '') + '.</div>'; return; }
+  if (!q) { box.innerHTML = '<div class="empty">Type to search tasks, steps, notes, dates and documents' + (finUnlocked() ? ' — and Money' : '') + '.</div>'; return; }
   const hits = [], has = s => String(s || '').toLowerCase().includes(q);
   all('task').forEach(t => {
     if (has(t.title)) hits.push({ k: 'Task', id: t.id, t: hl(t.title, q), s: t.status === 'done' ? 'done' : relDay(t.dueDate) });
@@ -5521,7 +5577,6 @@ function runSearch() {
   if (finUnlocked()) all('snote').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder)) hits.push({ k: 'Private', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: 'private note' }); });
   all('note').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder)) hits.push({ k: 'Note', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: n.folder || '' }); });
   all('date').forEach(d => { if (has(d.label)) hits.push({ k: 'Date', id: d.id, t: hl(d.label, q), s: fmtDate(d.when) }); });
-  all('bill').forEach(b => { if (has(b.label)) hits.push({ k: 'Bill', id: b.id, t: hl(b.label, q), s: b.amount ? fmtMoney(b.amount) : '' }); });
   all('doc').forEach(d => { if (has(d.title) || has(d.number) || has(d.notes) || has(d.issuer)) hits.push({ k: 'Doc', id: d.id, t: has(d.title) ? hl(d.title, q) : esc(d.title) + '<br><small class="muted">' + (has(d.number) ? 'number ' + esc(docNumShown(d)) : hl(has(d.notes) ? d.notes : d.issuer, q)) + '</small>', s: d.docType }); });
   if (finUnlocked()) all('fin').forEach(f => { if (has(f.desc) || has(f.who)) hits.push({ k: '₹', id: f.id, t: hl(f.desc + (f.who ? ' · ' + f.who : ''), q), s: fmtMoney(f.amount) }); });
   box.innerHTML = hits.length ? hits.slice(0, 80).map(h => `<button class="sr" data-k="${h.k}" data-id="${h.id}"><span class="k">${h.k}</span><span class="t" style="white-space:normal">${h.t}</span><span class="s">${esc(h.s || '')}</span></button>`).join('')
@@ -6066,6 +6121,7 @@ document.addEventListener('keydown', e => {
     if (prefs.decoyLaunch) showDecoy(); else hideDecoy();
     await loadAll();
     await purgeOldTrash();
+    retireBills();
     Sync.lastOk = (await DB.get('lastSync')) || 0;
     if (Sync.lastOk && !(await DB.get('firstSync'))) await DB.set('firstSync', Sync.lastOk);   // installs from before v2.7
     Sync.status(Sync.on() ? (Sync.lastOk ? 'ok' : '') : '', Sync.on() ? 'Last synced ' + timeAgo(Sync.lastOk) : 'Local only');
