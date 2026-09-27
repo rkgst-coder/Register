@@ -589,6 +589,10 @@ html.app-hidden #app{filter:blur(24px)}
 .imp-row small{display:block;color:var(--ink-faint);font-size:.75rem;line-height:1.4}
 .imp-skip{font-size:.8125rem;color:var(--ink-soft);padding:4px 12px}
 .imp-bar{position:sticky;bottom:0;background:var(--bg);padding:10px 0}
+
+/* v2.10 */
+.imp-note{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:12px 14px;margin:0 0 12px;font-size:.9rem}
+.imp-note b{font-weight:600}.imp-note span{flex:1}
 </style>
 </head>
 <body>
@@ -661,6 +665,7 @@ html.app-hidden #app{filter:blur(24px)}
       <div class="large-title">Documents</div>
       <div class="btn-row" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn ghost small" id="docQuickBtn">＋ Common documents</button><button class="btn ghost small" id="docImportBtn">⤓ Import from Drive</button></div>
       <div class="chips" id="docChips"></div>
+      <div id="docImpNote"></div>
       <div id="docYearBar"></div>
       <div id="docFolders"></div>
       <div class="group" id="docList"></div>
@@ -1171,7 +1176,7 @@ html.app-hidden #app{filter:blur(24px)}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.9.0';
+const APP_VERSION = '2.10.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -3112,6 +3117,10 @@ const docFolderList = () => [...new Set(all('doc').map(docFolder).filter(Boolean
 const docFolderForNew = () => activeDocFolder !== '__all__' ? activeDocFolder : '';
 function renderDocs() {
   const docs = all('doc');
+  { const c = ImpCheck.get(), n = c && !c.off ? c.n : 0;
+    $('docImpNote').innerHTML = n ? `<button class="imp-note" id="docImpGo"><span>📥 <b>${n} new file${n > 1 ? 's' : ''}</b> in your Docs folder</span><b>Review ›</b></button>` : '';
+    if ($('docImpGo')) $('docImpGo').addEventListener('click', () => { openImport(); readImport(); });
+    setTimeout(() => ImpCheck.maybe(), 800); }
   if (activeDocFolder !== '__all__' && !docs.some(d => docFolder(d) === activeDocFolder)) activeDocFolder = '__all__';
   chipGroup($('docChips'), ['All', ...DOC_TYPES.filter(t => docs.some(d => d.docType === t))].map(t => ({ v: t, l: t + ' ' + (t === 'All' ? docs.length : docs.filter(d => d.docType === t).length) })),
     docFilter, v => { docFilter = v; renderDocs(); }, t => DOC_COLORS[t] || 'var(--ink-faint)');
@@ -5301,9 +5310,10 @@ function parseDocName(name) {
 }
 function planImport(files) {
   const groups = new Map(), skipped = [];
-  const done = new Set(all('docfile').map(f => f.srcId).filter(Boolean));
+  const done = new Set(all('docfile').map(f => f.srcId).filter(Boolean)), declined = impDeclined();
   files.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
     if (done.has(f.id)) { skipped.push({ name: f.name, why: 'already imported' }); return; }
+    if (declined.has(f.id)) { skipped.push({ name: f.name, why: 'you chose not to import', declined: true }); return; }
     const p = parseDocName(f.name);
     if (p.skip) { skipped.push({ name: f.name, why: p.skip }); return; }
     const key = [p.type, p.who, p.title.toLowerCase()].join('|');
@@ -5345,14 +5355,22 @@ async function readImport() {
       <small>${esc(g.type)} · ${g.files.length} file${g.files.length > 1 ? 's' : ''}${g.byYear ? ' · by year: ' + g.years.join(', ') : g.fy ? ' · FY ' + g.fy : ''}${g.into ? ' · adds to your existing document' : ''}</small>
       <small>${g.files.map(f => esc(f.name)).join('<br>')}</small></span></label>`).join('')}</div>
     <details class="fold"><summary>Skipped (${P.skipped.length})</summary>${Object.entries(byWhy).map(([w, l]) => `<div class="imp-skip"><b>${esc(w)}</b> (${l.length}): ${l.map(esc).join(', ')}</div>`).join('')}</details>
+    ${P.skipped.some(s => s.declined) ? '<button class="linkbtn" id="impUndo" style="margin:6px 4px">Offer the files I said no to again</button>' : ''}
+    <p class="hint" style="margin:8px 4px 0">Unticked documents will not be offered again. You can bring them back from the Skipped list.</p>
     <div class="imp-bar"><button class="btn block" id="impGo">Import ticked documents</button></div>`;
-  $('impAll').addEventListener('click', () => $$('[data-imp]').forEach(c => { c.checked = true; }));
-  $('impNone').addEventListener('click', () => $$('[data-imp]').forEach(c => { c.checked = false; }));
-  $('impGo').addEventListener('click', runImport);
+  if (!P.list.length) { $('impList').querySelector('.btn-row').remove(); $('impList').querySelector('.imp-bar').remove(); $('impList').querySelector('.group').outerHTML = '<div class="empty">Nothing new to import.</div>'; $$('#impList > p.hint').forEach(x => x.remove()); }
+  if ($('impAll')) $('impAll').addEventListener('click', () => $$('[data-imp]').forEach(c => { c.checked = true; }));
+  if ($('impNone')) $('impNone').addEventListener('click', () => $$('[data-imp]').forEach(c => { c.checked = false; }));
+  if ($('impGo')) $('impGo').addEventListener('click', runImport);
+  if ($('impUndo')) $('impUndo').addEventListener('click', () => { impUndecline(); toast('Those files will be offered again.'); readImport(); });
+  ImpCheck.refresh(d.files || []);
 }
 async function runImport() {
   const pick = $$('[data-imp]').filter(c => c.checked).map(c => importPlan.list[+c.dataset.imp]);
-  if (!pick.length) { toast('Tick at least one document.'); return; }
+  const no = $$('[data-imp]').filter(c => !c.checked).map(c => importPlan.list[+c.dataset.imp]);
+  if (!pick.length && !no.length) { toast('Nothing to import.'); return; }
+  impDecline(no.flatMap(g => g.files.map(f => f.id)));                 // unticked: do not offer again
+  if (!pick.length) { ImpCheck.set({ at: Date.now(), n: 0 }); scheduleRender(); $('impMsg').className = 'msg ok'; $('impMsg').textContent = `${no.length} document${no.length > 1 ? 's' : ''} will not be offered again.`; return; }
   const m = $('impMsg'), go = $('impGo'); go.disabled = true;
   const total = pick.reduce((s, g) => s + g.files.length, 0); let n = 0, ok = 0; const bad = [];
   for (const g of pick) {
@@ -5378,7 +5396,37 @@ async function runImport() {
   m.className = bad.length ? 'msg err' : 'msg ok';
   m.textContent = `Imported ${ok} of ${total} files into ${pick.length} documents.` + (bad.length ? ' Not copied: ' + bad.slice(0, 8).join('; ') + (bad.length > 8 ? ` … and ${bad.length - 8} more.` : '') : ' Lock sensitive ones (Aadhaar, PAN…) from each document\'s editor.');
   toast(`Imported ${ok} files.`);
+  ImpCheck.set({ at: Date.now(), n: bad.length });
 }
+
+/* ---------- v2.10: declined files (synced) and the "new files" notice ---------- */
+const IMPSKIP_ID = 'import-declined';
+const impDeclined = () => new Set(((records[IMPSKIP_ID] && !records[IMPSKIP_ID].deleted && records[IMPSKIP_ID].ids) || []));
+function impDecline(ids) {
+  if (!ids.length) return;
+  const cur = impDeclined(); ids.forEach(i => cur.add(i));
+  put({ ...(records[IMPSKIP_ID] || { id: IMPSKIP_ID, type: 'impskip' }), ids: [...cur], deleted: false }, { render: false });
+}
+function impUndecline() { const r = records[IMPSKIP_ID]; if (r) { r.ids = []; put(r, { render: false }); } }
+const ImpCheck = {
+  KEY: 'r2_impcheck',
+  get() { try { return JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch (e) { return null; } },
+  set(v) { try { localStorage.setItem(this.KEY, JSON.stringify(v)); } catch (e) {} },
+  newCount(files) { const P = planImport(files); return P.list.reduce((s, g) => s + g.files.length, 0); },
+  async maybe(force) {
+    if (!Sync.on() || !driveOn() || !navigator.onLine) return;
+    const c = this.get();
+    if (this.busy || (!force && c && (c.off || Date.now() - c.at < 6 * 3600000))) return;   // at most every 6 hours; stays quiet if the script has no Docs folder
+    this.busy = true;
+    try {
+      const d = await Sync.call('driveListImport', {}, 60000);
+      this.set({ at: Date.now(), n: this.newCount(d.files || []) });
+    } catch (e) { this.set({ at: Date.now(), n: 0, off: /unknown action|IMPORT_FOLDER_ID/.test(e.message || '') }); }
+    finally { this.busy = false; }
+    if (currentTab === 'docs') renderDocs();
+  },
+  refresh(files) { this.set({ at: Date.now(), n: this.newCount(files) }); }
+};
 $('setImportDocs').addEventListener('click', openImport);
 $('docImportBtn').addEventListener('click', openImport);
 
