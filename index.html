@@ -547,6 +547,9 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
 .dash-line b{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
 .dash-line b.neg{color:var(--neg)}
 .dash-sep{height:8px}
+.acct-sortbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:4px 2px -4px}
+.dash-upto{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.8125rem;margin:2px 0 6px}
+.dash-upto input{width:auto;padding:4px 6px;font-size:.8125rem}
 .dash-card table.pt td,.dash-card table.pt th{padding:7px 6px}
 </style>
 </head>
@@ -620,6 +623,7 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
       <div class="large-title">Documents</div>
       <button class="btn ghost small" id="docQuickBtn" style="margin:0 0 12px">＋ Common documents</button>
       <div class="chips" id="docChips"></div>
+      <div id="docFolders"></div>
       <div class="group" id="docList"></div>
     </section>
 
@@ -887,6 +891,7 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
         <div class="field"><label>Expiry</label><input type="date" id="doExpiry"></div>
       </div>
       <div class="field"><label>Issuer</label><input id="doIssuer"></div>
+      <div class="field"><label>Folder</label><input id="doFolder" list="docFolderDl" placeholder="e.g. Car, Wife's documents" autocomplete="off"><datalist id="docFolderDl"></datalist></div>
       <div class="field"><label>Notes</label><textarea id="doNotes" rows="3"></textarea></div>
       <div class="field"><label>Files</label>
         <div class="dfiles" id="doFiles"></div>
@@ -2963,12 +2968,25 @@ $$('#dateSeg button').forEach(b => b.addEventListener('click', () => { setPref('
    ======================================================================== */
 const DOC_TYPES = ['Insurance', 'Vehicle', 'Identity', 'Education', 'Warranty', 'Membership', 'Property', 'Financial', 'Other'];
 const DOC_COLORS = { Insurance: '#1B4B8F', Vehicle: '#B45309', Identity: '#9C2963', Education: '#4F6B2F', Warranty: '#3F4F8C', Membership: '#2c6e6a', Property: '#6b3f5c', Financial: '#B8860B', Other: '#77818E' };
-let docFilter = 'All';
+let docFilter = 'All', activeDocFolder = '__all__';
+const docFolder = d => (d.folder || '').trim();
+const docFolderList = () => [...new Set(all('doc').map(docFolder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const docFolderForNew = () => activeDocFolder !== '__all__' ? activeDocFolder : '';
 function renderDocs() {
   const docs = all('doc');
+  if (activeDocFolder !== '__all__' && !docs.some(d => docFolder(d) === activeDocFolder)) activeDocFolder = '__all__';
   chipGroup($('docChips'), ['All', ...DOC_TYPES.filter(t => docs.some(d => d.docType === t))].map(t => ({ v: t, l: t + ' ' + (t === 'All' ? docs.length : docs.filter(d => d.docType === t).length) })),
     docFilter, v => { docFilter = v; renderDocs(); }, t => DOC_COLORS[t] || 'var(--ink-faint)');
-  const list = docs.filter(d => docFilter === 'All' || d.docType === docFilter).sort((a, b) => {
+  const shown = docs.filter(d => docFilter === 'All' || d.docType === docFilter);
+  const fbox = $('docFolders');
+  if (activeDocFolder === '__all__') {
+    const fs = docFolderList().filter(f => shown.some(d => docFolder(d) === f));
+    fbox.innerHTML = fs.length ? `<div class="folders">${fs.map(f => { const n = shown.filter(d => docFolder(d) === f).length;
+      return `<button class="folder" data-dfolder="${esc(f)}"><b>📁 ${esc(f)}</b><span>${n} document${n > 1 ? 's' : ''}</span></button>`; }).join('')}</div>` : '';
+  } else fbox.innerHTML = `<div class="back-row"><button class="chip" id="docFolderBack">‹ All documents</button><b style="font-size:16px">📁 ${esc(activeDocFolder)}</b><span class="muted">${shown.filter(d => docFolder(d) === activeDocFolder).length}</span></div>`;
+  $$('[data-dfolder]', fbox).forEach(b => b.addEventListener('click', () => { activeDocFolder = b.dataset.dfolder; renderDocs(); $('main').scrollTop = 0; }));
+  if ($('docFolderBack')) $('docFolderBack').addEventListener('click', () => { activeDocFolder = '__all__'; renderDocs(); });
+  const list = shown.filter(d => activeDocFolder === '__all__' ? !docFolder(d) : docFolder(d) === activeDocFolder).sort((a, b) => {
     if (!a.expiry && !b.expiry) return a.title.localeCompare(b.title);
     if (!a.expiry) return 1; if (!b.expiry) return -1; return a.expiry.localeCompare(b.expiry);
   });
@@ -2979,7 +2997,8 @@ function renderDocs() {
       <div class="row-main"><div class="row-title">${esc(d.title)}</div>
         <div class="row-sub"><span>${d.docType}</span>${docFileBadge(d)}${d.number ? `<span class="mono">${esc(maskNo(d.number))}</span>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
       <span class="chev">›</span></div>`, '', 'Delete 🗑', `data-doc="${d.id}"`);
-  }).join('') : '<div class="empty"><b>No documents</b>Policies, RC, passport, warranties — tap + to add. Expiry is optional.</div>';
+  }).join('') : activeDocFolder !== '__all__' ? '<div class="empty">No documents of this type in this folder.</div>' : docs.length && shown.some(d => docFolder(d)) ? '' : '<div class="empty"><b>No documents</b>Policies, RC, passport, warranties — tap + to add. Expiry is optional. Put them in folders from each document\'s Folder field.</div>';
+  $('docList').classList.toggle('hidden', !list.length && activeDocFolder === '__all__' && shown.some(d => docFolder(d)));
   $$('[data-doc]', $('docList')).forEach(w => { const id = w.dataset.doc; bindSwipe(w, null, () => deleteWithUndo(id)); onTap(w, () => showDoc(id)); });
 }
 let editDocId = null;
@@ -2988,6 +3007,7 @@ function openDoc(id) {
   editDocId = id;
   $('doTitle').value = d.title; $('doNumber').value = d.number || ''; $('doExpiry').value = d.expiry || '';
   $('doIssuer').value = d.issuer || ''; $('doNotes').value = d.notes || '';
+  $('doFolder').value = d.folder || ''; $('docFolderDl').innerHTML = docFolderList().map(f => `<option value="${esc(f)}">`).join('');
   chipGroup($('doType'), DOC_TYPES, d.docType, () => {}, t => DOC_COLORS[t]);
   $('doFileMsg').textContent = ''; renderDocEditFiles();
   Sheets.open('shDoc');
@@ -2996,6 +3016,7 @@ $('doSave').addEventListener('click', () => {
   const d = records[editDocId]; if (!d) return;
   d.title = $('doTitle').value.trim() || d.title; d.docType = chipValue($('doType')) || d.docType;
   d.number = $('doNumber').value.trim(); d.expiry = $('doExpiry').value || null; d.issuer = $('doIssuer').value.trim(); d.notes = $('doNotes').value;
+  d.folder = $('doFolder').value.trim();
   put(d); Sheets.close('shDoc'); toast('Saved.');
 });
 $('doDelete').addEventListener('click', () => { const id = editDocId; Sheets.close('shDoc', true); deleteWithUndo(id); });
@@ -3419,7 +3440,7 @@ $('docQuickBtn').addEventListener('click', openDocQuick);
 $('dqAdd').addEventListener('click', () => {
   const picks = $$('[data-dq]', $('dqList')).filter(c => c.checked && !c.disabled).map(c => COMMON_DOCS[+c.dataset.dq]);
   if (!picks.length) { toast('Pick at least one.'); return; }
-  picks.forEach(([t, ty]) => put({ id: uid('doc'), type: 'doc', title: t, docType: ty, number: '', expiry: null, issuer: '', notes: '', deleted: false }, { render: false }));
+  picks.forEach(([t, ty]) => put({ id: uid('doc'), type: 'doc', title: t, docType: ty, number: '', expiry: null, issuer: '', notes: '', folder: docFolderForNew(), deleted: false }, { render: false }));
   Sheets.close('shDocQuick'); scheduleRender();
   toast(`Added ${picks.length}. Tap one to attach its file.`);
 });
@@ -3732,7 +3753,8 @@ const defAcct = c => { const a = acctById(c && c.defAcct); if (a && !a.archived)
 function acctOptions(sel, filter) {
   return accts().filter(a => !filter || filter(a)).map(a => `<option value="${a.id}"${a.id === sel ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
 }
-const recurs = () => all('recur').sort((a, b) => ['income', 'transfer', 'expense'].indexOf(a.kind) - ['income', 'transfer', 'expense'].indexOf(b.kind) || (a.createdAt || 0) - (b.createdAt || 0));
+const RK_ORDER = ['income', 'udhback', 'transfer', 'expense'];
+const recurs = () => all('recur').sort((a, b) => RK_ORDER.indexOf(a.kind) - RK_ORDER.indexOf(b.kind) || (a.createdAt || 0) - (b.createdAt || 0));
 function recurDue(r, ym) {
   if (!r.start || ym < r.start || (r.end && ym > r.end)) return false;
   return monthsBetween(r.start, ym) % (+r.every || 1) === 0;
@@ -3798,12 +3820,12 @@ const bucketOf = k => k === 'cash' ? 'cash' : isInvest(k) ? 'invest' : k === 'ca
 /* Balances at the end of a given day. Up to today: opening + Ledger only. A future date: the plan for that month. */
 function balancesOn(c, dateISO) {
   const cur = isoMonth(new Date()), ym = dateISO.slice(0, 7), list = accts(true);
-  let bal = {}, mode = 'actual', label;
+  let bal = {}, mode = 'actual', label, udhBack = 0;
   if (ym < c.startMonth) {
     list.forEach(a => { bal[a.id] = a.kind === 'loan' ? -(+a.emi && a.start && a.end ? loanOwed(a, monthAdd(c.startMonth, -1)) : +a.open || 0) : isLiab(a.kind) ? -(+a.open || 0) : +a.open || 0; });
     mode = 'opening'; label = 'opening balances, as on ' + fmtDate(monthEnd(monthAdd(c.startMonth, -1)), true);
   } else if (ym > cur) {
-    bal = { ...planCompute(c, ym).slice(-1)[0].accts }; mode = 'plan'; label = 'plan for end of ' + monthLong(ym);
+    const pr = planCompute(c, ym).slice(-1)[0]; bal = { ...pr.accts }; udhBack = pr.udhBack || 0; mode = 'plan'; label = 'plan for end of ' + monthLong(ym);
   } else {
     if (ym === c.startMonth) list.forEach(a => { bal[a.id] = a.kind === 'loan' ? -(+a.emi && a.start && a.end ? loanOwed(a, monthAdd(ym, -1)) : +a.open || 0) : isLiab(a.kind) ? -(+a.open || 0) : +a.open || 0; });
     else bal = { ...planCompute(c, monthAdd(ym, -1), 'actual').slice(-1)[0].accts };
@@ -3813,8 +3835,8 @@ function balancesOn(c, dateISO) {
   const out = { bank: 0, cash: 0, invest: 0, card: 0, loan: 0, mode, label, accts: bal };
   list.forEach(a => { const v = bal[a.id] || 0, b = bucketOf(a.kind);
     if (b === 'card') { if (v > 0) out.bank += v; else out.card += -v; } else if (b === 'loan') out.loan += Math.max(0, -v); else out[b] += v; });
-  const U = udhaarSplit(); out.owed = U.owed; out.owe = U.owe;
-  out.money = out.bank + out.cash + out.invest + U.owed - U.owe - out.card;
+  const U = udhaarSplit(); out.owed = Math.max(0, U.owed - udhBack); out.owe = U.owe;
+  out.money = out.bank + out.cash + out.invest + out.owed - out.owe - out.card;
   out.hand = out.bank + out.cash - out.card;
   return out;
 }
@@ -3824,8 +3846,8 @@ function incomeSummary(c, months) {
   const get = n => { if (!g.has(n)) g.set(n, { name: n, expected: 0, received: 0, overdue: 0, upcoming: 0 }); return g.get(n); };
   months.forEach(ym => {
     if (ym < c.startMonth) return;
-    planItems(c, ym).filter(it => it.kind === 'income').forEach(it => {
-      const x = get(it.extra ? 'One-off income' : it.label);
+    planItems(c, ym).filter(it => it.kind === 'income' || it.kind === 'udhback').forEach(it => {
+      const x = get(it.extra ? 'One-off income' : it.kind === 'udhback' ? it.label + ' (udhaar back)' : it.label);
       x.expected += it.a;
       if (it.done) { x.received += it.a; if (it.matched) matched.add(it.matched); if (it.ledgerId) linked.add(it.ledgerId); }
       else if (ym < cur) x.overdue += it.a; else x.upcoming += it.a;
@@ -3856,6 +3878,40 @@ function recurAmt(r, ym) {
 function recurStepsText(r) {
   return (r.steps || []).slice().sort((x, y) => x.month < y.month ? -1 : 1).map(s => rs(s.a) + ' from ' + monthShort(s.month)).join(', ');
 }
+/* ---------- udhaar received back in instalments (recurring kind 'udhback') ---------- */
+const udhOpenLent = who => all('fin').filter(e => e.kind === 'lent' && !e.settled && outstanding(e) > 0 && (e.who || '').trim().toLowerCase() === (who || '').trim().toLowerCase())
+  .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
+const udhOwedBy = who => udhOpenLent(who).reduce((s, e) => s + outstanding(e), 0);
+function udhPersons() {
+  const m = new Map();
+  all('fin').filter(e => e.kind === 'lent' && !e.settled && outstanding(e) > 0 && (e.who || '').trim()).forEach(e => { const k = e.who.trim(); m.set(k, (m.get(k) || 0) + outstanding(e)); });
+  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+/* Undo the instalment payments written for one plan tick. */
+function removeUdhPays(ref) {
+  all('fin').filter(e => (e.pays || []).some(p => p.planRef === ref)).forEach(e => {
+    const back = e.pays.filter(p => p.planRef === ref).reduce((s, p) => s + (+p.amt || 0), 0);
+    e.pays = e.pays.filter(p => p.planRef !== ref);
+    e.paidAmount = Math.max(0, +(((e.paidAmount || 0) - back).toFixed(2)));
+    e.settled = e.paidAmount >= (+e.amount || 0) - 0.005;
+    put(e, { render: false });
+  });
+}
+/* Record an instalment as money paid back against the person's oldest open udhaar entries. */
+function applyUdhPays(ref, who, acct, amt, date) {
+  removeUdhPays(ref);
+  const owed = udhOwedBy(who);
+  if (amt > owed + 0.005) throw new Error(`${who} owes only ${rs(owed)} in Udhaar, not ${rs(amt)}.`);
+  let left = amt;
+  udhOpenLent(who).forEach(e => {
+    if (left <= 0.005) return;
+    const take = Math.min(left, outstanding(e));
+    e.pays = (e.pays || []).concat([{ date, amt: +take.toFixed(2), acct, planRef: ref }]);
+    e.paidAmount = +(((e.paidAmount || 0) + take).toFixed(2));
+    e.settled = e.paidAmount >= (+e.amount || 0) - 0.005;
+    left -= take; put(e, { render: false });
+  });
+}
 function udhaarNet() {
   return all('fin').filter(e => isUdhaar(e.kind) && !e.settled).reduce((s, e) => s + (e.kind === 'lent' ? 1 : -1) * outstanding(e), 0);
 }
@@ -3863,7 +3919,7 @@ function udhaarNet() {
 /* ---------- planned items of a month ---------- */
 function planItems(c, ym) {
   const pm = pmGet(ym), items = [];
-  recurs().forEach(r => { if (recurDue(r, ym)) items.push({ key: 'r:' + r.id, label: r.name, kind: r.kind, a: recurAmt(r, ym), from: r.from, to: r.to, budget: !!r.budget && r.kind === 'expense', cat: r.cat || '' }); });
+  recurs().forEach(r => { if (recurDue(r, ym)) items.push({ key: 'r:' + r.id, label: r.name, kind: r.kind, who: r.who || '', a: recurAmt(r, ym), from: r.kind === 'udhback' ? null : r.from, to: r.to, budget: !!r.budget && r.kind === 'expense', cat: r.cat || '' }); });
   accts().forEach(a => {
     if (isInvest(a.kind) && a.sip && +a.sip.amt && a.sip.start && ym >= a.sip.start && (!a.sip.end || ym <= a.sip.end))
       items.push({ key: 'sip:' + a.id, label: 'SIP · ' + a.name, kind: 'transfer', a: +a.sip.amt, from: a.sip.from, to: a.id });
@@ -3876,7 +3932,13 @@ function planItems(c, ym) {
   // an entry you typed into the Ledger yourself (same month, type, account and amount) counts as done
   const used = new Set(), mine = all('fin').filter(e => !e.planRef && (e.date || '').slice(0, 7) === ym && e.acct);
   items.forEach(it => {
-    if (it.done || it.budget || !it.a) return;
+    if (it.done || it.kind !== 'udhback' || !it.a) return;
+    const hit = all('fin').some(e => e.kind === 'lent' && (e.who || '').trim().toLowerCase() === it.who.trim().toLowerCase() &&
+      (e.pays || []).some(p => !p.planRef && (p.date || '').slice(0, 7) === ym && Math.abs((+p.amt || 0) - it.a) < 1));
+    if (hit) { it.done = true; it.matched = 'udh'; }
+  });
+  items.forEach(it => {
+    if (it.done || it.budget || !it.a || it.kind === 'udhback') return;
     const m = mine.find(e => !used.has(e.id) && e.kind === it.kind && Math.abs((+e.amount || 0) - it.a) < 1 &&
       (it.kind === 'income' ? e.acct === it.to : it.kind === 'expense' ? e.acct === it.from : e.acct === it.from && e.to === it.to));
     if (m) { used.add(m.id); it.done = true; it.matched = m.id; }
@@ -3894,7 +3956,7 @@ function planCompute(c, toMonth, mode) {
   list.forEach(a => { bal[a.id] = isLiab(a.kind) ? -(+a.open || 0) : (+a.open || 0); });
   const flows = ledgerFlows(c), byYm = {};
   flows.forEach(f => { (byYm[f.ym] = byYm[f.ym] || []).push(f); });
-  const rows = [];
+  const rows = [], udhLeft = new Map(); let udhBack = 0;
   for (let ym = c.startMonth, i = 0; ym <= toMonth && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) {
     let inc = 0, exp = 0, invIn = 0, interest = 0, growth = 0, pending = 0, planned = false;
     const items = planItems(c, ym), fl = byYm[ym] || [];
@@ -3918,6 +3980,13 @@ function planCompute(c, toMonth, mode) {
       if (!it.budget && ym < cur) pending++;
       planned = true;
       const F = acctById(it.from), T = acctById(it.to);
+      if (it.kind === 'udhback') {
+        const k = it.who.trim().toLowerCase(); if (!udhLeft.has(k)) udhLeft.set(k, udhOwedBy(it.who));
+        amt = Math.min(amt, udhLeft.get(k)); if (amt <= 0) return;
+        udhLeft.set(k, udhLeft.get(k) - amt); udhBack += amt;
+        if (T && T.kind !== 'loan') bal[T.id] += amt;
+        return;
+      }
       if (it.kind === 'income') { if (T) { if (T.kind !== 'loan') bal[T.id] += amt; } inc += amt; }
       else if (it.kind === 'expense') { if (F && F.kind !== 'loan') bal[F.id] -= amt; exp += amt; }
       else {
@@ -3952,8 +4021,8 @@ function planCompute(c, toMonth, mode) {
     });
     exp += interest;
     const pm = pmGet(ym);
-    rows.push({ ym, inc, exp, interest, invIn, growth, net: inc - exp, accts: { ...bal }, assets, liabs, cardDue, loanBal, liquid, invest, udh,
-      worth: assets - cardDue + udh, hand: liquid + cardPos - cardDue, afterLoans: assets - cardDue + udh - loanBal,
+    rows.push({ ym, inc, exp, interest, invIn, growth, net: inc - exp, accts: { ...bal }, assets, liabs, cardDue, loanBal, liquid, invest, udh: udh - udhBack, udhBack,
+      worth: assets - cardDue + udh - udhBack, hand: liquid + cardPos - cardDue, afterLoans: assets - cardDue + udh - udhBack - loanBal,
       pending, planned, closed: !!(pm && pm.closed), neg, ended: ym < cur, cur: ym === cur });
   }
   return rows;
@@ -4113,6 +4182,8 @@ function renderAccts() {
       <li><b>Monthly check-up</b> — after each month ends: tick what came in and went out, and (optional) compare balances with your bank.</li></ol>
       <p class="hint" style="margin:0">Everyday spending goes in Ledger with + as before.</p></div>` : '';
   const pend = planPendingMonths();
+  const sortMode = prefs.acctSort || 'order', sortLbl = { order: 'My order', amount: 'Amount ↓', az: 'A → Z' };
+  const sorted = l => sortMode === 'amount' ? l.slice().sort((x, y) => Math.abs(nowBal(y.id)) - Math.abs(nowBal(x.id))) : sortMode === 'az' ? l.slice().sort((x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: 'base' })) : l;
   const groups = [['Bank, cash and wallets', a => isLiquid(a.kind)], ['Investments', a => isInvest(a.kind)], ['Credit cards and loans', a => isLiab(a.kind)]];
   const row = a => {
     const b = nowBal(a.id), neg = isLiquid(a.kind) ? firstNeg(a.id) : null;
@@ -4135,19 +4206,21 @@ function renderAccts() {
       <div class="eyebrow">Money in hand</div>
       <div class="plan-big ${handNow < 0 ? 'neg' : ''}" style="font-size:1.5rem">${rsShort(handNow)}</div>
       <div class="plan-split"><span>Bank & cash <b>${rsShort(liqNow)}</b></span>${cardNow ? `<span>Card dues <b>−${rsShort(cardNow)}</b></span>` : ''}${loanNow ? `<span>Loan balance (separate) <b>${rsShort(loanNow)}</b></span>` : ''}</div>
-      <div class="hint" style="margin:6px 0 0"><b>Money you have</b> = bank + cash + investments + others owe you − you owe others − card dues. <b>Money in hand</b> = bank + cash − card dues. Spending already paid is already out of these balances, so it isn't taken out again. Loans are shown separately. No planned or estimated figures. ${now ? 'Opening balances as on ' + asOn + ' + everything in the Ledger since.' : 'The plan starts in ' + monthLong(c.startMonth) + ', so these are your opening balances.'} Figures on the right of each account are the plan for ${monthLong(endYm)}.</div></div>
+</div>
     <div class="btn-row" style="flex-wrap:wrap;margin:0 0 12px"><button class="btn ghost small" id="acOpen">Opening balances</button><button class="btn ghost small" id="acClose">Monthly check-up</button><button class="btn ghost small" id="acXlsx">Export Excel</button></div>
-    ${groups.map(([t, f]) => { const l = accts().filter(f); return l.length ? `<div class="plan-sec" style="margin-top:10px"><h3 class="plan-h">${t}</h3><div class="group">${l.map(row).join('')}</div></div>` : ''; }).join('')}
+    <div class="acct-sortbar"><span class="hint" style="margin:0">Sort</span><button class="chip" id="acSort" aria-label="Change sort order">${sortLbl[sortMode]}</button></div>
+    ${groups.map(([t, f]) => { const l = sorted(accts().filter(f)); return l.length ? `<div class="plan-sec" style="margin-top:10px"><h3 class="plan-h">${t}</h3><div class="group">${l.map(row).join('')}</div></div>` : ''; }).join('')}
     <button class="btn ghost small" id="acAdd">＋ Add account</button>
     ${archived.length ? `<details class="fold"><summary>Archived accounts (${archived.length})</summary><div class="group">${archived.map(row).join('')}</div></details>` : ''}
     <div class="plan-sec"><h3 class="plan-h">Recurring</h3>
       ${recurs().length ? `<div class="group">${recurs().map(r => `<button class="row plan-li" data-recur="${r.id}"><div class="row-main"><div class="row-title">${esc(r.name)}${r.budget ? ' <span class="pill">estimate</span>' : ''}</div>
-        <div class="row-sub">${dupEmiOf(r) ? `<span class="st st-late">same as ${esc(dupEmiOf(r).name)} EMI — counted twice</span>` : ''}<span>${r.kind === 'income' ? 'into ' + esc(acctName(r.to)) : r.kind === 'expense' ? 'from ' + esc(acctName(r.from)) : esc(acctName(r.from)) + ' → ' + esc(acctName(r.to))}</span>
+        <div class="row-sub">${dupEmiOf(r) ? `<span class="st st-late">same as ${esc(dupEmiOf(r).name)} EMI — counted twice</span>` : ''}<span>${r.kind === 'udhback' ? 'udhaar back from ' + esc(r.who || '?') + ' into ' + esc(acctName(r.to)) + ' · ' + esc(rs(udhOwedBy(r.who))) + ' still owed' : r.kind === 'income' ? 'into ' + esc(acctName(r.to)) : r.kind === 'expense' ? 'from ' + esc(acctName(r.from)) : esc(acctName(r.from)) + ' → ' + esc(acctName(r.to))}</span>
         <span>${['', 'monthly', '', 'every 3 months', '', '', 'every 6 months', '', '', '', '', '', 'yearly'][+r.every || 1] || 'every ' + r.every + ' months'}</span><span>${monthShort(r.start)}${r.end ? ' – ' + monthShort(r.end) : ' onwards'}</span>${(r.steps || []).length ? `<span>then ${esc(recurStepsText(r))}</span>` : ''}</div></div>
-        <span class="amt ${r.kind === 'income' ? 'pos' : r.kind === 'expense' ? 'neg' : ''}">${rs(recurAmt(r, cur < r.start ? r.start : cur))}</span></button>`).join('')}</div>` : '<p class="hint" style="margin:0 4px 8px">Nothing yet. Add salary, rent, household spending, monthly transfers or the credit-card bill.</p>'}
+        <span class="amt ${r.kind === 'income' || r.kind === 'udhback' ? 'pos' : r.kind === 'expense' ? 'neg' : ''}">${rs(recurAmt(r, cur < r.start ? r.start : cur))}</span></button>`).join('')}</div>` : '<p class="hint" style="margin:0 4px 8px">Nothing yet. Add salary, rent, household spending, monthly transfers or the credit-card bill.</p>'}
       <button class="btn ghost small" id="acRecAdd">＋ Add recurring item</button>
       <p class="hint">SIPs and EMIs are set inside their mutual fund and loan accounts. "Estimate" items (like household spending) are replaced by what you actually spend in the Ledger.</p></div>`;
   if ($('acPend')) $('acPend').addEventListener('click', () => planMonthSheet(pend[0]));
+  $('acSort').addEventListener('click', () => { const o = ['order', 'amount', 'az']; setPref('acctSort', o[(o.indexOf(sortMode) + 1) % 3]); renderAccts(); });
   if ($('acGuideHide')) $('acGuideHide').addEventListener('click', () => { lsSetFlag('r2_acctGuideHidden'); renderAccts(); });
   $('acOpen').addEventListener('click', openingSheet);
   $('acClose').addEventListener('click', () => planMonthSheet(pend[0] || (monthAdd(cur, -1) < c.startMonth ? c.startMonth : monthAdd(cur, -1))));
@@ -4302,7 +4375,9 @@ function recurSheet(id, preset) {
     ['Monthly transfer', { name: 'Transfer', kind: 'transfer' }], ['Credit-card bill', { name: 'Credit-card bill', kind: 'transfer', to: (accts().find(a => a.kind === 'card') || {}).id }], ['Yearly premium', { name: 'Insurance premium', kind: 'expense', every: 12 }]];
   const html = `${id ? '' : `<div class="wrapchips" style="margin-bottom:12px">${presets.map(([l], i) => `<button class="chip" data-pre="${i}">${l}</button>`).join('')}</div>`}
     <div class="field"><label>Name</label><input id="rcName" value="${esc(r.name)}"></div>
-    <div class="field"><label>Type</label><div class="seg" id="rcKind" style="margin:0">${[['income', 'Income'], ['expense', 'Expense'], ['transfer', 'Transfer']].map(([k, l]) => `<button data-k="${k}" class="${r.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <div class="field"><label>Type</label><div class="seg" id="rcKind" style="margin:0">${[['income', 'Income'], ['expense', 'Expense'], ['transfer', 'Transfer'], ['udhback', 'Udhaar back']].map(([k, l]) => `<button data-k="${k}" class="${r.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <div class="field" id="rcWhoW"><label>Who is paying back</label><select id="rcWho">${(() => { const ps = udhPersons(); if (r.who && !ps.some(x => x[0] === r.who)) ps.unshift([r.who, 0]); return ps.length ? ps.map(([n, a]) => `<option value="${esc(n)}"${n === r.who ? ' selected' : ''}>${esc(n)} · owes ${rs(a)}</option>`).join('') : '<option value="">Nobody owes you in Udhaar</option>'; })()}</select>
+      <p class="hint" style="margin:4px 0 0">Each instalment you tick in the check-up is recorded as money paid back in Udhaar: the account goes up and what they owe goes down. It is not counted as income.</p></div>
     <div class="grid2"><div class="field"><label>Amount ₹</label>${amtIn('rcAmt', r.amt)}</div><div class="field"><label>How often</label><select id="rcEvery">${[[1, 'Every month'], [2, 'Every 2 months'], [3, 'Every 3 months'], [6, 'Every 6 months'], [12, 'Every year']].map(([v, l]) => `<option value="${v}"${+r.every === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
     <div class="grid2"><div class="field" id="rcFromW"><label>From account</label><select id="rcFrom">${acctOptions(r.from)}</select></div><div class="field" id="rcToW"><label>Into account</label><select id="rcTo">${acctOptions(r.to)}</select></div></div>
     <div class="grid2"><div class="field"><label>First month</label>${monthIn('rcStart', r.start)}</div><div class="field"><label>Last month (optional)</label>${monthIn('rcEnd', r.end)}</div></div>
@@ -4322,7 +4397,9 @@ function recurSheet(id, preset) {
       const rec = id ? records[id] : { id: uid('rc'), type: 'recur', deleted: false };
       const steps = readMonthRows('rcSteps').sort((x, y) => x.month < y.month ? -1 : 1);
       steps.forEach((x, i) => { if (x.month <= start) throw new Error('A change must be after the first month (' + monthShort(start) + ').'); if (end && x.month > end) throw new Error('A change is after the last month.'); if (i && steps[i - 1].month === x.month) throw new Error('Two changes in ' + monthShort(x.month) + '.'); });
-      const draft = { steps, name, kind, amt: readAmt('rcAmt', 'Amount', true), every: +$('rcEvery').value, start, end, from: kind === 'income' ? null : from, to: kind === 'expense' ? null : to, budget: kind === 'expense' && $('rcBudget').checked };
+      const who = kind === 'udhback' ? $('rcWho').value : '';
+      if (kind === 'udhback' && !who) throw new Error('Pick who is paying back. Add the udhaar in the Udhaar tab first.');
+      const draft = { who, steps, name, kind, amt: readAmt('rcAmt', 'Amount', true), every: +$('rcEvery').value, start, end, from: kind === 'income' || kind === 'udhback' ? null : from, to: kind === 'expense' ? null : to, budget: kind === 'expense' && $('rcBudget').checked };
       const dup = dupEmiOf(draft);
       if (dup && !Plan.dupOk) { Plan.dupOk = true; throw new Error(`This looks like the EMI already set inside the "${dup.name}" account (${rs(dup.emi)} from ${acctName(dup.payFrom)}). Saving it would count the EMI twice. Tap Save again only if this is a different payment.`); }
       Plan.dupOk = false;
@@ -4330,7 +4407,7 @@ function recurSheet(id, preset) {
       put(rec, { render: false }); toast('Saved.'); return true;
     } catch (e) { planMsg(e.message, true); return false; }
   });
-  const sync = () => { const k = $('rcKind').querySelector('.on').dataset.k; $('rcFromW').classList.toggle('hidden', k === 'income'); $('rcToW').classList.toggle('hidden', k === 'expense'); $('rcBudgetW').classList.toggle('hidden', k !== 'expense'); };
+  const sync = () => { const k = $('rcKind').querySelector('.on').dataset.k; $('rcFromW').classList.toggle('hidden', k === 'income' || k === 'udhback'); $('rcWhoW').classList.toggle('hidden', k !== 'udhback'); $('rcToW').classList.toggle('hidden', k === 'expense'); $('rcBudgetW').classList.toggle('hidden', k !== 'expense'); };
   $$('#rcKind button').forEach(b => b.addEventListener('click', () => { $$('#rcKind button').forEach(x => x.classList.toggle('on', x === b)); sync(); }));
   $$('[data-pre]', $('pshBody')).forEach(b => b.addEventListener('click', () => { const p = presets[+b.dataset.pre][1]; Plan.save = null; recurSheet(null, p); }));
   sync();
@@ -4342,6 +4419,7 @@ function recurSheet(id, preset) {
 /* ---------- a month: tick what happened, change amounts, one-offs, balance check ---------- */
 function writeTick(c, ym, it, amt) {
   const cur = isoMonth(new Date());
+  if (it.kind === 'udhback') { const ref = ym + '|' + it.key; applyUdhPays(ref, it.who, it.to, amt, ym === cur ? todayISO() : monthEnd(ym)); return 'udh:' + ref; }
   const rec = it.ledgerId && records[it.ledgerId] && !records[it.ledgerId].deleted ? records[it.ledgerId] : { id: uid('f'), type: 'fin', who: '', recurring: false, paidAmount: 0, settled: false, deleted: false };
   Object.assign(rec, { desc: it.label, amount: amt, kind: it.kind, category: it.kind === 'income' ? (/salary/i.test(it.label) ? 'Salary' : '') : (it.cat || ''),
     acct: it.kind === 'income' ? it.to : it.from, to: it.kind === 'transfer' ? it.to : undefined, date: rec.date && rec.date.slice(0, 7) === ym ? rec.date : (ym === cur ? todayISO() : monthEnd(ym)), planRef: ym + '|' + it.key });
@@ -4356,7 +4434,7 @@ function planMonthSheet(ym) {
   const canTick = ym <= cur;
   const flows = ledgerFlows(c).filter(f => f.ym === ym && f.cat === 'exp' && !(f.e && f.e.planRef));
   const spent = flows.reduce((s, f) => s - f.amt, 0);
-  const route = it => it.kind === 'income' ? 'into ' + esc(acctName(it.to)) : it.kind === 'expense' ? 'from ' + esc(acctName(it.from)) : esc(acctName(it.from)) + ' → ' + esc(acctName(it.to));
+  const route = it => it.kind === 'udhback' ? 'from ' + esc(it.who) + ' into ' + esc(acctName(it.to)) + ' · udhaar' : it.kind === 'income' ? 'into ' + esc(acctName(it.to)) : it.kind === 'expense' ? 'from ' + esc(acctName(it.from)) : esc(acctName(it.from)) + ' → ' + esc(acctName(it.to));
   const itemRow = it => `<div class="pl-row src" data-it="${esc(it.key)}"><span class="r-name">${esc(it.label)}<small class="dq-sub">${route(it)}${it.changed ? ' · changed this month' : ''}${it.matched ? ' · found in Ledger' : ''}</small></span>
       ${amtIn('mi_' + it.key.replace(/[^\w]/g, '_'), it.a)}
       ${it.budget ? `<span class="r-act">${rs(spent)} spent</span>` : `<label class="r-act"><input type="checkbox" data-done ${it.done ? 'checked' : ''}${canTick && !it.matched ? '' : ' disabled'}> Done</label>`}
@@ -4373,7 +4451,8 @@ function planMonthSheet(ym) {
   const html = `<div class="month-nav" style="margin-bottom:10px"><button id="pmPrev" aria-label="Previous month">‹</button><b>${monthLong(ym)}</b><button id="pmNext" aria-label="Next month">›</button></div>
     <p class="hint" style="margin:0 4px 6px">${ym < cur ? 'Monthly check-up: tick what actually came in and went out, correcting amounts if they differed. Each tick is written into the Ledger.' : ym === cur ? 'This month: tick items as they happen. Unticked items still count in the plan. The balance check opens after the month ends.' : 'Future month: change amounts for this month only. Ticking opens when the month arrives.'}</p>
     ${grp('Income', items.filter(i => i.kind === 'income'))}
-    ${grp('Payments, SIPs, EMIs and transfers', items.filter(i => i.kind !== 'income' && !i.budget))}
+    ${grp('Udhaar coming back', items.filter(i => i.kind === 'udhback'))}
+    ${grp('Payments, SIPs, EMIs and transfers', items.filter(i => i.kind !== 'income' && i.kind !== 'udhback' && !i.budget))}
     ${grp('Day-to-day spending (estimate)', items.filter(i => i.budget))}
     <button class="linkbtn" id="pmAdd">＋ Add a one-off for this month</button><div id="pmAddBox"></div>
     ${now ? `<h4 class="plan-sub">Balance check (optional) · end of ${monthLong(ym)}</h4><div class="group pl-group">${chk}</div>
@@ -4439,7 +4518,7 @@ function planMonthSave(ym, quiet) {
         if (a !== orig[key]) o.a = a; else delete o.a;
         if (it.matched) { /* already in the Ledger as your own entry */ }
         else if (done && a) { o.ledgerId = writeTick(c, ym, { ...it, ledgerId: o.ledgerId }, a); o.done = true; }
-        if (!it.matched && !(done && a)) { if (o.ledgerId && records[o.ledgerId]) softDelete(o.ledgerId, { render: false }); delete o.ledgerId; delete o.done; }
+        if (!it.matched && !(done && a)) { if (it.kind === 'udhback') removeUdhPays(ym + '|' + key); if (o.ledgerId && records[o.ledgerId]) softDelete(o.ledgerId, { render: false }); delete o.ledgerId; delete o.done; }
         if (Object.keys(o).length) p.items[key] = o; else delete p.items[key];
       }
     }
@@ -4486,7 +4565,7 @@ function renderPlan() {
       <div class="plan-big ${L.worth < 0 ? 'neg' : ''}">${rsShort(L.worth)}</div>
       <div class="plan-split"><span>Bank & cash <b>${rsShort(L.liquid)}</b></span><span>Investments <b>${rsShort(L.invest)}</b>${accts().some(a => isInvest(a.kind) && +a.ret) ? '<i class="est">estimate</i>' : ''}</span>${L.cardDue ? `<span>Card dues <b>−${rsShort(L.cardDue)}</b></span>` : ''}${L.udh ? `<span>Udhaar <b>${rsShort(L.udh)}</b></span>` : ''}${L.loanBal ? `<span>Loan balance <b>${rsShort(L.loanBal)}</b></span>` : ''}</div>
       ${L.loanBal ? `<div class="hint" style="margin:4px 0 0">After loans: ${rsShort(L.afterLoans)}</div>` : ''}
-      <div class="hint" style="margin:6px 0 0">Past months use your Ledger; the rest is your plan. Year saving: income ${rsShort(Y.inc)} − spending ${rsShort(Y.exp)} = <b>${rsShort(Y.inc - Y.exp)}</b>${Y.invIn ? ` (of it, ${rsShort(Y.invIn)} into investments)` : ''}.</div></div>
+</div>
     <div class="plan-sec"><h3 class="plan-h">Year by year</h3><div class="tw"><table class="pt"><thead><tr><th>Year</th><th>Income</th><th>Spending</th><th>Saved</th><th>Into invest.</th><th>Bank & cash</th><th>Investments</th><th>Money you have</th><th>Loan balance</th><th>Checked</th></tr></thead><tbody>${
       years.map(y => `<tr class="${y.k === Plan.year ? 'hl' : ''}" data-year="${y.k}"><td>${y.label}${y.neg ? ' <span class="tag warn">!</span>' : ''}</td><td>${rsShort(y.inc)}</td><td>${rsShort(y.exp)}</td><td class="${y.inc - y.exp < 0 ? 'neg' : ''}">${rsShort(y.inc - y.exp)}</td><td>${y.invIn ? rsShort(y.invIn) : '–'}</td>
         <td class="${y.last.liquid < 0 ? 'neg' : ''}">${rsShort(y.last.liquid)}</td><td>${rsShort(y.last.invest)}</td><td><b>${rsShort(y.last.worth)}</b></td><td>${y.last.loanBal ? rsShort(y.last.loanBal) : '–'}</td><td>${y.ended ? y.closed + '/' + y.ended : '–'}</td></tr>`).join('')}</tbody></table></div></div>
@@ -4587,10 +4666,11 @@ function planCsv(c, rows) {
    and income / spending / investment over time.
    ======================================================================== */
 const Dash = { kind: 'fy', key: null, asOn: null };
-function dashSeries() {
+function dashSeries(upto) {
   const c = planCfg(), cur = isoMonth(new Date());
   if (c && c.v === 3 && accts().length) {
-    return { plan: c, rows: planCompute(c, planHorizon(c)).map(r => ({ ym: r.ym, inc: r.inc, exp: r.exp, inv: r.invIn, planned: r.ym > cur || r.planned, r })) };
+    const h = planHorizon(c), end = upto && upto > h ? upto : h;
+    return { plan: c, rows: planCompute(c, end).map(r => ({ ym: r.ym, inc: r.inc, exp: r.exp, inv: r.invIn, planned: r.ym > cur || r.planned, r })) };
   }
   const by = {};
   all('fin').forEach(e => {
@@ -4626,20 +4706,22 @@ function dashChart(pts) {
 function renderDash() {
   const box = $('ledgerDash'); if (!box) return;
   const cur = isoMonth(new Date());
-  const { plan: c, rows } = dashSeries();
+  const { plan: c, rows } = dashSeries(Dash.kind === 'upto' && /^\d{4}-\d{2}$/.test(Dash.key || '') ? Dash.key : null);
+  const startYm = c ? c.startMonth : (rows[0] ? rows[0].ym : cur);
   const ymode = c ? (c.yearMode || 'fy') : 'fy';
   const months = rows.map(r => r.ym); if (!months.includes(cur)) months.push(cur); months.sort();
   const opts = { month: [...new Set(months)].reverse(), fy: [...new Set(months.map(m => yearKey(m, 'fy')))], cal: [...new Set(months.map(m => yearKey(m, 'cal')))] };
-  if (Dash.kind !== 'all') { const list = opts[Dash.kind]; if (Dash.key == null || !list.some(k => String(k) === String(Dash.key))) Dash.key = Dash.kind === 'month' ? cur : yearKey(cur, Dash.kind); }
-  const inP = ym => Dash.kind === 'all' || (Dash.kind === 'month' ? ym === Dash.key : yearKey(ym, Dash.kind) === +Dash.key);
+  if (Dash.kind === 'upto') { if (!/^\d{4}-\d{2}$/.test(Dash.key || '') || Dash.key < startYm) { const fyEnd = (+cur.slice(5) >= 4 ? +cur.slice(0, 4) + 1 : +cur.slice(0, 4)) + '-03'; Dash.key = fyEnd < startYm ? startYm : fyEnd; } }
+  else if (Dash.kind !== 'all') { const list = opts[Dash.kind]; if (Dash.key == null || !list.some(k => String(k) === String(Dash.key))) Dash.key = Dash.kind === 'month' ? cur : yearKey(cur, Dash.kind); }
+  const inP = ym => Dash.kind === 'all' || (Dash.kind === 'upto' ? ym >= startYm && ym <= Dash.key : false) || (Dash.kind !== 'upto' && (Dash.kind === 'month' ? ym === Dash.key : yearKey(ym, Dash.kind) === +Dash.key));
   const per = rows.filter(r => inP(r.ym));
-  const pLabel = Dash.kind === 'all' ? 'the whole plan' : Dash.kind === 'month' ? monthLong(Dash.key) : yearLabel(+Dash.key, Dash.kind);
+  const pLabel = Dash.kind === 'upto' ? monthShort(startYm) + ' up to ' + monthLong(Dash.key) : Dash.kind === 'all' ? 'the whole plan' : Dash.kind === 'month' ? monthLong(Dash.key) : yearLabel(+Dash.key, Dash.kind);
   let c1 = '', cInc = '';
   if (c) {
-    if (!Dash.asOn) Dash.asOn = todayISO();
-    const B = balancesOn(c, Dash.asOn), U = udhaarSplit();
+    if (!/^\d{4}-\d{2}$/.test(Dash.asOn || '')) Dash.asOn = cur;
+    const B = balancesOn(c, Dash.asOn === cur ? todayISO() : monthEnd(Dash.asOn)), U = { owed: B.owed, owe: B.owe };
     const line = (k, v, cls) => `<div class="dash-line"><span>${k}</span><b class="${cls || ''}">${v}</b></div>`;
-    c1 = `<div class="dash-card"><div class="k" style="display:flex;justify-content:space-between;gap:8px;align-items:center">Balances<input type="date" id="dashAsOn" value="${Dash.asOn}" aria-label="As on date" style="width:auto;padding:4px 6px;font-size:.8125rem"></div>
+    c1 = `<div class="dash-card"><div class="k" style="display:flex;justify-content:space-between;gap:8px;align-items:center">Balances as on<input type="month" id="dashAsOn" value="${Dash.asOn}" aria-label="As on month" style="width:auto;padding:4px 6px;font-size:.8125rem"></div>
       <div class="v ${B.money < 0 ? 'neg' : ''}">${rsShort(B.money)}</div><div class="s muted" style="margin:-2px 0 6px">Money you have · ${esc(B.label)}</div>
       ${line('Total in bank (incl. wallets)', rs(B.bank), B.bank < 0 ? 'neg' : '')}${line('Cash', rs(B.cash), B.cash < 0 ? 'neg' : '')}${line('Investments', rs(B.invest))}
       ${B.card ? line('Card dues', '−' + rs(B.card), 'neg') : ''}
@@ -4647,14 +4729,14 @@ function renderDash() {
       ${line('Others owe you (udhaar)', '+' + rs(U.owed))}${U.owe ? line('You owe others (udhaar)', '−' + rs(U.owe), 'neg') : ''}
       <div class="dash-sep"></div>
       ${line('Money in hand (bank + cash − card dues)', rs(B.hand), B.hand < 0 ? 'neg' : '')}${B.loan ? line('Loan balance (separate)', rs(B.loan)) : ''}
-      <div class="s muted" style="margin-top:6px">${B.mode === 'plan' ? 'A future date shows the plan (includes estimates).' : 'Actual only: opening balances + Ledger. No estimates.'} Money you have = bank + cash + investments + udhaar net − card dues. Udhaar is today's figure. Loans are not taken out.</div></div>`;
-    const ms = (() => { if (Dash.kind === 'month') return [Dash.key]; const all = []; const end = planHorizon(c); for (let ym = c.startMonth, i = 0; ym <= end && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) if (inP(ym)) all.push(ym); return all; })();
+      <div class="s muted" style="margin-top:6px">${B.mode === 'plan' ? 'A future month shows the plan for its last day (includes estimates, and udhaar instalments still to come).' : Dash.asOn === cur ? 'This month: actual up to today. No estimates.' : 'Actual at the end of the month: opening balances + Ledger. No estimates.'} Money you have = bank + cash + investments + udhaar net − card dues. Loans are not taken out.</div></div>`;
+    const ms = (() => { if (Dash.kind === 'month') return [Dash.key]; const all = []; const end = Dash.kind === 'upto' && Dash.key > planHorizon(c) ? Dash.key : planHorizon(c); for (let ym = c.startMonth, i = 0; ym <= end && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) if (inP(ym)) all.push(ym); return all; })();
     const inc = incomeSummary(c, ms), tot = k => inc.reduce((s, x) => s + x[k], 0);
     cInc = `<div class="dash-card"><div class="k">Income · ${esc(pLabel)}</div>
       ${inc.length ? `<div class="tw" style="box-shadow:none;margin-top:6px"><table class="pt"><thead><tr><th>Source</th><th>Expected</th><th>Received</th><th>Not received</th><th>Still to come</th></tr></thead><tbody>
         ${inc.map(x => `<tr><td>${esc(x.name)}</td><td>${x.expected ? rs(x.expected) : '–'}</td><td class="pos">${x.received ? rs(x.received) : '–'}</td><td class="${x.overdue ? 'neg' : ''}">${x.overdue ? rs(x.overdue) : '–'}</td><td>${x.upcoming ? rs(x.upcoming) : '–'}</td></tr>`).join('')}
         <tr class="hl"><td>Total</td><td>${rs(tot('expected'))}</td><td>${rs(tot('received'))}</td><td>${rs(tot('overdue'))}</td><td>${rs(tot('upcoming'))}</td></tr></tbody></table></div>
-        <div class="s muted" style="margin-top:6px">Expected = from your recurring items. Received = ticked in the check-up or found in the Ledger. Not received = months already over but not ticked. Still to come = this month and later.</div>`
+        <div class="s muted" style="margin-top:6px">Expected = from your recurring items (udhaar instalments are money coming back, not income). Received = ticked in the check-up or found in the Ledger. Not received = months already over but not ticked. Still to come = this month and later.</div>`
       : '<div class="s muted">No income planned or recorded in this period.</div>'}</div>`;
   } else {
     const net = rows.reduce((s, r) => s + r.inc - r.exp - r.inv, 0);
@@ -4673,17 +4755,17 @@ function renderDash() {
     per.forEach(r => { const k = yearKey(r.ym, ymode); const o = by.get(k) || { label: yearLabel(k, ymode).replace('FY ', ''), inc: 0, exp: 0, inv: 0, planned: false }; o.inc += r.inc; o.exp += r.exp; o.inv += r.inv; o.planned = o.planned || r.planned; by.set(k, o); });
     pts = [...by.values()];
   }
-  const keyOpts = Dash.kind === 'all' ? '' : `<select id="dashKey" aria-label="Period">${opts[Dash.kind].map(k => `<option value="${k}"${String(k) === String(Dash.key) ? ' selected' : ''}>${Dash.kind === 'month' ? monthLong(k) : yearLabel(k, Dash.kind)}</option>`).join('')}</select>`;
+  const keyOpts = Dash.kind === 'upto' ? `<label class="dash-upto">from ${monthShort(startYm)} to <input type="month" id="dashKey" value="${Dash.key}" min="${startYm}" max="${monthAdd(startYm, PLAN_MAX_MONTHS - 1)}" aria-label="Up to month"></label>` : Dash.kind === 'all' ? '' : `<select id="dashKey" aria-label="Period">${opts[Dash.kind].map(k => `<option value="${k}"${String(k) === String(Dash.key) ? ' selected' : ''}>${Dash.kind === 'month' ? monthLong(k) : yearLabel(k, Dash.kind)}</option>`).join('')}</select>`;
   box.innerHTML = `<div class="dash">
-    <div class="dash-per"><div class="seg" id="dashKind" style="margin:0;flex:1;min-width:230px">${[['month', 'Month'], ['fy', 'FY'], ['cal', 'Year'], ['all', 'All']].map(([k, l]) => `<button data-k="${k}" class="${Dash.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>${keyOpts}</div>
+    <div class="dash-per"><div class="seg" id="dashKind" style="margin:0;flex:1;min-width:230px">${[['month', 'Month'], ['fy', 'FY'], ['cal', 'Year'], ['upto', 'Up to'], ['all', 'All']].map(([k, l]) => `<button data-k="${k}" class="${Dash.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>${keyOpts}</div>
     <div class="dash-cards">${c1}${c2}</div>
     ${cInc}
     <div class="dash-card dash-chart"><div class="k">Income, spending and investment · ${esc(pLabel)}</div>${dashChart(pts)}
       <div class="dash-legend"><span><i style="background:var(--forest)"></i>Income</span><span><i style="background:var(--seal)"></i>Spending</span><span><i style="background:var(--brass)"></i>Into investments</span>${pts.some(p => p.planned) ? '<span class="muted">Paler bars include planned figures</span>' : ''}</div></div>
   </div>`;
   $$('#dashKind button').forEach(b => b.addEventListener('click', () => { Dash.kind = b.dataset.k; Dash.key = null; renderDash(); }));
-  const ks = $('dashKey'); if (ks) ks.addEventListener('change', () => { Dash.key = ks.value; renderDash(); });
-  const ao = $('dashAsOn'); if (ao) ao.addEventListener('change', () => { Dash.asOn = ao.value || todayISO(); renderDash(); });
+  const ks = $('dashKey'); if (ks) ks.addEventListener('change', () => { if (Dash.kind !== 'upto' || /^\d{4}-\d{2}$/.test(ks.value)) { Dash.key = ks.value; renderDash(); } });
+  const ao = $('dashAsOn'); if (ao) ao.addEventListener('change', () => { Dash.asOn = ao.value || cur; renderDash(); });
 }
 
 /* ==========================================================================
@@ -5070,8 +5152,8 @@ function saveAdd(another) {
     toast('Bill added.');
   } else if (k === 'doc') {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
-    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', deleted: false });
-    toast('Document added.');
+    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), deleted: false });
+    toast(docFolderForNew() ? 'Document added to ' + docFolderForNew() + '.' : 'Document added.');
   } else if (k === 'money') {
     const amt = calcAmount(v('afAmt'));
     if (isNaN(amt) || amt <= 0) { toast('Enter an amount.'); $('afAmt').focus(); return; }
@@ -5104,7 +5186,7 @@ function showTab(tab) {
   renderAll();
 }
 $$('.tab').forEach(t => t.addEventListener('click', () => {
-  if (t.dataset.tab === currentTab) { $('main').scrollTo({ top: 0, behavior: 'smooth' }); if (currentTab === 'notes' && activeFolder !== '__all__') { activeFolder = '__all__'; renderNotes(); } return; }
+  if (t.dataset.tab === currentTab) { $('main').scrollTo({ top: 0, behavior: 'smooth' }); if (currentTab === 'notes' && activeFolder !== '__all__') { activeFolder = '__all__'; renderNotes(); } if (currentTab === 'docs' && activeDocFolder !== '__all__') { activeDocFolder = '__all__'; renderDocs(); } return; }
   showTab(t.dataset.tab);
 }));
 function renderAll() {
