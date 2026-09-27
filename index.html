@@ -551,6 +551,22 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
 .dash-upto{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.8125rem;margin:2px 0 6px}
 .dash-upto input{width:auto;padding:4px 6px;font-size:.8125rem}
 .dash-card table.pt td,.dash-card table.pt th{padding:7px 6px}
+
+/* v2.7 */
+.check{position:relative}.check::after{content:'';position:absolute;inset:-9px}
+.step .check::after{inset:-12px}
+.toggle-steps{padding:12px 4px;margin:-12px -4px}
+.note-body{height:calc(100dvh - 330px - var(--kb))}
+.fix-box{background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:12px;margin:8px 0;display:flex;flex-direction:column;gap:6px;font-size:.875rem}
+.fix-opt{display:flex;gap:8px;align-items:flex-start;padding:6px 0}
+.fix-opt input[type=radio]{-webkit-appearance:none;appearance:none;margin-top:2px;width:22px;height:22px;min-height:0;padding:0;flex:none;border-radius:50%;border:2px solid var(--ink-faint);background:var(--card)}
+.fix-opt input[type=radio]:checked{border:7px solid var(--forest)}
+.fix-opt small{display:block;color:var(--ink-faint);font-size:.75rem}
+.fix-sub{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 4px 26px}
+.fix-sub select,.fix-sub input{flex:1;min-width:120px}
+html.app-hidden #app{filter:blur(24px)}
+.bio-btn{margin-top:8px}
+.bill-bulk{display:block;margin:4px 2px 8px;font-size:.8125rem}
 </style>
 </head>
 <body>
@@ -1020,6 +1036,7 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
       <input type="password" class="code-input hidden" id="vaCode2" autocomplete="off" autocapitalize="off" placeholder="again" style="margin-top:10px">
       <div class="msg err" id="vaErr" style="text-align:center"></div>
       <button class="btn block" id="vaOk" style="margin-top:6px">Unlock</button>
+      <button class="btn ghost block bio-btn hidden" id="vaBio">Unlock with Face ID</button>
     </div>
   </div>
 </div>
@@ -1046,6 +1063,7 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
         <button class="set-row" id="setHideNow">Hide now<span class="v">◐</span></button>
         <button class="set-row hidden" id="setVaultCode">Change private-section code<span class="v">›</span></button>
         <button class="set-row hidden" id="setVaultLock">Lock private section now<span class="v">›</span></button>
+        <button class="set-row hidden" id="setBio">Unlock with Face ID<span class="v" id="setBioV">Off</span></button>
       </div>
 
       <div class="group-title">Sync — Google Sheet</div>
@@ -1080,6 +1098,9 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
       <div class="group">
         <button class="set-row" id="setBackup">Download backup (.json)<span class="v">⤓</span></button>
         <button class="set-row" id="setRestore">Restore / import backup<span class="v">⤒</span></button>
+        <label class="switch-row"><span>Weekly encrypted backup to Drive<small id="setAutoBkInfo"></small></span><input type="checkbox" class="sw" id="setAutoBk"></label>
+        <button class="set-row" id="setAutoBkNow">Back up to Drive now<span class="v">⤓</span></button>
+        <button class="set-row" id="setAutoBkTest">Test the latest Drive backup<span class="v">✓</span></button>
         <button class="set-row" id="setLegacyLocal">Import from the old app on this iPhone<span class="v">›</span></button>
         <button class="set-row" id="setLegacySheet">Import from the old encrypted Sheet tab<span class="v">›</span></button>
         <button class="set-row" id="setTpl">Task templates<span class="v">›</span></button>
@@ -1089,7 +1110,7 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
         <button class="set-row" id="setEraseCode">Set emergency erase code<span class="v">›</span></button>
         <button class="set-row danger" id="setErase">Emergency erase…<span class="v">›</span></button>
       </div>
-      <input type="file" id="restoreFile" accept="application/json,.json" class="hidden">
+      <input type="file" id="restoreFile" accept="application/json,.json,.rgbk" class="hidden">
       <div class="msg" id="setDataMsg"></div>
 
       <div class="group-title">Diagnostics</div>
@@ -1114,14 +1135,14 @@ table.pg td.act input{background:rgba(46,125,80,.12)}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.0.3';
+const APP_VERSION = '2.7.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
   let buf = [];
   try { buf = JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (e) { buf = []; }
   let t = null;
-  const flush = () => { try { localStorage.setItem(LOG_KEY, JSON.stringify(buf.slice(-LOG_MAX))); } catch (e) {} };
+  const flush = () => { if (window.__erasing) return; try { localStorage.setItem(LOG_KEY, JSON.stringify(buf.slice(-LOG_MAX))); } catch (e) {} };
   const write = (level, args) => {
     const msg = args.map(a => a instanceof Error ? (a.message + (a.stack ? ' | ' + a.stack.split('\n')[1] : ''))
                           : typeof a === 'object' ? (() => { try { return JSON.stringify(a); } catch (e) { return String(a); } })()
@@ -1225,11 +1246,11 @@ function parseDateToken(tok) {
   if (tok === 'today' || tok === 'tod') return isoLocal(d);
   if (tok === 'tomorrow' || tok === 'tmrw' || tok === 'tmr') { d.setDate(d.getDate() + 1); return isoLocal(d); }
   if (tok === 'nextweek') { d.setDate(d.getDate() + 7); return isoLocal(d); }
-  if (tok === 'nextmonth') { d.setMonth(d.getMonth() + 1); return isoLocal(d); }
+  if (tok === 'nextmonth') return isoLocal(addMonthsKeep(d, 1));
   if (tok === 'eom') { return isoLocal(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
   let m = tok.match(/^(\d+)d$/); if (m) { d.setDate(d.getDate() + +m[1]); return isoLocal(d); }
   m = tok.match(/^(\d+)w$/); if (m) { d.setDate(d.getDate() + 7 * m[1]); return isoLocal(d); }
-  m = tok.match(/^(\d+)m$/); if (m) { d.setMonth(d.getMonth() + +m[1]); return isoLocal(d); }
+  m = tok.match(/^(\d+)m$/); if (m) return isoLocal(addMonthsKeep(d, +m[1]));
   const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const base = tok.replace(/^next/, '');
   const di = days.findIndex(x => base.length >= 3 && x.startsWith(base));
@@ -1288,7 +1309,9 @@ const Sheets = {
     el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
     const card = el.querySelector('.sheet-card'); card.style.transform = '';
     const body = el.querySelector('.sheet-body'); if (body && !el.dataset.keepScroll) body.scrollTop = 0;
+    if (this.onOpen[id]) { try { this.onOpen[id](); } catch (e) { RLOG.error('onOpen ' + id, e); } }
   },
+  onOpen: {},
   close(id, silent) {
     const el = $(id); if (!el || !el.classList.contains('open')) return;
     el.classList.remove('open');
@@ -1329,6 +1352,20 @@ $$('.sheet').forEach(sh => {
   });
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && Sheets.top()) Sheets.close(Sheets.top()); });
+/* Document, key-date and bill editors save themselves when dismissed (tap outside, swipe down, decoy) — like tasks and notes. */
+const AutoSheet = {
+  cfg: { shDoc: 'doSave', shDate: 'deSave', shBill: 'beSave' }, snap: {},
+  vals(id) { return JSON.stringify($$('input,textarea,select', $(id)).filter(x => x.id && x.type !== 'file').map(x => x.type === 'checkbox' ? x.checked : x.value)
+    .concat($$('.wrapchips .on, .chips .on', $(id)).map(x => x.textContent))); },
+  changed(id) { return this.snap[id] != null && this.vals(id) !== this.snap[id]; },
+  save(id) { this.snap[id] = this.vals(id); $(this.cfg[id]).click(); }
+};
+Object.keys(AutoSheet.cfg).forEach(id => {
+  Sheets.onOpen[id] = () => { AutoSheet.snap[id] = AutoSheet.vals(id); };
+  $(id).addEventListener('click', e => { if (e.target.closest('#' + AutoSheet.cfg[id])) AutoSheet.snap[id] = null; }, true);   // explicit Save: nothing left to do
+  const prev = Sheets.onClose[id];
+  Sheets.onClose[id] = () => { if (AutoSheet.changed(id)) { AutoSheet.snap[id] = null; $(AutoSheet.cfg[id]).click(); } if (prev) prev(); };
+});
 
 /* Keep sheets above the iOS keyboard. */
 if (window.visualViewport) {
@@ -1488,15 +1525,16 @@ const persistQ = {};       // id -> promise chain, keeps writes for one id in or
 const te = new TextEncoder(), td = new TextDecoder();
 const b64 = buf => { let s = ''; const a = new Uint8Array(buf); for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return btoa(s); };
 const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-const FIN_ITERS = 150000;
-const Fin = { key: null, salt: null, kid: null, lockedOut: [] };
+const FIN_ITERS = 150000, FIN_ITERS_NEW = 600000, FIN_MIN_CODE = 8;
+const Fin = { key: null, salt: null, kid: null, iters: FIN_ITERS, lockedOut: [] };
 const keyCache = new Map();          // `${salt}|${code}` → CryptoKey, cleared on lock
 
-async function deriveFinKey(code, salt) {
-  const ck = salt + '|' + code;
+async function deriveFinKey(code, salt, iters) {
+  iters = +iters || FIN_ITERS;
+  const ck = salt + '|' + iters + '|' + code;
   if (keyCache.has(ck)) return keyCache.get(ck);
   const base = await crypto.subtle.importKey('raw', te.encode(code), 'PBKDF2', false, ['deriveKey']);
-  const k = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: unb64(salt), iterations: FIN_ITERS, hash: 'SHA-256' },
+  const k = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: unb64(salt), iterations: iters, hash: 'SHA-256' },
     base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   keyCache.set(ck, k);
   return k;
@@ -1516,7 +1554,7 @@ async function seal(rec, ctx) {
   ctx = ctx && ctx.key ? ctx : Fin;
   if (!ctx.key) throw new Error('private section is locked');
   return { id: rec.id, type: rec.type, updatedAt: rec.updatedAt, deleted: !!rec.deleted,
-           deletedAt: rec.deletedAt || null, salt: ctx.salt, kid: ctx.kid,
+           deletedAt: rec.deletedAt || null, salt: ctx.salt, kid: ctx.kid, it: ctx.iters || FIN_ITERS,
            enc: await aesEnc(ctx.key, JSON.stringify(stripLocal(rec))) };
 }
 async function unsealWith(key, s) { return JSON.parse(await aesDec(key, s.enc)); }
@@ -1527,23 +1565,23 @@ const finUnlocked = () => !!Fin.key;
 async function setupFinance(code) {
   const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
   const kid = uid('k');
-  const key = await deriveFinKey(code, salt);
-  Fin.key = key; Fin.salt = salt; Fin.kid = kid; Fin.lockedOut = [];
-  put({ id: FINKEY_ID, type: 'finkey', salt, kid, check: await aesEnc(key, 'register-ok'), createdAt: nowMs(), deleted: false }, { render: false });
+  const key = await deriveFinKey(code, salt, FIN_ITERS_NEW);
+  Fin.key = key; Fin.salt = salt; Fin.kid = kid; Fin.iters = FIN_ITERS_NEW; Fin.lockedOut = []; Fin.unlockedAt = Date.now();
+  put({ id: FINKEY_ID, type: 'finkey', salt, kid, iters: FIN_ITERS_NEW, check: await aesEnc(key, 'register-ok'), createdAt: nowMs(), deleted: false }, { render: false });
   RLOG.info('private section set up');
 }
 /* Returns true / false. Decrypts every sealed record into memory. */
 async function unlockFinance(code) {
   const fk = records[FINKEY_ID]; if (!fk) return false;
   let key;
-  try { key = await deriveFinKey(code, fk.salt); if (await aesDec(key, fk.check) !== 'register-ok') return false; }
+  try { key = await deriveFinKey(code, fk.salt, fk.iters); if (await aesDec(key, fk.check) !== 'register-ok') return false; }
   catch (e) { return false; }
-  Fin.key = key; Fin.salt = fk.salt; Fin.kid = fk.kid; Fin.lockedOut = [];
+  Fin.key = key; Fin.salt = fk.salt; Fin.kid = fk.kid; Fin.iters = +fk.iters || FIN_ITERS; Fin.lockedOut = []; Fin.codeLen = code.length; Fin.unlockedAt = Date.now();
   const reseal = [];
   for (const id in sealed) {
     const s = sealed[id];
     try {
-      const k = s.salt === fk.salt ? key : await deriveFinKey(code, s.salt);
+      const k = s.salt === fk.salt ? key : await deriveFinKey(code, s.salt, s.it);
       const plain = await unsealWith(k, s);
       plain._dirty = s._dirty || 0;
       records[id] = plain;
@@ -1560,7 +1598,7 @@ async function recoverLockedOut(oldCode) {
   let n = 0; const still = [];
   for (const id of Fin.lockedOut) {
     const s = sealed[id];
-    try { const plain = await unsealWith(await deriveFinKey(oldCode, s.salt), s); records[id] = plain; put(plain, { render: false }); n++; }
+    try { const plain = await unsealWith(await deriveFinKey(oldCode, s.salt, s.it), s); records[id] = plain; put(plain, { render: false }); n++; }
     catch (e) { still.push(id); }
   }
   Fin.lockedOut = still; scheduleRender();
@@ -1569,18 +1607,23 @@ async function recoverLockedOut(oldCode) {
 async function changeFinanceCode(newCode) {
   if (!Fin.key) return false;
   const plains = Object.values(records).filter(r => SEALED_TYPES.has(r.type));
+  const nums = [];                                       // document numbers kept encrypted (locked documents)
+  for (const d of all('doc')) if (d.numEnc) { try { nums.push([d, await aesDec(Fin.key, d.numEnc)]); } catch (e) { RLOG.warn('doc number not readable', d.id); } }
   const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
-  const key = await deriveFinKey(newCode, salt);
-  Fin.key = key; Fin.salt = salt; Fin.kid = uid('k');
-  put({ ...records[FINKEY_ID], salt, kid: Fin.kid, check: await aesEnc(key, 'register-ok') }, { render: false });
-  plains.forEach(r => put(r, { render: false }));      // re-seal everything under the new code
+  const key = await deriveFinKey(newCode, salt, FIN_ITERS_NEW);
+  Fin.key = key; Fin.salt = salt; Fin.kid = uid('k'); Fin.iters = FIN_ITERS_NEW; Fin.codeLen = newCode.length;
+  put({ ...records[FINKEY_ID], salt, kid: Fin.kid, iters: FIN_ITERS_NEW, check: await aesEnc(key, 'register-ok') }, { render: false });
+  plains.forEach(r => put(r, { render: false, bump: true }));   // re-seal under the new code; +1 ms so newer edits from other devices still win
+  for (const [d, n] of nums) { d.numEnc = await aesEnc(key, n); put(d, { render: false }); }
+  Bio.forget();
   RLOG.info('private code changed; re-sealed', plains.length);
   return true;
 }
 function lockFinance(silent) {
   if (!Fin.key) return;
   if (typeof beforeFinanceLock === 'function') beforeFinanceLock();
-  Fin.key = null; Fin.salt = null; Fin.kid = null; Fin.lockedOut = []; keyCache.clear();
+  Fin.key = null; Fin.salt = null; Fin.kid = null; Fin.iters = FIN_ITERS; Fin.lockedOut = []; keyCache.clear();
+  try { const pa = document.getElementById('printArea'); if (pa) pa.innerHTML = ''; } catch (e) {}
   for (const id in records) if (SEALED_TYPES.has(records[id].type)) delete records[id];
   if (typeof onFinanceLocked === 'function') onFinanceLocked(silent);
 }
@@ -1599,7 +1642,7 @@ const trashed = () => Object.values(records).filter(r => r.deleted && r.deletedA
 function persist(rec) {
   const snap = JSON.parse(JSON.stringify(rec));
   const id = rec.id;
-  const ctx = SEALED_TYPES.has(rec.type) && Fin.key ? { key: Fin.key, salt: Fin.salt, kid: Fin.kid } : null;
+  const ctx = SEALED_TYPES.has(rec.type) && Fin.key ? { key: Fin.key, salt: Fin.salt, kid: Fin.kid, iters: Fin.iters } : null;
   persistQ[id] = (persistQ[id] || Promise.resolve()).then(async () => {
     if (SEALED_TYPES.has(snap.type)) {
       const s = await seal(snap, ctx); s._dirty = snap._dirty || 0;
@@ -1613,9 +1656,12 @@ function persist(rec) {
 const persistIdle = () => Promise.all(Object.values(persistQ));
 
 /* put(): stamp, mark dirty, save, re-render, nudge sync. */
+let storeVer = 0;
 function put(rec, opt) {
   opt = opt || {};
-  if (!opt.keepTime) rec.updatedAt = nowMs();
+  if (opt.bump) rec.updatedAt = (rec.updatedAt || 0) + 1;                       // re-seal: keeps its place in time
+  else if (!opt.keepTime) rec.updatedAt = Math.max(nowMs(), (rec.updatedAt || 0) + 1);   // another device's clock may be ahead
+  storeVer++;
   rec._dirty = 1;
   if (rec.deleted === undefined) rec.deleted = false;
   if (!rec.createdAt) rec.createdAt = nowMs();
@@ -1698,6 +1744,7 @@ const Sync = {
       const got = await this.pull();
       await this.push();                                   // anything re-sealed during the pull
       this.lastOk = nowMs(); DB.set('lastSync', this.lastOk);
+      if (!(await DB.get('firstSync'))) await DB.set('firstSync', this.lastOk);   // first time this device synced with this Sheet
       this.status('ok', 'Synced ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
       if (manual) toast(got ? `Synced — ${got} update${got === 1 ? '' : 's'} received.` : 'Synced — all up to date.');
       return true;
@@ -1738,11 +1785,12 @@ const Sync = {
         if (!cur || cur.updatedAt !== row.updatedAt) return;    // edited again meanwhile — stays dirty
         cur._dirty = 0;
         if (records[row.id]) records[row.id]._dirty = 0;
+        if (!rejected.has(row.id)) delete cur._tooBig;
         if (rejected.has(row.id)) { cur._tooBig = true; if (!this.warnedBig) { this.warnedBig = true; toast(`"${(cur.title || cur.label || 'An item').slice(0, 30)}" is too large to sync (Sheet cell limit). It stays on this iPhone.`); } }
         clean.push(SEALED_TYPES.has(cur.type) ? stripLocal(sealed[row.id]) : stripLocal(cur));
       });
       if (clean.length) await DB.putMany(clean.map(c => ({ ...c, _dirty: 0 })));
-      if (stale.size) RLOG.info('server had newer copies of', stale.size);
+      if (stale.size) { RLOG.info('server had newer copies of', stale.size); this.refetch = true; }
       sent += batch.length; batch = []; size = 0;
     };
     for (const id of ids) {
@@ -1756,7 +1804,7 @@ const Sync = {
   },
 
   async pull() {
-    const since = (await DB.get('cursor')) || 0;
+    const since = this.refetch ? 0 : ((await DB.get('cursor')) || 0); this.refetch = false;
     const d = await this.call('pull', { since });
     const n = await mergeRemote(d.records || []);
     await DB.set('cursor', d.serverTime || nowMs());
@@ -1767,11 +1815,12 @@ const Sync = {
 
 /* Merge rows from the server (or an import). Returns how many changed locally. */
 async function mergeRemote(rows, fromImport) {
-  const writes = []; let n = 0, finkeyChanged = false;
+  const writes = []; let n = 0, finkeyChanged = false, erasedAt = 0; const erasedIds = new Map();
   for (const row of rows) {
     let rec;
     try { rec = typeof row.payload === 'string' ? JSON.parse(row.payload) : row; } catch (e) { RLOG.warn('bad payload', row.id); continue; }
     if (!rec || !rec.id || !rec.type) continue;
+    if (rec.type === 'erased') { if (!fromImport) { erasedAt = Math.max(erasedAt, +rec.at || 1); erasedIds.set(rec.id, +rec.updatedAt || 0); } continue; }
     const isSealed = SEALED_TYPES.has(rec.type);
     const local = isSealed ? sealed[rec.id] : records[rec.id];
     if (local && (local.updatedAt || 0) >= (rec.updatedAt || 0)) continue;
@@ -1780,7 +1829,7 @@ async function mergeRemote(rows, fromImport) {
       if (!rec.enc) continue;                                  // a plaintext money row is never accepted from outside
       sealed[rec.id] = rec;
       if (Fin.key) {
-        try { const k = rec.salt === Fin.salt ? Fin.key : null; if (k) { const p = await unsealWith(k, rec); p._dirty = rec._dirty; records[rec.id] = p; } else Fin.lockedOut.push(rec.id); }
+        try { const k = rec.salt === Fin.salt ? Fin.key : null; if (k) { const p = await unsealWith(k, rec); p._dirty = rec._dirty; records[rec.id] = p; } else { Fin.lockedOut.push(rec.id); delete records[rec.id]; } }
         catch (e) { Fin.lockedOut.push(rec.id); }
       }
     } else {
@@ -1789,7 +1838,14 @@ async function mergeRemote(rows, fromImport) {
     }
     writes.push(rec); n++;
   }
-  if (writes.length) await DB.putMany(writes);
+  if (writes.length) { storeVer++; await DB.putMany(writes); }
+  if (erasedAt && !fromImport && !window.__erasing) {
+    const first = await DB.get('firstSync');
+    if (first && first < erasedAt) { window.__erasing = true; RLOG.warn('emergency erase from another device'); await wipeDevice(); return 0; }
+    // set up after the erase (or restored from a backup): our copies must win over the erase markers
+    const bumps = []; for (const [id, ts] of erasedIds) { const l = SEALED_TYPES.has((records[id] || {}).type) ? sealed[id] : records[id]; if (l && !l.deleted && (l.updatedAt || 0) <= ts) bumps.push(id); }
+    bumps.forEach(id => { const r = records[id]; if (r) { r.updatedAt = erasedIds.get(id); put(r, { render: false }); } });
+  }
   if (finkeyChanged) { lockFinance(true); toast('The private-section code was changed on another device. Unlock again with the new code.'); }
   if (n) scheduleRender();
   return n;
@@ -1968,17 +2024,26 @@ function newTask(fields) {
   return put({ id: uid('t'), type: 'task', title: '', category: 'Work', priority: 'Medium', dueDate: null, status: 'active',
     notes: '', repeat: 'none', subs: [], deleted: false, ...fields });
 }
-function shiftISO(iso, repeat) {
+/* Add months, keeping the day (31 Jan → 28/29 Feb → 31 Mar); day = the original day of the month. */
+function addMonthsKeep(d, n, day) {
+  const y = d.getFullYear(), m = d.getMonth() + n, last = new Date(y, m + 1, 0).getDate();
+  return new Date(y, m, Math.min(day || d.getDate(), last));
+}
+function shiftISO(iso, repeat, day) {
   if (!iso) return null;
   const d = new Date(iso + 'T00:00:00'); if (isNaN(d)) return iso;
-  if (repeat === 'daily') d.setDate(d.getDate() + 1); else if (repeat === 'weekly') d.setDate(d.getDate() + 7); else if (repeat === 'monthly') d.setMonth(d.getMonth() + 1);
+  if (repeat === 'daily') d.setDate(d.getDate() + 1); else if (repeat === 'weekly') d.setDate(d.getDate() + 7); else if (repeat === 'monthly') return isoLocal(addMonthsKeep(d, 1, day));
   return isoLocal(d);
 }
 function spawnRepeat(t) {
   const clone = { ...t, id: uid('t'), status: 'active', createdAt: nowMs(),
     subs: (t.subs || []).map(s => { const n = normSub(s); return { ...n, done: false, dueDate: shiftISO(n.dueDate, t.repeat) }; }) };
-  delete clone.completedOn; delete clone.completedAt; delete clone._dirty;
-  clone.dueDate = shiftISO(t.dueDate || todayISO(), t.repeat);
+  delete clone.completedOn; delete clone.completedAt; delete clone._dirty; delete clone.spawnedId;
+  const day = t.repeatDay || +(t.dueDate || todayISO()).slice(8, 10); clone.repeatDay = day;
+  let nx = shiftISO(t.dueDate || todayISO(), t.repeat, day); const today = todayISO();
+  for (let i = 0; nx < today && i < 1000; i++) nx = shiftISO(nx, t.repeat, day);      // completed late: next one is not already overdue
+  clone.dueDate = nx;
+  t.spawnedId = clone.id;
   put(clone, { render: false });
   return clone;
 }
@@ -1987,7 +2052,8 @@ function setStatus(t, st) {
   t.status = st;
   if (st === 'done') {
     t.completedOn = todayISO(); t.completedAt = nowMs();
-    if (was !== 'done' && t.repeat && t.repeat !== 'none') spawned = spawnRepeat(t).id;
+    const already = t.spawnedId && records[t.spawnedId] && !records[t.spawnedId].deleted;   // reopened and done again: keep the one copy
+    if (was !== 'done' && t.repeat && t.repeat !== 'none' && !already) spawned = spawnRepeat(t).id;
   } else { delete t.completedOn; delete t.completedAt; }
   put(t);
   return spawned;
@@ -1998,7 +2064,7 @@ function completeWithUndo(id) {
   const spawned = setStatus(t, 'done');
   toast(`Done: ${t.title.slice(0, 32)}` + (spawned ? ' — next one scheduled' : ''), 'Undo', () => {
     setStatus(records[id], prev);
-    if (spawned) softDelete(spawned);
+    if (spawned) { softDelete(spawned); delete records[id].spawnedId; put(records[id], { render: false }); }
   });
 }
 function cycleTask(id) {
@@ -2195,7 +2261,7 @@ function openTaskEditor(id) {
 function teSave() {
   const t = records[editTaskId]; if (!t) return;
   t.title = $('teTitle').value.trim() || t.title;
-  t.dueDate = $('teDue').value || null;
+  { const nd = $('teDue').value || null; if (nd !== t.dueDate) delete t.repeatDay; t.dueDate = nd; }   // a moved date sets the new repeat day
   t.repeat = $('teRepeat').value;
   t.notes = $('teNotes').value;
   put(t, { render: false });
@@ -2803,8 +2869,9 @@ let billMonth = isoMonth(new Date());
 function nextOccurrence(d) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const w = new Date(d.when + 'T00:00:00'); if (isNaN(w)) return today;
-  if (d.repeat === 'yearly') while (w < today) w.setFullYear(w.getFullYear() + 1);
-  else if (d.repeat === 'monthly') while (w < today) w.setMonth(w.getMonth() + 1);
+  const day = w.getDate(), base = new Date(w);
+  if (d.repeat === 'yearly') { for (let k = 1; w < today && k < 500; k++) { const x = addMonthsKeep(base, 12 * k, day); w.setTime(x.getTime()); } }
+  else if (d.repeat === 'monthly') { for (let k = 1; w < today && k < 6000; k++) { const x = addMonthsKeep(base, k, day); w.setTime(x.getTime()); } }
   return w;
 }
 function countHtml(days, pastWord) {
@@ -2847,8 +2914,15 @@ function billDueIn(b, ym) {
   if (b.total && diff / (b.freq || 1) >= b.total) return false;
   return true;
 }
-const payFor = (bid, ym) => all('billpay').find(p => p.billId === bid && p.period === ym);
-const billPaidCount = b => all('billpay').filter(p => p.billId === b.id && p.status === 'paid').length;
+let payIdx = null, payIdxVer = -1;
+function payIndex() {
+  if (payIdx && payIdxVer === storeVer) return payIdx;
+  payIdx = { at: new Map(), paid: new Map() }; payIdxVer = storeVer;
+  all('billpay').forEach(p => { payIdx.at.set(p.billId + '|' + p.period, p); if (p.status === 'paid') payIdx.paid.set(p.billId, (payIdx.paid.get(p.billId) || 0) + 1); });
+  return payIdx;
+}
+const payFor = (bid, ym) => payIndex().at.get(bid + '|' + ym);
+const billPaidCount = b => payIndex().paid.get(b.id) || 0;
 function overduePeriods(b, upto) {
   const start = b.startMonth || isoMonth(new Date(b.createdAt)), out = [];
   for (let ym = start; monthDiff(ym, upto) > 0; ym = monthAdd(ym, 1)) if (billDueIn(b, ym) && !payFor(b.id, ym)) out.push(ym);
@@ -2859,7 +2933,9 @@ function pendingCount() {
   all('bill').forEach(b => { if (billDueIn(b, now) && !payFor(b.id, now)) n++; n += overduePeriods(b, now).length; });
   return n;
 }
+let billSeen = isoMonth(new Date());
 function renderBills() {
+  { const nowM = isoMonth(new Date()); if (nowM !== billSeen) { if (billMonth === billSeen) billMonth = nowM; billSeen = nowM; } }   // new month while the app stayed open
   $('billMonthLbl').textContent = monthLong(billMonth);
   const now = isoMonth(new Date()), bills = all('bill'), rows = [];
   if (billMonth === now) bills.forEach(b => overduePeriods(b, now).forEach(ym => rows.push({ b, ym, state: 'overdue' })));
@@ -2872,11 +2948,12 @@ function renderBills() {
     const b = r.b, paidN = billPaidCount(b);
     const hist = []; for (let i = 5; i >= 0; i--) { const ym = monthAdd(now, -i); if (!billDueIn(b, ym)) { hist.push(''); continue; } const p = payFor(b.id, ym); hist.push(p ? (p.status === 'skipped' ? 's' : 'p') : (ym === now ? '' : 'm')); }
     const amt = r.pay && r.pay.status === 'paid' ? r.pay.amount : b.amount;
-    const late = r.state === 'pending' && billMonth === now && b.dueDay && b.dueDay < day;
+    const dueD = b.dueDay ? Math.min(b.dueDay, new Date(+billMonth.slice(0, 4), +billMonth.slice(5, 7), 0).getDate()) : 0;
+    const late = r.state === 'pending' && billMonth === now && dueD && dueD < day;
     const settled = r.state === 'paid' || r.state === 'skipped';
     return swipeHtml(`<div class="row bill ${r.state}">
       <div class="row-main"><div class="row-title">${esc(b.label)} ${r.state === 'overdue' ? `<span class="pill neg">${monthShort(r.ym)}</span>` : ''}</div>
-        <div class="row-sub">${b.dueDay ? `<span class="${late ? 'warn' : ''}">due ${ordinal(b.dueDay)}</span>` : ''}<span>${b.freq == 1 ? 'monthly' : 'every ' + b.freq + ' months'}</span>
+        <div class="row-sub">${dueD ? `<span class="${late ? 'warn' : ''}">due ${ordinal(dueD)}</span>` : ''}<span>${b.freq == 1 ? 'monthly' : 'every ' + b.freq + ' months'}</span>
           ${b.total ? `<span>${paidN}/${b.total} paid</span>` : ''}${r.state === 'paid' && r.pay ? `<span class="pos">✓ paid ${fmtDate(r.pay.paidOn)}</span>` : ''}${r.state === 'skipped' ? '<span>skipped</span>' : ''}${r.pay && r.pay.postPending ? '<span class="warn">money entry waiting</span>' : ''}</div>
         ${b.total ? `<div class="emi"><i style="width:${Math.min(100, Math.round(paidN / b.total * 100))}%"></i></div>` : ''}
         <div class="hist" aria-hidden="true">${hist.map(h => `<i class="${h}"></i>`).join('')}</div></div>
@@ -2884,6 +2961,9 @@ function renderBills() {
         ${settled ? `<button class="btn small ghost" data-unpay="${b.id}|${r.ym}">Undo</button>` : `<button class="btn small" data-pay="${b.id}|${r.ym}">Pay</button>`}</div></div>`,
       settled ? '' : '✓ Paid', '', `data-bill="${b.id}|${r.ym}"`);
   }).join('') : '<div class="empty"><b>Nothing due</b>Add electricity, rent, EMIs or insurance with +.</div>';
+  { const many = billMonth === now ? bills.map(b => [b, overduePeriods(b, now)]).filter(([, l]) => l.length > 1) : [];
+    if (many.length) $('billList').insertAdjacentHTML('afterbegin', many.map(([b, l]) => `<button class="linkbtn bill-bulk" data-bulk="${b.id}">Mark ${l.length} earlier months of ${esc(b.label)} as paid</button>`).join(''));
+    $$('[data-bulk]', $('billList')).forEach(x => x.addEventListener('click', () => bulkPaid(x.dataset.bulk))); }
   $$('[data-bill]', $('billList')).forEach(w => {
     const [id, ym] = w.dataset.bill.split('|'); const settled = !!payFor(id, ym);
     bindSwipe(w, settled ? null : () => settlePay(id, ym, 'paid', null), null);
@@ -2916,6 +2996,15 @@ function settlePay(id, ym, status, typed) {
   }
   put(pay);
   toast(status === 'paid' ? `${b.label} — marked paid${amount ? ' ' + fmtMoney(amount) : ''}.` : 'Skipped for this period.', 'Undo', () => undoPay(id, ym, true));
+}
+/* Mark every overdue month of a bill as paid in one go (for an EMI that started before you began using the app). Not posted to Money. */
+function bulkPaid(id) {
+  const b = records[id]; if (!b) return;
+  const l = overduePeriods(b, isoMonth(new Date())); if (!l.length) return;
+  if (!confirm(`Mark ${l.length} earlier months of "${b.label}" as paid? They are not written into Money.`)) return;
+  const made = l.map(ym => put({ id: uid('bp'), type: 'billpay', billId: id, period: ym, status: 'paid', amount: b.amount || 0, paidOn: monthEnd(ym), bulk: true, deleted: false }, { render: false }).id);
+  scheduleRender();
+  toast(`${l.length} months marked paid.`, 'Undo', () => { made.forEach(x => softDelete(x, { render: false })); scheduleRender(); });
 }
 function postBillToMoney(b, pay) {
   put({ id: uid('f'), type: 'fin', desc: b.label + ' — ' + monthShort(pay.period), amount: pay.amount, kind: 'expense', category: b.category || 'Bills',
@@ -2995,7 +3084,7 @@ function renderDocs() {
     return swipeHtml(`<div class="row" style="border-left:4px solid ${DOC_COLORS[d.docType] || '#77818E'}">
       ${d.expiry ? countHtml(days, 'expired') : '<div class="count past" aria-label="no expiry">∞<small>no expiry</small></div>'}
       <div class="row-main"><div class="row-title">${esc(d.title)}</div>
-        <div class="row-sub"><span>${d.docType}</span>${docFileBadge(d)}${d.number ? `<span class="mono">${esc(maskNo(d.number))}</span>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
+        <div class="row-sub"><span>${d.docType}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
       <span class="chev">›</span></div>`, '', 'Delete 🗑', `data-doc="${d.id}"`);
   }).join('') : activeDocFolder !== '__all__' ? '<div class="empty">No documents of this type in this folder.</div>' : docs.length && shown.some(d => docFolder(d)) ? '' : '<div class="empty"><b>No documents</b>Policies, RC, passport, warranties — tap + to add. Expiry is optional. Put them in folders from each document\'s Folder field.</div>';
   $('docList').classList.toggle('hidden', !list.length && activeDocFolder === '__all__' && shown.some(d => docFolder(d)));
@@ -3006,17 +3095,23 @@ function openDoc(id) {
   const d = records[id]; if (!d) return;
   editDocId = id;
   $('doTitle').value = d.title; $('doNumber').value = d.number || ''; $('doExpiry').value = d.expiry || '';
+  $('doNumber').disabled = false; $('doNumber').placeholder = '';
+  if (d.numEnc) { $('doNumber').disabled = true; $('doNumber').placeholder = Fin.key ? 'Opening…' : 'Locked — enter your private code to see or change';
+    if (Fin.key) docNumFull(d).then(n => { if (editDocId === id) { $('doNumber').value = n; $('doNumber').disabled = false; $('doNumber').placeholder = ''; if (Sheets.onOpen.shDoc) Sheets.onOpen.shDoc(); } })
+      .catch(() => { if (editDocId === id) $('doNumber').placeholder = 'Locked under an older code — unchanged'; }); }
   $('doIssuer').value = d.issuer || ''; $('doNotes').value = d.notes || '';
   $('doFolder').value = d.folder || ''; $('docFolderDl').innerHTML = docFolderList().map(f => `<option value="${esc(f)}">`).join('');
   chipGroup($('doType'), DOC_TYPES, d.docType, () => {}, t => DOC_COLORS[t]);
   $('doFileMsg').textContent = ''; renderDocEditFiles();
   Sheets.open('shDoc');
 }
-$('doSave').addEventListener('click', () => {
+$('doSave').addEventListener('click', async () => {
   const d = records[editDocId]; if (!d) return;
+  const numLocked = $('doNumber').disabled;
   d.title = $('doTitle').value.trim() || d.title; d.docType = chipValue($('doType')) || d.docType;
-  d.number = $('doNumber').value.trim(); d.expiry = $('doExpiry').value || null; d.issuer = $('doIssuer').value.trim(); d.notes = $('doNotes').value;
+  if (!numLocked) { d.number = $('doNumber').value.trim(); if (!d.number) { delete d.numEnc; delete d.numTail; } } d.expiry = $('doExpiry').value || null; d.issuer = $('doIssuer').value.trim(); d.notes = $('doNotes').value;
   d.folder = $('doFolder').value.trim();
+  if (d.lockFiles && d.number) await sealDocNumber(d);
   put(d); Sheets.close('shDoc'); toast('Saved.');
 });
 $('doDelete').addEventListener('click', () => { const id = editDocId; Sheets.close('shDoc', true); deleteWithUndo(id); });
@@ -3128,6 +3223,15 @@ function docFileBadge(d) {
   return (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
 }
 /* Long ID numbers show only their last 4 characters on screen (Aadhaar, PAN, passport, licence). */
+const docNumShown = d => d.number ? maskNo(d.number) : d.numEnc ? '•••• ' + (d.numTail || '') : '';
+async function docNumFull(d) { if (d.number) return d.number; if (!d.numEnc) return ''; if (!Fin.key) throw lockedErr(); return aesDec(Fin.key, d.numEnc); }
+async function sealDocNumber(d) {
+  if (!Fin.key) return false;
+  if (d.lockFiles && d.number) { d.numEnc = await aesEnc(Fin.key, d.number); d.numTail = d.number.replace(/[\s-]/g, '').slice(-4); d.number = ''; return true; }
+  if (!d.lockFiles && d.numEnc) { try { d.number = await aesDec(Fin.key, d.numEnc); } catch (e) { return false; } delete d.numEnc; delete d.numTail; return true; }
+  return false;
+}
+async function sealDocNumbers() { for (const d of all('doc')) if (d.lockFiles && d.number && await sealDocNumber(d)) put(d, { render: false }); }
 function maskNo(n) { const s = String(n || '').trim(); return s.replace(/[\s-]/g, '').length >= 8 ? '•••• ' + s.replace(/[\s-]/g, '').slice(-4) : s; }
 function showDoc(id) { if (docFilesOf(id).length) openDocView(id); else openDoc(id); }
 
@@ -3218,6 +3322,7 @@ $('doLock').addEventListener('change', () => {
   const want = $('doLock').checked;
   if (!Fin.key) { $('doLock').checked = !want; toast('Enter your private code first — tap "Register" three times.'); return; }
   d.lockFiles = want; put(d, { render: false });
+  sealDocNumber(d).then(ch => { if (ch) put(d, { render: false }); });
   convertDocFiles(d);
 });
 
@@ -3228,11 +3333,13 @@ function openDocView(id) {
   viewDocId = id;
   $('dvTitle').textContent = d.title;
   const days = d.expiry ? daysUntilISO(d.expiry) : null;
-  $('dvMeta').innerHTML = `<span>${esc(d.docType || '')}</span>` + (d.number ? `<span class="mono" id="dvNum">${esc(maskNo(d.number))}</span>`
-      + (maskNo(d.number) !== d.number ? '<button class="linkbtn" id="dvNumShow" style="padding:0 2px">Show</button>' : '') + '<button class="linkbtn" id="dvNumCopy" style="padding:0 2px">Copy</button>' : '')
+  $('dvMeta').innerHTML = `<span>${esc(d.docType || '')}</span>` + (docNumShown(d) ? `<span class="mono" id="dvNum">${esc(docNumShown(d))}</span>`
+      + (d.numEnc || maskNo(d.number) !== d.number ? '<button class="linkbtn" id="dvNumShow" style="padding:0 2px">Show</button>' : '') + '<button class="linkbtn" id="dvNumCopy" style="padding:0 2px">Copy</button>' : '')
     + (d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : '');
-  const sh = $('dvNumShow'); if (sh) sh.addEventListener('click', () => { const on = sh.textContent === 'Show'; $('dvNum').textContent = on ? d.number : maskNo(d.number); sh.textContent = on ? 'Hide' : 'Show'; });
-  const cp = $('dvNumCopy'); if (cp) cp.addEventListener('click', async () => { try { await navigator.clipboard.writeText(d.number); toast('Number copied.'); } catch (e) { toast('Could not copy — tap Show and select it.'); } });
+  const sh = $('dvNumShow'); if (sh) sh.addEventListener('click', async () => { const on = sh.textContent === 'Show';
+    if (!on) { $('dvNum').textContent = docNumShown(d); sh.textContent = 'Show'; return; }
+    try { $('dvNum').textContent = await docNumFull(d); sh.textContent = 'Hide'; } catch (e) { toast('Locked — tap "Register" three times and enter your private code.'); } });
+  const cp = $('dvNumCopy'); if (cp) cp.addEventListener('click', async () => { try { await navigator.clipboard.writeText(await docNumFull(d)); toast('Number copied.'); } catch (e) { toast('Could not copy — tap Show and select it.'); } });
   const fs = docFilesOf(id);
   $('dvFiles').innerHTML = fs.length ? fs.map(f => `<figure class="dv-file" data-dvf="${f.id}"><figcaption>${f.locked ? '🔒 ' : ''}${esc(f.name)}</figcaption>
       <div class="dv-body"><div class="dv-wait">${f.locked && !Fin.key ? 'Locked. Enter the code to view.' : 'Loading…'}</div></div></figure>`).join('')
@@ -3542,11 +3649,19 @@ function renderUdhaar() {
   $$('[data-settle]', $('udList')).forEach(b => b.addEventListener('click', () => openSettle(b.dataset.settle)));
   $$('[data-fe]', $('udList')).forEach(b => b.addEventListener('click', () => openFin(b.dataset.fe)));
   $$('[data-settleall]', $('udList')).forEach(b => b.addEventListener('click', () => {
-    const p = b.dataset.settleall, list = byP[p]; if (!confirm(`Mark all ${list.length} entries with ${p} as settled?`)) return;
-    const snap = list.map(e => ({ id: e.id, paid: e.paidAmount || 0 }));
-    list.forEach(e => { e.paidAmount = e.amount; e.settled = true; put(e, { render: false }); });
-    scheduleRender();
-    toast(`Settled everything with ${p}.`, 'Undo', () => snap.forEach(s => { const e = records[s.id]; e.paidAmount = s.paid; e.settled = false; put(e); }));
+    const p = b.dataset.settleall, list = byP[p];
+    const settleAll = acct => {
+      const snap = list.map(e => ({ id: e.id, paid: e.paidAmount || 0, pays: (e.pays || []).slice(), settled: !!e.settled })), today = todayISO();
+      list.forEach(e => { const rest = outstanding(e); if (rest > 0 && acct) e.pays = (e.pays || []).concat([{ date: today, amt: +rest.toFixed(2), acct }]); e.paidAmount = e.amount; e.settled = true; put(e, { render: false }); });
+      scheduleRender();
+      toast(`Settled everything with ${p}.`, 'Undo', () => snap.forEach(s => { const e = records[s.id]; e.paidAmount = s.paid; e.pays = s.pays; e.settled = s.settled; put(e); }));
+    };
+    if (typeof accts === 'function' && accts().length && typeof planSheet === 'function') {
+      const net = list.reduce((s, e) => s + (e.kind === 'lent' ? 1 : -1) * outstanding(e), 0);
+      planSheet('Settle all with ' + p, `<p class="hint">${net >= 0 ? `${esc(p)} pays you ${fmtMoney(net)}` : `You pay ${esc(p)} ${fmtMoney(-net)}`} for ${list.length} entries.</p>
+        <div class="field"><label>${net >= 0 ? 'Received into' : 'Paid from'}</label><select id="saAcct">${acctOptions(lastAcct('udhaar') || defAcct(planCfg()), a => isLiquid(a.kind) || a.kind === 'card')}</select></div>`,
+        () => { rememberAcct('udhaar', $('saAcct').value); settleAll($('saAcct').value); return true; }, 'Settle all');
+    } else { if (!confirm(`Mark all ${list.length} entries with ${p} as settled?`)) return; settleAll(null); }
   }));
   const done = ud.filter(e => e.settled).sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 60);
   $('udSettled').innerHTML = done.length ? done.map(e => finRow(e)).join('') : '<div class="empty">None yet.</div>';
@@ -3783,6 +3898,7 @@ function loanInfo(l, atYm) {
   out.paidBy = paidAt;
   return out;
 }
+const loanSched = l => !!(+l.emi && l.start && l.end);
 /* What you owe on a loan at the end of month ym (after that month's EMI). */
 function loanOwed(l, ym) {
   const k = loanInfo(l, ym);
@@ -3796,10 +3912,10 @@ function loanOwed(l, ym) {
 const finDate = e => (e.date || '').slice(0, 10);
 /* All actual money movements from the Ledger, as { ym, date, acct, amt, cat } with the sign seen by that account. */
 function ledgerFlows(c) {
-  const out = [], start = c.startMonth;
+  const out = [], start = c.startMonth, dflt = (acctById(c.defAcct) || {}).id || defAcct(c);   // untagged entries stay on the default even if it is archived
   const push = (date, acct, amt, cat, e) => { if (!acct || !acctById(acct) || !date || date.slice(0, 7) < start) return; out.push({ ym: date.slice(0, 7), date, acct, amt, cat, e }); };
   all('fin').forEach(e => {
-    const a = +e.amount || 0, d = finDate(e), acct = e.acct || (e.kind !== 'transfer' && e.date && e.date.slice(0, 7) >= start ? defAcct(c) : null);
+    const a = +e.amount || 0, d = finDate(e), acct = e.acct || (e.kind !== 'transfer' && e.date && e.date.slice(0, 7) >= start ? dflt : null);
     if (e.kind === 'income') push(d, acct, a, 'inc', e);
     else if (e.kind === 'expense') push(d, acct, -a, 'exp', e);
     else if (e.kind === 'transfer') { push(d, e.acct, -a, 'out', e); push(d, e.to, a, 'in', e); }
@@ -3822,14 +3938,19 @@ function balancesOn(c, dateISO) {
   const cur = isoMonth(new Date()), ym = dateISO.slice(0, 7), list = accts(true);
   let bal = {}, mode = 'actual', label, udhBack = 0;
   if (ym < c.startMonth) {
-    list.forEach(a => { bal[a.id] = a.kind === 'loan' ? -(+a.emi && a.start && a.end ? loanOwed(a, monthAdd(c.startMonth, -1)) : +a.open || 0) : isLiab(a.kind) ? -(+a.open || 0) : +a.open || 0; });
+    list.forEach(a => { bal[a.id] = a.kind === 'loan' ? -(loanSched(a) ? loanOwed(a, monthAdd(c.startMonth, -1)) : +a.open || 0) : isLiab(a.kind) ? -(+a.open || 0) : +a.open || 0; });
     mode = 'opening'; label = 'opening balances, as on ' + fmtDate(monthEnd(monthAdd(c.startMonth, -1)), true);
   } else if (ym > cur) {
     const pr = planCompute(c, ym).slice(-1)[0]; bal = { ...pr.accts }; udhBack = pr.udhBack || 0; mode = 'plan'; label = 'plan for end of ' + monthLong(ym);
+  } else if (ym < cur && dateISO >= monthEnd(ym)) {
+    bal = { ...planCompute(c, ym, 'actual').slice(-1)[0].accts };      // a whole month that is over: same figures as the check-up
+    label = 'actual, as on ' + fmtDate(monthEnd(ym), true);
   } else {
-    if (ym === c.startMonth) list.forEach(a => { bal[a.id] = a.kind === 'loan' ? -(+a.emi && a.start && a.end ? loanOwed(a, monthAdd(ym, -1)) : +a.open || 0) : isLiab(a.kind) ? -(+a.open || 0) : +a.open || 0; });
+    const endRow = planCompute(c, ym, 'actual').slice(-1)[0];
+    if (ym === c.startMonth) list.forEach(a => { bal[a.id] = isLiab(a.kind) ? -(+a.open || 0) : +a.open || 0; });
     else bal = { ...planCompute(c, monthAdd(ym, -1), 'actual').slice(-1)[0].accts };
-    ledgerFlows(c).forEach(f => { const a = acctById(f.acct); if (a && a.kind !== 'loan' && f.ym === ym && f.date <= dateISO) bal[f.acct] = (bal[f.acct] || 0) + f.amt; });
+    ledgerFlows(c).forEach(f => { const a = acctById(f.acct); if (a && !(a.kind === 'loan' && loanSched(a)) && f.ym === ym && f.date <= dateISO) bal[f.acct] = (bal[f.acct] || 0) + f.amt; });
+    list.forEach(a => { if (a.kind === 'loan' && loanSched(a)) bal[a.id] = endRow.accts[a.id]; });   // loans follow their schedule
     label = 'actual, as on ' + fmtDate(dateISO, true);
   }
   const out = { bank: 0, cash: 0, invest: 0, card: 0, loan: 0, mode, label, accts: bal };
@@ -3920,7 +4041,8 @@ function udhaarNet() {
 function planItems(c, ym) {
   const pm = pmGet(ym), items = [];
   recurs().forEach(r => { if (recurDue(r, ym)) items.push({ key: 'r:' + r.id, label: r.name, kind: r.kind, who: r.who || '', a: recurAmt(r, ym), from: r.kind === 'udhback' ? null : r.from, to: r.to, budget: !!r.budget && r.kind === 'expense', cat: r.cat || '' }); });
-  accts().forEach(a => {
+  accts(true).forEach(a => {
+    if (a.archived && a.kind !== 'loan') return;                        // archived funds: no SIP; a loan keeps its EMIs until its last month
     if (isInvest(a.kind) && a.sip && +a.sip.amt && a.sip.start && ym >= a.sip.start && (!a.sip.end || ym <= a.sip.end))
       items.push({ key: 'sip:' + a.id, label: 'SIP · ' + a.name, kind: 'transfer', a: +a.sip.amt, from: a.sip.from, to: a.id });
     if (a.kind === 'loan' && +a.emi && a.start && ym >= a.start && (!a.end || ym <= a.end))
@@ -3929,12 +4051,23 @@ function planItems(c, ym) {
   (pm ? pm.extra || [] : []).forEach(x => items.push({ key: 'x:' + x.id, label: x.label || 'One-off', kind: x.kind, a: +x.a || 0, from: x.from, to: x.to, extra: true, cat: x.cat || '' }));
   items.forEach(it => { const o = pm && pm.items && pm.items[it.key]; if (o) { if (!isBlank(o.a)) it.a = +o.a; it.done = !!o.done; it.ledgerId = o.ledgerId || null; it.changed = !isBlank(o.a); } });
   (pm ? pm.extra || [] : []).forEach(x => { const it = items.find(i => i.key === 'x:' + x.id); if (it && x.done) { it.done = true; it.ledgerId = x.ledgerId; } });
+  items.forEach(it => {
+    if (!it.done) return;
+    if (it.kind === 'udhback') {
+      const ref = ym + '|' + it.key, paid = all('fin').reduce((s, e) => s + (e.pays || []).filter(p => p.planRef === ref).reduce((t, p) => t + (+p.amt || 0), 0), 0);
+      if (paid > 0) it.a = paid; else { it.done = false; it.ledgerId = null; it.lost = true; }
+      return;
+    }
+    const L = it.ledgerId && records[it.ledgerId];
+    if (L && !L.deleted) it.a = +L.amount || 0;             // what is really in the Ledger
+    else { it.done = false; it.ledgerId = null; it.lost = true; }   // its Ledger entry was deleted: planned again
+  });
   // an entry you typed into the Ledger yourself (same month, type, account and amount) counts as done
-  const used = new Set(), mine = all('fin').filter(e => !e.planRef && (e.date || '').slice(0, 7) === ym && e.acct);
+  const today = todayISO(), used = new Set(), mine = all('fin').filter(e => !e.planRef && (e.date || '').slice(0, 7) === ym && e.acct && (e.date || '') <= today);
   items.forEach(it => {
     if (it.done || it.kind !== 'udhback' || !it.a) return;
     const hit = all('fin').some(e => e.kind === 'lent' && (e.who || '').trim().toLowerCase() === it.who.trim().toLowerCase() &&
-      (e.pays || []).some(p => !p.planRef && (p.date || '').slice(0, 7) === ym && Math.abs((+p.amt || 0) - it.a) < 1));
+      (e.pays || []).some(p => !p.planRef && (p.date || '').slice(0, 7) === ym && (p.date || '') <= today && Math.abs((+p.amt || 0) - it.a) < 1));
     if (hit) { it.done = true; it.matched = 'udh'; }
   });
   items.forEach(it => {
@@ -3953,7 +4086,7 @@ function planCompute(c, toMonth, mode) {
   const actual = mode === 'actual', cur = isoMonth(new Date());
   if (actual && toMonth > cur) toMonth = cur;
   const list = accts(true), bal = {}, udh = udhaarNet();
-  list.forEach(a => { bal[a.id] = isLiab(a.kind) ? -(+a.open || 0) : (+a.open || 0); });
+  list.forEach(a => { bal[a.id] = a.kind === 'loan' && loanSched(a) ? -loanOwed(a, monthAdd(c.startMonth, -1)) : isLiab(a.kind) ? -(+a.open || 0) : (+a.open || 0); });
   const flows = ledgerFlows(c), byYm = {};
   flows.forEach(f => { (byYm[f.ym] = byYm[f.ym] || []).push(f); });
   const rows = [], udhLeft = new Map(); let udhBack = 0;
@@ -3963,7 +4096,7 @@ function planCompute(c, toMonth, mode) {
     // actual movements
     fl.forEach(f => {
       const a = acctById(f.acct); if (!a) return;
-      if (a.kind === 'loan') return;                                        // loan balance follows its schedule
+      if (a.kind === 'loan' && loanSched(a)) return;                        // a scheduled loan follows its schedule
       bal[f.acct] += f.amt;
       if (f.cat === 'inc') inc += f.amt;
       else if (f.cat === 'exp') exp -= f.amt;
@@ -3971,7 +4104,8 @@ function planCompute(c, toMonth, mode) {
       else if (f.cat === 'out' && isInvest(a.kind)) invIn += f.amt;          // negative: money taken out
     });
     // planned movements not yet ticked
-    const ledgerSpend = fl.filter(f => f.cat === 'exp' && !(f.e && f.e.planRef)).reduce((s, f) => s - f.amt, 0);
+    const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
+    const ledgerSpend = fl.filter(f => f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id)))).reduce((s, f) => s - f.amt, 0);
     if (!actual) items.forEach(it => {
       if (it.done) return;
       let amt = it.a;
@@ -3984,14 +4118,15 @@ function planCompute(c, toMonth, mode) {
         const k = it.who.trim().toLowerCase(); if (!udhLeft.has(k)) udhLeft.set(k, udhOwedBy(it.who));
         amt = Math.min(amt, udhLeft.get(k)); if (amt <= 0) return;
         udhLeft.set(k, udhLeft.get(k) - amt); udhBack += amt;
-        if (T && T.kind !== 'loan') bal[T.id] += amt;
+        if (T && !(T.kind === 'loan' && loanSched(T))) bal[T.id] += amt;
         return;
       }
-      if (it.kind === 'income') { if (T) { if (T.kind !== 'loan') bal[T.id] += amt; } inc += amt; }
-      else if (it.kind === 'expense') { if (F && F.kind !== 'loan') bal[F.id] -= amt; exp += amt; }
+      const free = x => x && !(x.kind === 'loan' && loanSched(x));
+      if (it.kind === 'income') { if (free(T)) bal[T.id] += amt; inc += amt; }
+      else if (it.kind === 'expense') { if (free(F)) bal[F.id] -= amt; exp += amt; }
       else {
-        if (F && F.kind !== 'loan') bal[F.id] -= amt;
-        if (T && T.kind !== 'loan') bal[T.id] += amt;
+        if (free(F)) bal[F.id] -= amt;
+        if (free(T)) bal[T.id] += amt;
         if (T && isInvest(T.kind)) invIn += amt;
         if (F && isInvest(F.kind)) invIn -= amt;
       }
@@ -4000,17 +4135,15 @@ function planCompute(c, toMonth, mode) {
     list.forEach(a => {
       if (isInvest(a.kind)) {
         const before = bal[a.id];
-        if (!actual && +a.ret) { const g = before * (+a.ret) / 1200; bal[a.id] += g; growth += g; }
+        if (!actual && +a.ret && !a.archived && ym >= cur) { const g = before * (+a.ret) / 1200; bal[a.id] += g; growth += g; }   // estimate only for months not yet over
         const v = (a.values || []).find(x => x.month === ym);
         if (v && isFinite(+v.a)) { growth += +v.a - bal[a.id]; bal[a.id] = +v.a; }
-      } else if (a.kind === 'loan') {
-        const sched = +a.emi && a.start && a.end;
-        const owedBefore = ym === c.startMonth ? (sched ? loanOwed(a, monthAdd(ym, -1)) : +a.open || 0) : -bal[a.id];
-        const owed = sched ? (ym < a.start ? (+a.open || 0) : loanOwed(a, ym)) : owedBefore;
+      } else if (a.kind === 'loan' && loanSched(a)) {
+        const owedBefore = loanOwed(a, monthAdd(ym, -1));
         const k = loanInfo(a, ym);
-        if (k.r && a.start && ym >= a.start && (!a.end || ym <= a.end)) interest += owedBefore * k.r;
-        bal[a.id] = -owed;
-      }
+        if (k.r && ym >= a.start && ym <= a.end) interest += owedBefore * k.r;
+        bal[a.id] = -loanOwed(a, ym);
+      }                                                                     // other loans: opening − what you paid into them
     });
     let assets = 0, liabs = 0, cardDue = 0, loanBal = 0, liquid = 0, invest = 0, cardPos = 0; const neg = [];
     list.forEach(a => {
@@ -4165,16 +4298,12 @@ function renderAccts() {
     return;
   }
   const cur = isoMonth(new Date()), asOn = fmtDate(monthEnd(monthAdd(c.startMonth, -1)), true);
-  const now = cur < c.startMonth ? null : planCompute(c, cur, 'actual').slice(-1)[0];
+  const now = cur >= c.startMonth, B = balancesOn(c, todayISO());       // same figures as the Ledger dashboard
   const endYm = planHorizon(c), proj = planCompute(c, endYm), endRow = proj[proj.length - 1];
-  const nowBal = id => now ? now.accts[id] : (() => { const a = acctById(id); return isLiab(a.kind) ? -(+a.open || 0) : +a.open || 0; })();
+  const nowBal = id => B.accts[id] || 0;
   const firstNeg = id => { const r = proj.find(x => x.neg.includes(id)); return r ? r.ym : null; };
-  const assetsNow = accts().reduce((s, a) => s + (isLiab(a.kind) ? Math.max(0, nowBal(a.id)) : nowBal(a.id)), 0);
-  const cardNow = accts().filter(a => a.kind === 'card').reduce((s, a) => s + Math.max(0, -nowBal(a.id)), 0);
-  const loanNow = accts().filter(a => a.kind === 'loan').reduce((s, a) => s + Math.max(0, -nowBal(a.id)), 0);
-  const U = udhaarSplit(), worthNow = assetsNow + U.owed - U.owe - cardNow;
-  const liqNow = accts().filter(a => isLiquid(a.kind)).reduce((s, a) => s + nowBal(a.id), 0) + accts().filter(a => a.kind === 'card').reduce((s, a) => s + Math.max(0, nowBal(a.id)), 0);
-  const investNow = accts().filter(a => isInvest(a.kind)).reduce((s, a) => s + nowBal(a.id), 0), handNow = liqNow - cardNow;
+  const U = { owed: B.owed, owe: B.owe }, cardNow = B.card, loanNow = B.loan, liqNow = B.bank + B.cash, investNow = B.invest;
+  const worthNow = B.money, handNow = B.hand;
   const heroWhen = now ? 'as on ' + fmtDate(todayISO(), true) : 'opening, as on ' + asOn;
   const guide = !lsFlag('r2_acctGuideHidden') ? `<div class="group plan-card acct-guide"><div class="plan-hero-top" style="justify-content:space-between"><b>How this works</b><button class="linkbtn" id="acGuideHide">Hide</button></div>
       <ol><li><b>Opening balances</b> — once. What each account held on ${asOn}.</li>
@@ -4288,15 +4417,19 @@ function obRow(a) {
 /* ---------- one account ---------- */
 function acctSheet(id) {
   const c = planCfg(); const a = id ? acctById(id) : { name: '', kind: 'bank', open: '' };
-  const used = id && (all('fin').some(e => e.acct === id || e.to === id || (e.pays || []).some(p => p.acct === id)) || recurs().some(r => r.from === id || r.to === id)
-    || accts().some(x => (x.sip && x.sip.from === id) || x.payFrom === id));
+  const isDef = id && defAcct(c) === id;
+  const used = id && (all('fin').some(e => e.acct === id || e.to === id || (e.pays || []).some(p => p.acct === id) || (isDef && !e.acct && e.kind !== 'transfer'))
+    || recurs().some(r => r.from === id || r.to === id)
+    || accts(true).some(x => (x.sip && x.sip.from === id) || x.payFrom === id)
+    || all('planmonth').some(m => (m.extra || []).some(x => x.from === id || x.to === id))
+    || (isDef && accts().length > 1));                 // the default account also receives entries saved without one
   const kindSel = `<select id="asKind">${ACCT_KINDS.map(([k, l]) => `<option value="${k}"${k === a.kind ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
   const html = `<div class="field"><label>Name</label><input id="asName" value="${esc(a.name)}" placeholder="e.g. HDFC savings"></div>
     <div class="grid2"><div class="field"><label>Type</label>${kindSel}</div><div class="field"><label id="asOpenLbl">Opening balance ₹</label>${amtIn('asOpen', a.open === 0 ? '' : a.open)}</div></div>
     <p class="hint" style="margin:-8px 4px 12px">As on ${fmtDate(monthEnd(monthAdd(c.startMonth, -1)), true)}.</p>
     <div id="asMore"></div>
     <div class="group" style="margin-top:12px"><label class="switch-row"><span>Archive this account<small>Hidden from lists and pickers; its history stays.</small></span><input type="checkbox" class="sw" id="asArch"${a.archived ? ' checked' : ''}></label></div>
-    ${id ? (used ? '<p class="hint">This account has entries, so it can be archived but not deleted.</p>' : '<button class="btn danger block" id="asDel">Delete account</button>') : ''}`;
+    ${id ? (used ? `<p class="hint">${isDef ? 'This is your default account: entries saved without an account are counted here. It can be archived but not deleted.' : 'This account has entries, so it can be archived but not deleted.'}</p>` : '<button class="btn danger block" id="asDel">Delete account</button>') : ''}`;
   planSheet(id ? 'Account' : 'New account', html, () => {
     try {
       const name = $('asName').value.trim(); if (!name) throw new Error('Give the account a name.');
@@ -4382,6 +4515,8 @@ function recurSheet(id, preset) {
     <div class="grid2"><div class="field" id="rcFromW"><label>From account</label><select id="rcFrom">${acctOptions(r.from)}</select></div><div class="field" id="rcToW"><label>Into account</label><select id="rcTo">${acctOptions(r.to)}</select></div></div>
     <div class="grid2"><div class="field"><label>First month</label>${monthIn('rcStart', r.start)}</div><div class="field"><label>Last month (optional)</label>${monthIn('rcEnd', r.end)}</div></div>
     <div class="group" id="rcBudgetW"><label class="switch-row"><span>Estimate only<small>For day-to-day spending: the Ledger replaces it as you spend. Can't be ticked.</small></span><input type="checkbox" class="sw" id="rcBudget"${r.budget ? ' checked' : ''}></label></div>
+    <div class="group" id="rcAutoW"><label class="switch-row"><span>Auto-record each month<small>Written into the Ledger by itself on the chosen day, as if you ticked it. Untick it in that month's check-up if it did not happen.</small></span><input type="checkbox" class="sw" id="rcAuto"${r.auto ? ' checked' : ''}></label>
+      <div class="set-row" id="rcDayW">On day<input id="rcDay" inputmode="numeric" value="${esc(String(r.day || 1))}" style="width:70px;text-align:right" aria-label="Day of month"></div></div>
     <h4 class="plan-sub">Amount changes from a month onwards</h4>
     <div id="rcSteps">${(r.steps || []).map(monthRow).join('')}</div>
     <button class="btn ghost small" id="rcStepAdd">＋ Add a change (e.g. raise)</button>
@@ -4399,16 +4534,22 @@ function recurSheet(id, preset) {
       steps.forEach((x, i) => { if (x.month <= start) throw new Error('A change must be after the first month (' + monthShort(start) + ').'); if (end && x.month > end) throw new Error('A change is after the last month.'); if (i && steps[i - 1].month === x.month) throw new Error('Two changes in ' + monthShort(x.month) + '.'); });
       const who = kind === 'udhback' ? $('rcWho').value : '';
       if (kind === 'udhback' && !who) throw new Error('Pick who is paying back. Add the udhaar in the Udhaar tab first.');
-      const draft = { who, steps, name, kind, amt: readAmt('rcAmt', 'Amount', true), every: +$('rcEvery').value, start, end, from: kind === 'income' || kind === 'udhback' ? null : from, to: kind === 'expense' ? null : to, budget: kind === 'expense' && $('rcBudget').checked };
+      const day = Math.min(28, Math.max(1, parseInt($('rcDay').value, 10) || 1));
+      const auto = $('rcAuto').checked && !(kind === 'expense' && $('rcBudget').checked);
+      const autoFrom = auto ? (rec_autoFrom(id) || isoMonth(new Date())) : null;
+      const draft = { auto, autoFrom, day, who, steps, name, kind, amt: readAmt('rcAmt', 'Amount', true), every: +$('rcEvery').value, start, end, from: kind === 'income' || kind === 'udhback' ? null : from, to: kind === 'expense' ? null : to, budget: kind === 'expense' && $('rcBudget').checked };
       const dup = dupEmiOf(draft);
       if (dup && !Plan.dupOk) { Plan.dupOk = true; throw new Error(`This looks like the EMI already set inside the "${dup.name}" account (${rs(dup.emi)} from ${acctName(dup.payFrom)}). Saving it would count the EMI twice. Tap Save again only if this is a different payment.`); }
       Plan.dupOk = false;
       Object.assign(rec, draft);
-      put(rec, { render: false }); toast('Saved.'); return true;
+      put(rec, { render: false }); toast('Saved.');
+      if (rec.auto) setTimeout(() => { const n = autoRecord(); if (n) { toast(`${n} month${n > 1 ? 's' : ''} recorded automatically.`); scheduleRender(); } }, 50);
+      return true;
     } catch (e) { planMsg(e.message, true); return false; }
   });
-  const sync = () => { const k = $('rcKind').querySelector('.on').dataset.k; $('rcFromW').classList.toggle('hidden', k === 'income' || k === 'udhback'); $('rcWhoW').classList.toggle('hidden', k !== 'udhback'); $('rcToW').classList.toggle('hidden', k === 'expense'); $('rcBudgetW').classList.toggle('hidden', k !== 'expense'); };
+  const sync = () => { const k = $('rcKind').querySelector('.on').dataset.k; $('rcDayW').classList.toggle('hidden', !$('rcAuto').checked); $('rcFromW').classList.toggle('hidden', k === 'income' || k === 'udhback'); $('rcWhoW').classList.toggle('hidden', k !== 'udhback'); $('rcToW').classList.toggle('hidden', k === 'expense'); $('rcBudgetW').classList.toggle('hidden', k !== 'expense'); };
   $$('#rcKind button').forEach(b => b.addEventListener('click', () => { $$('#rcKind button').forEach(x => x.classList.toggle('on', x === b)); sync(); }));
+  $('rcAuto').addEventListener('change', sync);
   $$('[data-pre]', $('pshBody')).forEach(b => b.addEventListener('click', () => { const p = presets[+b.dataset.pre][1]; Plan.save = null; recurSheet(null, p); }));
   sync();
   wireMonthRows('rcSteps');
@@ -4416,13 +4557,129 @@ function recurSheet(id, preset) {
   if (id) $('rcDel').addEventListener('click', () => { Sheets.close('shPlan', true); deleteWithUndo(id, r.name); });
 }
 
+/* ---------- auto-record: recurring items marked "Auto-record" tick themselves on their day ---------- */
+const rec_autoFrom = id => { const r = id && records[id]; return r && r.auto ? r.autoFrom || r.start : null; };
+function autoRecord() {
+  const c = planCfg(); if (!c || !Fin.key) return 0;
+  const cur = isoMonth(new Date()), today = todayISO(); let n = 0;
+  recurs().filter(r => r.auto && !(r.kind === 'expense' && r.budget)).forEach(r => {
+    const from = [r.start, c.startMonth, r.autoFrom || r.start].sort().pop();                     // not before the month auto-record was switched on
+    for (let ym = from, i = 0; ym <= cur && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) {
+      if (!recurDue(r, ym)) continue;
+      const d = ym + '-' + String(r.day || 1).padStart(2, '0'); if (d > today) continue;
+      const key = 'r:' + r.id, it = planItems(c, ym).find(x => x.key === key);
+      const pm = pmGet(ym) || pmNew(ym), o = { ...((pm.items || {})[key] || {}) };
+      if (!it || it.done || it.matched || o.skip || it.lost || !it.a) { if (it && it.lost && !o.skip) { pm.items = { ...(pm.items || {}), [key]: { ...o, skip: true } }; delete pm.items[key].done; delete pm.items[key].ledgerId; put(pm, { render: false }); } continue; }
+      if (it.kind === 'udhback' && udhOwedBy(it.who) < it.a - 0.005) continue;      // nothing (or not enough) left to pay back
+      try { o.ledgerId = writeTick(c, ym, { ...it, ledgerId: null, date: d, fixedId: 'fa' + ym.replace('-', '') + '_' + key.replace(/[^\w]/g, '') }, it.a); o.done = true; o.auto = true; }
+      catch (e) { RLOG.warn('auto-record', r.name, ym, e.message); continue; }
+      pm.items = { ...(pm.items || {}), [key]: o }; put(pm, { render: false }); n++;
+    }
+  });
+  return n;
+}
+/* ---------- a Key date reminds you of the monthly check-up (it also appears in the daily email) ---------- */
+const CHECKUP_LABEL = 'Monthly review';
+const checkupDate = () => all('date').find(d => d.sys === 'checkup');
+function setCheckupReminder(on) {
+  const d = checkupDate();
+  if (on && !d) { const nx = monthAdd(isoMonth(new Date()), 1) + '-01'; put({ id: uid('d'), type: 'date', label: CHECKUP_LABEL, when: nx, repeat: 'monthly', sys: 'checkup', deleted: false }, { render: false }); }
+  else if (!on && d) softDelete(d.id, { render: false });
+}
+/* Called by the app each time the private section is unlocked. */
+function finAfterUnlock() {
+  try {
+    cleanZeroTicks();
+    const go = () => { const n = autoRecord(); if (n) { toast(`${n} recurring entr${n > 1 ? 'ies' : 'y'} recorded automatically.`); scheduleRender(); } };
+    if (typeof Sync !== 'undefined' && Sync.on() && navigator.onLine) Sync.run().finally(go); else go();   // sync first, so two devices don't both record
+  } catch (e) { RLOG.error('finAfterUnlock', e); }
+}
+
+/* ---------- balance check: "What was it?" ---------- */
+function udhOpen(kind, who) {
+  return all('fin').filter(e => e.kind === kind && !e.settled && outstanding(e) > 0 && (e.who || '').trim().toLowerCase() === (who || '').trim().toLowerCase())
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
+}
+function udhPeople(kind) {
+  const m = new Map();
+  all('fin').filter(e => e.kind === kind && !e.settled && outstanding(e) > 0 && (e.who || '').trim()).forEach(e => { const k = e.who.trim(); m.set(k, (m.get(k) || 0) + outstanding(e)); });
+  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+/* Money paid back on someone's oldest open udhaar entries (kind 'lent' = they pay you, 'borrowed' = you pay them). */
+function udhPayBack(kind, who, acct, amt, date) {
+  const owed = udhOpen(kind, who).reduce((s, e) => s + outstanding(e), 0);
+  if (amt > owed + 0.005) throw new Error(`Only ${rs(owed)} is open with ${who}.`);
+  let left = amt;
+  udhOpen(kind, who).forEach(e => {
+    if (left <= 0.005) return;
+    const take = Math.min(left, outstanding(e));
+    e.pays = (e.pays || []).concat([{ date, amt: +take.toFixed(2), acct }]);
+    e.paidAmount = +(((e.paidAmount || 0) + take).toFixed(2)); e.settled = e.paidAmount >= (+e.amount || 0) - 0.005;
+    left -= take; put(e, { render: false });
+  });
+}
+function fixWhat(c, ym, a, diff, rowEl) {
+  const out = diff < 0, amt = Math.abs(diff), cur = isoMonth(new Date()), date = ym === cur ? todayISO() : monthEnd(ym);
+  const others = accts().filter(x => x.id !== a.id && (isLiquid(x.kind) || x.kind === 'card' || isInvest(x.kind)));
+  const lentP = udhPeople('lent'), borP = udhPeople('borrowed');
+  const opt = (v, l, sub) => `<label class="fix-opt"><input type="radio" name="fixWhat" value="${v}"><span>${l}${sub ? `<small>${sub}</small>` : ''}</span></label>`;
+  const box = document.createElement('div'); box.className = 'fix-box'; box.id = 'fixBox';
+  box.innerHTML = `<b>${esc(a.name)}: bank ${out ? 'lower' : 'higher'} by ${rs(amt)}. What was it?</b>
+    ${opt('flow', out ? 'Spending I did not enter' : 'Income I did not enter', out ? 'e.g. UPI, card, charges, cash withdrawal spent' : 'e.g. interest, refund, cashback')}
+    <div class="fix-sub" data-for="flow"><select id="fxCat">${FIN_CATS.map(k => `<option${k === (out ? 'Household' : 'Other') ? ' selected' : ''}>${k}</option>`).join('')}</select><input id="fxDesc" placeholder="What (optional)"></div>
+    ${others.length ? opt('xfer', out ? 'Moved to another of my accounts' : 'Came from another of my accounts', 'Not spending or income') : ''}
+    <div class="fix-sub" data-for="xfer"><select id="fxAcct">${others.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
+    ${opt('udh', out ? 'Udhaar: I gave or repaid money' : 'Udhaar: money given back to me or borrowed', '')}
+    <div class="fix-sub" data-for="udh"><select id="fxUdh">${out
+      ? `<option value="lend">I lent to someone (new udhaar)</option>${borP.map(([n, v]) => `<option value="repay|${esc(n)}">I repaid ${esc(n)} (I owe ${rs(v)})</option>`).join('')}`
+      : `${lentP.map(([n, v]) => `<option value="back|${esc(n)}">${esc(n)} paid me back (owes ${rs(v)})</option>`).join('')}<option value="borrow">I borrowed from someone (new udhaar)</option>`}</select>
+      <input id="fxWho" placeholder="Name" list="peopleDl"></div>
+    ${opt('open', 'The opening balance was wrong', 'Corrects the opening balance; no income or spending')}
+    ${opt('unk', "Don't know", `Recorded as unrecorded ${out ? 'spending' : 'income'} (category Adjustment)`)}
+    <div class="btn-row" style="margin-top:8px"><button class="btn small" id="fxOk">Record</button><button class="btn small ghost" id="fxCancel">Cancel</button></div>`;
+  const old = $('fixBox'); if (old) old.remove();
+  rowEl.insertAdjacentElement('afterend', box);
+  const sync = () => { const v = (box.querySelector('input[name=fixWhat]:checked') || {}).value;
+    $$('.fix-sub', box).forEach(x => x.classList.toggle('hidden', x.dataset.for !== v));
+    const u = $('fxUdh'); $('fxWho').classList.toggle('hidden', !(v === 'udh' && u && (u.value === 'lend' || u.value === 'borrow'))); };
+  $$('input[name=fixWhat]', box).forEach(r => r.addEventListener('change', sync)); $('fxUdh').addEventListener('change', sync); sync();
+  box.querySelector('input[value=unk]').checked = true; sync();
+  $('fxCancel').addEventListener('click', () => box.remove());
+  $('fxOk').addEventListener('click', () => {
+    const v = (box.querySelector('input[name=fixWhat]:checked') || {}).value;
+    const base = { type: 'fin', who: '', recurring: false, paidAmount: 0, settled: false, deleted: false, date };
+    try {
+      if (v === 'flow') put({ ...base, id: uid('f'), desc: $('fxDesc').value.trim() || (out ? 'Spending (balance check)' : 'Income (balance check)'), amount: amt, kind: out ? 'expense' : 'income', category: $('fxCat').value, acct: a.id }, { render: false });
+      else if (v === 'xfer') { const o = $('fxAcct').value; put({ ...base, id: uid('f'), desc: 'Transfer (balance check)', amount: amt, kind: 'transfer', category: '', acct: out ? a.id : o, to: out ? o : a.id }, { render: false }); }
+      else if (v === 'udh') {
+        const [k, who0] = $('fxUdh').value.split('|'), who = who0 || $('fxWho').value.trim();
+        if (!who) throw new Error('Type the name.');
+        if (k === 'lend' || k === 'borrow') put({ ...base, id: uid('f'), desc: 'Udhaar (balance check)', amount: amt, kind: k === 'lend' ? 'lent' : 'borrowed', category: '', acct: a.id, who }, { render: false });
+        else udhPayBack(k === 'back' ? 'lent' : 'borrowed', who, a.id, amt, date);
+      } else if (v === 'open') { a.open = Math.round(((+a.open || 0) + (isLiab(a.kind) ? -diff : diff)) * 100) / 100; put(a, { render: false }); }
+      else put({ ...base, id: uid('f'), desc: out ? 'Unrecorded spending (balance check)' : 'Unrecorded income (balance check)', amount: amt, kind: out ? 'expense' : 'income', category: 'Adjustment', acct: a.id }, { render: false });
+    } catch (e) { planMsg(e.message, true); return; }
+    toast(`${a.name}: ${rs(amt)} recorded.`);
+    planMonthSheet(ym);
+  });
+  box.scrollIntoView({ block: 'nearest' });
+}
+
 /* ---------- a month: tick what happened, change amounts, one-offs, balance check ---------- */
 function writeTick(c, ym, it, amt) {
   const cur = isoMonth(new Date());
-  if (it.kind === 'udhback') { const ref = ym + '|' + it.key; applyUdhPays(ref, it.who, it.to, amt, ym === cur ? todayISO() : monthEnd(ym)); return 'udh:' + ref; }
-  const rec = it.ledgerId && records[it.ledgerId] && !records[it.ledgerId].deleted ? records[it.ledgerId] : { id: uid('f'), type: 'fin', who: '', recurring: false, paidAmount: 0, settled: false, deleted: false };
+  if (it.kind === 'udhback') {
+    const ref = ym + '|' + it.key, have = all('fin').reduce((s, e) => s + (e.pays || []).filter(p => p.planRef === ref).reduce((t, p) => t + (+p.amt || 0), 0), 0);
+    if (Math.abs(have - amt) >= 0.005) applyUdhPays(ref, it.who, it.to, amt, it.date || (ym === cur ? todayISO() : monthEnd(ym)));
+    return 'udh:' + ref;
+  }
+  const old = it.ledgerId && records[it.ledgerId] && !records[it.ledgerId].deleted ? records[it.ledgerId] : null;
+  if (old) { if (Math.abs((+old.amount || 0) - amt) >= 0.005) { old.amount = amt; put(old, { render: false }); } return old.id; }
+  const same = it.fixedId && records[it.fixedId];                     // auto-record uses one id per month on every device
+  if (same && !same.deleted) return same.id;
+  const rec = { id: it.fixedId || uid('f'), type: 'fin', who: '', recurring: false, paidAmount: 0, settled: false, deleted: false };
   Object.assign(rec, { desc: it.label, amount: amt, kind: it.kind, category: it.kind === 'income' ? (/salary/i.test(it.label) ? 'Salary' : '') : (it.cat || ''),
-    acct: it.kind === 'income' ? it.to : it.from, to: it.kind === 'transfer' ? it.to : undefined, date: rec.date && rec.date.slice(0, 7) === ym ? rec.date : (ym === cur ? todayISO() : monthEnd(ym)), planRef: ym + '|' + it.key });
+    acct: it.kind === 'income' ? it.to : it.from, to: it.kind === 'transfer' ? it.to : undefined, date: it.date || (ym === cur ? todayISO() : monthEnd(ym)), planRef: ym + '|' + it.key });
   put(rec, { render: false });
   return rec.id;
 }
@@ -4432,7 +4689,8 @@ function planMonthSheet(ym) {
   if (ym < c.startMonth) ym = c.startMonth;
   const cur = isoMonth(new Date()), items = planItems(c, ym), pm = pmGet(ym) || pmNew(ym);
   const canTick = ym <= cur;
-  const flows = ledgerFlows(c).filter(f => f.ym === ym && f.cat === 'exp' && !(f.e && f.e.planRef));
+  const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
+  const flows = ledgerFlows(c).filter(f => f.ym === ym && f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id))));
   const spent = flows.reduce((s, f) => s - f.amt, 0);
   const route = it => it.kind === 'udhback' ? 'from ' + esc(it.who) + ' into ' + esc(acctName(it.to)) + ' · udhaar' : it.kind === 'income' ? 'into ' + esc(acctName(it.to)) : it.kind === 'expense' ? 'from ' + esc(acctName(it.from)) : esc(acctName(it.from)) + ' → ' + esc(acctName(it.to));
   const itemRow = it => `<div class="pl-row src" data-it="${esc(it.key)}"><span class="r-name">${esc(it.label)}<small class="dq-sub">${route(it)}${it.changed ? ' · changed this month' : ''}${it.matched ? ' · found in Ledger' : ''}</small></span>
@@ -4487,10 +4745,7 @@ function planMonthSheet(ym) {
     const app = planCompute(c, ym, 'actual').slice(-1)[0].accts[id] || 0;
     const target = isLiab(a.kind) ? -stated : stated, diff = Math.round((target - app) * 100) / 100;
     if (Math.abs(diff) < 0.5) { planMsg(`${a.name} already matches.`); return; }
-    put({ id: uid('f'), type: 'fin', desc: diff < 0 ? 'Unrecorded spending (balance check)' : 'Unrecorded income (balance check)', amount: Math.abs(diff), kind: diff < 0 ? 'expense' : 'income',
-      category: 'Adjustment', acct: id, date: ym === cur ? todayISO() : monthEnd(ym), who: '', recurring: false, paidAmount: 0, settled: false, deleted: false }, { render: false });
-    toast(`${a.name}: ${rs(Math.abs(diff))} recorded as unrecorded ${diff < 0 ? 'spending' : 'income'}.`);
-    planMonthSheet(ym);
+    fixWhat(c, ym, a, diff, b.closest('.pl-row'));
   }));
   const go = d => { if (planMonthSave(ym, true) !== false) planMonthSheet(monthAdd(ym, d)); };
   $('pmPrev').addEventListener('click', () => { if (ym > c.startMonth) go(-1); else planMsg('This is the first month of the plan.', true); });
@@ -4498,40 +4753,64 @@ function planMonthSheet(ym) {
 }
 function planMonthSave(ym, quiet) {
   const c = planCfg(), root = $('pshBody'); if (!root || !c) return true;
+  let p = null, wrote = false;
   try {
     const items = planItems(c, ym), base = {}; items.forEach(it => { base[it.key] = it; });
-    const p = pmGet(ym) ? { ...pmGet(ym), items: { ...(pmGet(ym).items || {}) }, extra: (pmGet(ym).extra || []).map(x => ({ ...x })), checked: { ...(pmGet(ym).checked || {}) } } : pmNew(ym);
-    const orig = {}; recurs().forEach(r => { orig['r:' + r.id] = +r.amt || 0; }); accts().forEach(a => { if (a.sip) orig['sip:' + a.id] = +a.sip.amt || 0; if (a.kind === 'loan') orig['emi:' + a.id] = +a.emi || 0; });
+    p = pmGet(ym) ? { ...pmGet(ym), items: { ...(pmGet(ym).items || {}) }, extra: (pmGet(ym).extra || []).map(x => ({ ...x })), checked: { ...(pmGet(ym).checked || {}) } } : pmNew(ym);
+    const orig = {}; recurs().forEach(r => { orig['r:' + r.id] = recurAmt(r, ym); }); accts().forEach(a => { if (a.sip) orig['sip:' + a.id] = +a.sip.amt || 0; if (a.kind === 'loan') orig['emi:' + a.id] = +a.emi || 0; });
+    // 1) read and check every row; nothing is written yet
+    const rows = [], udhWant = new Map();
     for (const row of $$('[data-it]', root)) {
       const key = row.dataset.it, it = base[key]; if (!it) continue;
       const raw = row.querySelector('input:not([type=checkbox])').value;
       let a = isBlank(raw) ? 0 : num(raw); if (!isFinite(a) || a < 0) throw new Error(`${it.label}: "${raw}" is not a valid amount.`);
       a = Math.round(a * 100) / 100;
       const cb = row.querySelector('[data-done]'), done = !!(cb && cb.checked);
+      if (it.kind === 'udhback' && done && a && !it.matched) {
+        const k = it.who.trim().toLowerCase(), ref = ym + '|' + key;
+        const mine = all('fin').reduce((s, e) => s + (e.pays || []).filter(q => q.planRef === ref).reduce((t, q) => t + (+q.amt || 0), 0), 0);
+        const room = udhWant.has(k) ? udhWant.get(k) : udhOwedBy(it.who);
+        if (a > room + mine + 0.005) throw new Error(`${it.label}: ${it.who} owes only ${rs(room + mine)} in Udhaar, not ${rs(a)}.`);
+        udhWant.set(k, room + mine - a);
+      }
+      rows.push({ key, it, a, done });
+    }
+    const checked = {}; $$('[data-chk]', root).forEach(r => { const id = r.dataset.chk, raw = $('ck_' + id).value; if (!isBlank(raw)) { const v = num(raw); if (!isFinite(v)) throw new Error('Balance check: not a valid amount.'); checked[id] = v; } });
+    const vals = []; $$('[data-val]', root).forEach(r => { const id = r.dataset.val, raw = $('cv_' + id).value;
+      if (!isBlank(raw)) { const v = num(raw); if (!isFinite(v) || v < 0) throw new Error(`${acctById(id).name}: not a valid value.`); vals.push([id, v]); } else vals.push([id, null]); });
+    // 2) write
+    rows.forEach(({ key, it, a, done }) => {
       if (it.extra) {
         const x = p.extra.find(y => 'x:' + y.id === key); x.a = a;
-        if (done && a) x.ledgerId = writeTick(c, ym, { ...it, ledgerId: x.ledgerId }, a);
+        if (done && a) { x.ledgerId = writeTick(c, ym, { ...it, ledgerId: x.ledgerId }, a); wrote = true; }
         else if (!done && x.ledgerId && records[x.ledgerId]) { softDelete(x.ledgerId, { render: false }); x.ledgerId = null; }
         x.done = done && !!a;
       } else {
         const o = { ...(p.items[key] || {}) };
-        if (a !== orig[key]) o.a = a; else delete o.a;
+        if (Math.abs(a - (orig[key] || 0)) >= 0.005) o.a = a; else delete o.a;
         if (it.matched) { /* already in the Ledger as your own entry */ }
-        else if (done && a) { o.ledgerId = writeTick(c, ym, { ...it, ledgerId: o.ledgerId }, a); o.done = true; }
-        if (!it.matched && !(done && a)) { if (it.kind === 'udhback') removeUdhPays(ym + '|' + key); if (o.ledgerId && records[o.ledgerId]) softDelete(o.ledgerId, { render: false }); delete o.ledgerId; delete o.done; }
+        else if (done && a) { o.ledgerId = writeTick(c, ym, { ...it, ledgerId: o.ledgerId }, a); o.done = true; delete o.skip; wrote = true; }
+        if (!it.matched && !(done && a)) {
+          if (it.kind === 'udhback') removeUdhPays(ym + '|' + key);
+          if (o.ledgerId && records[o.ledgerId]) softDelete(o.ledgerId, { render: false });
+          if (o.done) o.skip = true;                                // unticked by you: auto-record leaves it alone
+          delete o.ledgerId; delete o.done;
+        }
         if (Object.keys(o).length) p.items[key] = o; else delete p.items[key];
       }
-    }
-    $$('[data-chk]', root).forEach(r => { const id = r.dataset.chk, raw = $('ck_' + id).value; if (isBlank(raw)) delete p.checked[id]; else { const v = num(raw); if (!isFinite(v)) throw new Error('Balance check: not a valid amount.'); p.checked[id] = v; } });
-    $$('[data-val]', root).forEach(r => { const id = r.dataset.val, a = acctById(id), raw = $('cv_' + id).value;
-      const vals = (a.values || []).filter(x => x.month !== ym);
-      if (!isBlank(raw)) { const v = num(raw); if (!isFinite(v) || v < 0) throw new Error(`${a.name}: not a valid value.`); vals.push({ month: ym, a: v }); }
-      if (JSON.stringify(vals) !== JSON.stringify(a.values || [])) { a.values = vals.sort((x, y) => x.month.localeCompare(y.month)); put(a, { render: false }); } });
+    });
+    const shown = new Set($$('[data-chk]', root).map(r => r.dataset.chk));
+    p.checked = { ...Object.fromEntries(Object.entries(p.checked || {}).filter(([k]) => !shown.has(k))), ...checked };
+    vals.forEach(([id, v]) => { const a = acctById(id); const list = (a.values || []).filter(x => x.month !== ym); if (v != null) list.push({ month: ym, a: v });
+      if (JSON.stringify(list) !== JSON.stringify(a.values || [])) { a.values = list.sort((x, y) => x.month.localeCompare(y.month)); put(a, { render: false }); } });
     if ($('pmClosed')) p.closed = $('pmClosed').checked;
     put(p, { render: false });
     if (!quiet) toast('Saved ' + monthLong(ym) + '.');
     return true;
-  } catch (e) { if (!quiet) planMsg(e.message, true); else planMsg(e.message, true); return false; }
+  } catch (e) {
+    if (wrote && p) { try { put(p, { render: false }); } catch (e2) { RLOG.error('month save rollback', e2); } }   // keep links to what was written
+    planMsg(e.message, true); return false;
+  }
 }
 
 /* ==========================================================================
@@ -4618,8 +4897,10 @@ function planSettingsSheet() {
     <p class="hint" style="margin:-6px 4px 12px">Opening balances are as on the last day of the month before. Change them in Accounts → Opening balances.</p>
     <div class="field"><label>Default account</label><select id="ptDef">${acctOptions(defAcct(c), a => isLiquid(a.kind) || a.kind === 'card')}</select></div>
     <p class="hint" style="margin:-6px 4px 12px">Used when a Ledger entry has no account (older entries) and pre-selected for new items.</p>
-    <div class="field"><label>Show years as</label><div class="seg" id="ptMode"><button data-m="fy" class="${(c.yearMode || 'fy') === 'fy' ? 'on' : ''}">Financial (Apr–Mar)</button><button data-m="cal" class="${c.yearMode === 'cal' ? 'on' : ''}">Calendar (Jan–Dec)</button></div></div>`;
+    <div class="field"><label>Show years as</label><div class="seg" id="ptMode"><button data-m="fy" class="${(c.yearMode || 'fy') === 'fy' ? 'on' : ''}">Financial (Apr–Mar)</button><button data-m="cal" class="${c.yearMode === 'cal' ? 'on' : ''}">Calendar (Jan–Dec)</button></div></div>
+    <div class="group"><label class="switch-row"><span>Remind me to do the monthly check-up<small>Adds "${CHECKUP_LABEL}" on the 1st of every month to Key dates (and the daily email, if you use it).</small></span><input type="checkbox" class="sw" id="ptRemind"${checkupDate() ? ' checked' : ''}></label></div>`;
   planSheet('Plan settings', html, () => {
+    setCheckupReminder($('ptRemind').checked);
     const start = $('ptStart').value; if (!ymOk(start)) { planMsg('Pick a start month.', true); return false; }
     Object.assign(c, { startMonth: start, defAcct: $('ptDef').value, yearMode: $('ptMode').querySelector('.on').dataset.m }); put(c, { render: false }); Plan.year = null; toast('Saved.'); return true;
   });
@@ -4637,14 +4918,14 @@ async function exportXlsx() {
     const rows = planCompute(c, planHorizon(c)), now = cur < c.startMonth ? null : planCompute(c, cur, 'actual').slice(-1)[0];
     const today = balancesOn(c, todayISO());
     add('Accounts', [['Account', 'Type', 'Opening (' + monthEnd(monthAdd(c.startMonth, -1)) + ')', now ? 'Today ' + todayISO() + ' (actual)' : 'Today (plan not started: opening)', 'Plan ' + rows[rows.length - 1].ym, 'Archived']].concat(
-      accts(true).map(a => [a.name, kindLabel(a.kind), isLiab(a.kind) ? -(+a.open || 0) : +a.open || 0, Math.round(today.accts[a.id] || 0), Math.round(rows[rows.length - 1].accts[a.id] || 0), a.archived ? 'yes' : '']))
+      accts(true).map(a => [a.name, kindLabel(a.kind), a.kind === 'loan' && loanSched(a) ? -Math.round(loanOwed(a, monthAdd(c.startMonth, -1))) : isLiab(a.kind) ? -(+a.open || 0) : +a.open || 0, Math.round(today.accts[a.id] || 0), Math.round(rows[rows.length - 1].accts[a.id] || 0), a.archived ? 'yes' : '']))
       .concat([[], ['Money you have (bank + cash + investments + udhaar net − card dues)', '', '', Math.round(today.money)], ['Money in hand (bank + cash − card dues)', '', '', Math.round(today.hand)], ['Bank & wallets', '', '', Math.round(today.bank)], ['Cash', '', '', Math.round(today.cash)], ['Investments', '', '', Math.round(today.invest)],
         ['Card dues', '', '', -Math.round(today.card)], ['Loan balance (separate)', '', '', Math.round(today.loan)], ['Others owe you', '', '', Math.round(today.owed)], ['You owe others', '', '', -Math.round(today.owe)]]), [30, 16, 18, 22, 16, 9]);
     const loans = accts(true).filter(a => a.kind === 'loan');
     if (loans.length) add('Loans', [['Loan', 'EMI', 'Paid from', 'First EMI', 'Last EMI', 'Loan amount', 'EMIs total', 'EMIs paid', 'EMIs left', 'Paid so far', 'Still to pay (EMIs)', 'Interest rate %', 'Principal owed now']].concat(
       loans.map(a => { const k = loanInfo(a); return [a.name, +a.emi || 0, acctName(a.payFrom), a.start || '', a.end || '', +a.amount || '', k.n || '', k.paid || 0, k.left == null ? '' : k.left, k.paidAmt || 0, k.leftAmt == null ? '' : k.leftAmt, k.rate == null ? '' : +k.rate.toFixed(2), k.outstanding == null ? '' : Math.round(k.outstanding)]; })),
       [18, 10, 16, 10, 10, 12, 10, 10, 10, 12, 14, 12, 16]);
-    add('Months', [['Month', 'Income', 'Spending', 'Saved', 'Into investments', ...accts(true).map(a => a.name), 'Udhaar net (today)', 'Money you have', 'Money in hand', 'Loan balance', 'After loans', 'Status']].concat(
+    add('Months', [['Month', 'Income', 'Spending', 'Saved', 'Into investments', ...accts(true).map(a => a.name), 'Udhaar net', 'Money you have', 'Money in hand', 'Loan balance', 'After loans', 'Status']].concat(
       rows.map(r => [r.ym, Math.round(r.inc), Math.round(r.exp), Math.round(r.net), Math.round(r.invIn), ...accts(true).map(a => Math.round(r.accts[a.id] || 0)), Math.round(r.udh), Math.round(r.worth), Math.round(r.hand), Math.round(r.loanBal), Math.round(r.afterLoans),
         r.ended ? (r.closed ? 'Checked' : r.pending ? 'Check-up due' : 'Done') : r.cur ? 'This month' : 'Planned'])), [9, 12, 12, 12, 14, ...accts(true).map(() => 16), 12, 14, 13, 13, 13, 12]);
     add('Recurring', [['Name', 'Type', 'Amount', 'From', 'Into', 'Every (months)', 'First', 'Last', 'Estimate', 'Amount changes']].concat(
@@ -4794,7 +5075,7 @@ function openEraseSetup() {
   $('erSave').addEventListener('click', async () => {
     const m = $('erMsg'), priv = $('erPriv').value, a = $('erNew1').value, b = $('erNew2').value, fk = records[FINKEY_ID];
     m.className = 'msg'; m.textContent = 'Checking…';
-    let ok = false; try { ok = (await aesDec(await deriveFinKey(priv, fk.salt), fk.check)) === 'register-ok'; } catch (e) {}
+    let ok = false; try { ok = (await aesDec(await deriveFinKey(priv, fk.salt, fk.iters), fk.check)) === 'register-ok'; } catch (e) {}
     m.className = 'msg err';
     if (!ok) { m.textContent = 'The private code is not correct.'; return; }
     if (a.length < 8) { m.textContent = 'Use at least 8 characters.'; return; }
@@ -4865,15 +5146,16 @@ async function wipeCloud(say) {
   Object.values(records).forEach(r => { if (r.fileId) files.add(r.fileId); });
   let n = 0;
   for (const f of files) { say(`Removing Drive files… ${++n} of ${files.size}`); try { await Sync.call('driveDelete', { fileId: f }, 60000); } catch (e) { RLOG.warn('erase: drive file', e.message); } }
-  const list = [...ids], now = Date.now() + 60000;
+  const list = [...ids], now = Date.now() + 86400000, at = Date.now();
   for (let i = 0; i < list.length; i += 200) {
-    const batch = list.slice(i, i + 200).map(id => ({ id, type: 'erased', updatedAt: now, deleted: true, summary: '', payload: JSON.stringify({ id, type: 'erased', updatedAt: now, deleted: true }) }));
+    const batch = list.slice(i, i + 200).map(id => ({ id, type: 'erased', updatedAt: now, deleted: false, summary: '', payload: JSON.stringify({ id, type: 'erased', updatedAt: now, at, deleted: false }) }));
     const r = await Sync.call('push', { records: batch }, 180000);
     if ((r.stale || []).length) RLOG.warn('erase: stale rows', r.stale.length);
     say(`Erasing the Sheet… ${Math.min(i + 200, list.length)} of ${list.length}`);
   }
 }
 async function wipeDevice() {
+  window.__erasing = true;
   await new Promise(res => {
     try {
       const rq = indexedDB.open('register2');
@@ -4960,8 +5242,15 @@ $('feSave').addEventListener('click', () => {
   const a = calcAmount($('feAmt').value); if (!isNaN(a) && a > 0) e.amount = a;
   e.kind = chipValue($('feKind')) || e.kind; e.desc = $('feDesc').value.trim(); e.who = $('feWho').value.trim();
   e.date = $('feDate').value || e.date; e.category = $('feCat').value; e.recurring = $('feRecur').checked;
+  const oldPaid = +e.paidAmount || 0;
   e.paidAmount = Math.max(0, Math.min(calcAmount($('fePaid').value) || 0, e.amount)); e.settled = $('feSettled').value === 'yes';
   if (e.settled) e.paidAmount = e.amount;
+  if (isUdhaar(e.kind) && Math.abs(e.paidAmount - oldPaid) >= 0.005 && (e.pays || []).length + (hasAccts() ? 1 : 0) > 0) {   // keep the account side in step (B15)
+    let d = e.paidAmount - oldPaid; const pays = (e.pays || []).slice();
+    if (d > 0) pays.push({ date: todayISO(), amt: +d.toFixed(2), acct: $('feAcctWrap').classList.contains('hidden') ? (pays.length ? pays[pays.length - 1].acct : null) : $('feAcct').value });
+    else { d = -d; while (d > 0.005 && pays.length) { const q = pays[pays.length - 1]; if (+q.amt <= d + 0.005) { d -= +q.amt; pays.pop(); } else { q.amt = +((+q.amt - d).toFixed(2)); d = 0; } } }
+    e.pays = pays.filter((q, i) => q.acct || i < (e.pays || []).length);   // a new part-payment needs an account; older records stay
+  }
   if (!$('feAcctWrap').classList.contains('hidden')) { e.acct = $('feAcct').value; if (e.kind === 'transfer') { if ($('feTo').value === e.acct) { toast('Pick two different accounts.'); return; } e.to = $('feTo').value; e.category = ''; } else delete e.to; }
   put(e); Sheets.close('shFin'); toast('Saved.');
 });
@@ -4971,14 +5260,14 @@ wireCalc($('feAmt')); wireCalc($('stAmt')); wireCalc($('payAmt')); wireCalc($('b
 /* monthly entries roll into the current month when Money is opened */
 function rollRecurring() {
   const thisM = isoMonth(new Date());
-  const seen = new Set(all('fin').map(e => (e.recurSrc || e.id) + '|' + (e.date || '').slice(0, 7)));
+  const seen = new Set(Object.values(records).filter(e => e.type === 'fin').map(e => (e.recurSrc || e.id) + '|' + (e.date || '').slice(0, 7)));   // deleted copies count too
   let made = 0;
   all('fin').filter(e => e.recurring).forEach(e => {
     const src = e.recurSrc || e.id;
     if ((e.date || '').slice(0, 7) >= thisM || seen.has(src + '|' + thisM)) return;
     const day = Math.min(+(e.date || '').slice(8, 10) || 1, new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate());
     const n = { ...e, id: uid('f'), date: thisM + '-' + String(day).padStart(2, '0'), recurSrc: src, settled: false, paidAmount: 0, createdAt: nowMs() };
-    delete n._dirty; put(n, { render: false }); seen.add(src + '|' + thisM); made++;
+    delete n._dirty; delete n.pays; delete n.planRef; delete n.billRef; if (n.kind !== 'transfer') delete n.to; put(n, { render: false }); seen.add(src + '|' + thisM); made++;
   });
   if (made) toast(`${made} monthly entr${made === 1 ? 'y' : 'ies'} added for this month.`);
 }
@@ -5022,8 +5311,17 @@ function openAdd(kind) {
     `<button data-k="${t.k}" class="${t.k === kind ? 'on' : ''}" aria-pressed="${t.k === kind}"><b>${t.i}</b>${t.l}</button>`).join('');
   $$('#addTypes button').forEach(b => b.addEventListener('click', () => { addKind = b.dataset.k; $$('#addTypes button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); renderAddForm(true); }));
   renderAddForm(true);
+  if (addDraft && addDraft.kind === addKind) {
+    const dr = addDraft; Object.entries(dr.vals).forEach(([id, v]) => { const el = $(id); if (el) { el.value = v; el.dispatchEvent(new Event('input')); } });
+    setTimeout(() => toast('Unsaved text restored.', 'Clear', () => { addDraft = null; renderAddForm(true); }), 350);
+  }
   Sheets.open('shAdd');
 }
+let addDraft = null;
+Sheets.onClose.shAdd = () => {
+  const vals = {}; $$('#addForm input, #addForm textarea').forEach(x => { if (x.id && x.type !== 'file' && x.type !== 'checkbox' && String(x.value).trim() && x.value !== x.defaultValue) vals[x.id] = x.value; });
+  addDraft = Object.keys(vals).length ? { kind: addKind, vals } : null;
+};
 $('fab').addEventListener('click', () => openAdd());
 
 function dueChips(el, val, onPick) {
@@ -5078,7 +5376,8 @@ function renderAddForm(focus) {
       <div class="grid2"><div class="field"><label>Expected ₹</label><input id="afAmt" inputmode="decimal" placeholder="blank if it varies"><div class="guess" id="afAmtHint"></div></div>
         <div class="field"><label>Due day</label><input id="afDay" inputmode="numeric" placeholder="1–31"></div></div>
       <div class="field"><label>Every</label><div class="wrapchips" id="afFreq"></div></div>
-      <div class="field"><label>Number of instalments (EMIs only)</label><input id="afEmi" inputmode="numeric" placeholder="blank = ongoing"></div>`;
+      <div class="grid2"><div class="field"><label>Number of instalments (EMIs only)</label><input id="afEmi" inputmode="numeric" placeholder="blank = ongoing"></div>
+        <div class="field"><label>First due month</label><input type="month" id="afStart" value="${isoMonth(new Date())}"></div></div>`;
     AF.freq = '1'; chipGroup($('afFreq'), [{ v: '1', l: 'Month' }, { v: '2', l: '2 months' }, { v: '3', l: 'Quarter' }, { v: '6', l: '6 months' }, { v: '12', l: 'Year' }], '1', v => AF.freq = v);
     wireCalc($('afAmt'), $('afAmtHint'));
   } else if (k === 'doc') {
@@ -5148,7 +5447,7 @@ function saveAdd(another) {
   } else if (k === 'bill') {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
     put({ id: uid('bill'), type: 'bill', label: l, amount: calcAmount(v('afAmt')) || 0, freq: +AF.freq || 1, dueDay: Math.min(31, parseInt(v('afDay'), 10) || 0),
-          total: parseInt(v('afEmi'), 10) || 0, category: 'Bills', autoPost: false, startMonth: isoMonth(new Date()), deleted: false });
+          total: parseInt(v('afEmi'), 10) || 0, category: 'Bills', autoPost: false, startMonth: /^\d{4}-\d{2}$/.test(v('afStart')) ? v('afStart') : isoMonth(new Date()), deleted: false });
     toast('Bill added.');
   } else if (k === 'doc') {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
@@ -5166,7 +5465,8 @@ function saveAdd(another) {
           category: AF.kind === 'transfer' ? '' : AF.cat || '', date: AF.when || todayISO(), who: v('afWho'), acct, to, recurring: $('afRecur').checked, paidAmount: 0, settled: false, deleted: false });
     toast(`Recorded ${fmtMoney(amt)}.`);
   }
-  if (another) renderAddForm(true); else Sheets.close('shAdd');
+  addDraft = null;
+  if (another) renderAddForm(true); else Sheets.close('shAdd', true);
 }
 $('addSave').addEventListener('click', () => saveAdd(false));
 $('addAnother').addEventListener('click', () => saveAdd(true));
@@ -5222,7 +5522,7 @@ function runSearch() {
   all('note').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder)) hits.push({ k: 'Note', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: n.folder || '' }); });
   all('date').forEach(d => { if (has(d.label)) hits.push({ k: 'Date', id: d.id, t: hl(d.label, q), s: fmtDate(d.when) }); });
   all('bill').forEach(b => { if (has(b.label)) hits.push({ k: 'Bill', id: b.id, t: hl(b.label, q), s: b.amount ? fmtMoney(b.amount) : '' }); });
-  all('doc').forEach(d => { if (has(d.title) || has(d.number) || has(d.notes) || has(d.issuer)) hits.push({ k: 'Doc', id: d.id, t: hl(has(d.title) ? d.title : d.number || d.notes || d.issuer, q), s: d.docType }); });
+  all('doc').forEach(d => { if (has(d.title) || has(d.number) || has(d.notes) || has(d.issuer)) hits.push({ k: 'Doc', id: d.id, t: has(d.title) ? hl(d.title, q) : esc(d.title) + '<br><small class="muted">' + (has(d.number) ? 'number ' + esc(docNumShown(d)) : hl(has(d.notes) ? d.notes : d.issuer, q)) + '</small>', s: d.docType }); });
   if (finUnlocked()) all('fin').forEach(f => { if (has(f.desc) || has(f.who)) hits.push({ k: '₹', id: f.id, t: hl(f.desc + (f.who ? ' · ' + f.who : ''), q), s: fmtMoney(f.amount) }); });
   box.innerHTML = hits.length ? hits.slice(0, 80).map(h => `<button class="sr" data-k="${h.k}" data-id="${h.id}"><span class="k">${h.k}</span><span class="t" style="white-space:normal">${h.t}</span><span class="s">${esc(h.s || '')}</span></button>`).join('')
     : '<div class="empty">No matches.</div>';
@@ -5268,13 +5568,26 @@ $('decoyKey').addEventListener('click', () => {
 $('decoyRetry').addEventListener('click', () => { const b = $('decoyRetry'); b.disabled = true; b.textContent = 'Retrying…'; setTimeout(() => { b.disabled = false; b.textContent = 'Retry'; }, 1500); });
 function hideNow() { lockFinance(true); showDecoy(); }
 $('hideBtn').addEventListener('click', hideNow);
-let hiddenAt = 0;
+let hiddenAt = 0, lastTouch = Date.now();
+function flushEdits() {
+  try {
+    if (typeof teTimer !== 'undefined' && teTimer) { clearTimeout(teTimer); teTimer = null; teSave(); }
+    if (typeof neTimer !== 'undefined' && neTimer) { clearTimeout(neTimer); neTimer = null; neSave(); }
+    ['shDoc', 'shDate', 'shBill'].forEach(id => { if (Sheets.isOpen(id) && AutoSheet.changed(id)) AutoSheet.save(id); });
+  } catch (e) { RLOG.warn('flushEdits', e.message); }
+}
+window.addEventListener('pagehide', flushEdits);
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true, capture: true }));
+setInterval(() => { if (finUnlocked() && document.visibilityState === 'visible' && Date.now() - Math.max(lastTouch, Fin.unlockedAt || 0) > 5 * 60000) { lockFinance(); } }, 30000);   // idle 5 min → lock Money
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     hiddenAt = nowMs();
+    flushEdits();
+    if (finUnlocked()) document.documentElement.classList.add('app-hidden');
     RLOG.flush();
     if (+prefs.decoyReturn === 0) hideNow();          // also keeps the app-switcher preview blank
   } else {
+    document.documentElement.classList.remove('app-hidden');
     const secs = +prefs.decoyReturn;
     if (secs > 0 && hiddenAt && nowMs() - hiddenAt >= secs * 1000) hideNow();
     else if (secs < 0 && hiddenAt && nowMs() - hiddenAt >= 300000) lockFinance(true);   // decoy off: still relock money after 5 min
@@ -5302,14 +5615,24 @@ function openVault(mode) {
   $('vaSub').textContent = setup ? 'Choose an access code. Money entries are encrypted with it — if it is forgotten, they cannot be read.' : change ? 'Enter the new code twice. Everything is re-encrypted with it.' : 'Enter the access code.';
   $('vaCode2').classList.toggle('hidden', !(setup || change));
   $('vaOk').textContent = setup ? 'Set code' : change ? 'Change code' : 'Unlock';
+  $('vaBio').classList.toggle('hidden', !(vaultMode === 'unlock' && Bio.on()));
   Sheets.open('shVault');
   setTimeout(() => $('vaCode').focus(), 320);
 }
 async function vaultSubmit() {
   const c = $('vaCode').value, c2 = $('vaCode2').value, err = $('vaErr');
   if (!c) { err.textContent = 'Enter the code.'; return; }
+  if (vaultMode === 'bio') {
+    const fk = records[FINKEY_ID];
+    try { const k = await deriveFinKey(c, fk.salt, fk.iters); if (await aesDec(k, fk.check) !== 'register-ok') throw new Error('x'); }
+    catch (e) { const w = VaultLimit.fail(); err.textContent = w ? `Incorrect code. Wait ${VaultLimit.say(w)}.` : 'Incorrect code.'; return; }
+    VaultLimit.reset();
+    try { await Bio.enable(c); Sheets.close('shVault', true); toast('Face ID unlock is on for this iPhone.'); }
+    catch (e) { RLOG.warn('face id setup', e.message); err.textContent = e.name === 'NotAllowedError' ? 'Face ID cancelled.' : (e.message || 'Could not turn on Face ID.'); }
+    return;
+  }
   if (vaultMode !== 'unlock') {
-    if (c.length < 4) { err.textContent = 'Use at least 4 characters.'; return; }
+    if (c.length < FIN_MIN_CODE) { err.textContent = `Use at least ${FIN_MIN_CODE} characters — a short phrase you can remember is best.`; return; }
     if (c !== c2) { err.textContent = "The two entries don't match."; return; }
     $('vaOk').disabled = true;
     try {
@@ -5319,15 +5642,29 @@ async function vaultSubmit() {
     toast(vaultMode === 'setup' ? 'Private section ready.' : 'Code changed. Other devices will ask for the new one.');
     afterFinanceUnlock(); return;
   }
+  const wait = VaultLimit.wait(); if (wait) { err.textContent = `Too many wrong tries. Try again in ${VaultLimit.say(wait)}.`; return; }
   $('vaOk').disabled = true; err.textContent = 'Checking…';
   const ok = await unlockFinance(c);
   $('vaOk').disabled = false;
-  if (!ok) { err.textContent = 'Incorrect code.'; const card = $('vaultCard'); card.classList.add('shake'); setTimeout(() => card.classList.remove('shake'), 400); $('vaCode').value = ''; return; }
+  if (ok) VaultLimit.reset(); else { const w = VaultLimit.fail(); err.textContent = w ? `Incorrect code. Too many wrong tries — wait ${VaultLimit.say(w)}.` : 'Incorrect code.'; }
+  if (!ok) { const card = $('vaultCard'); card.classList.add('shake'); setTimeout(() => card.classList.remove('shake'), 400); $('vaCode').value = ''; return; }
   Sheets.close('shVault', true);
   afterFinanceUnlock();
 }
+const VaultLimit = {
+  get() { try { return JSON.parse(localStorage.getItem('r2_vf') || '{"n":0,"until":0}'); } catch (e) { return { n: 0, until: 0 }; } },
+  set(v) { try { localStorage.setItem('r2_vf', JSON.stringify(v)); } catch (e) {} },
+  wait() { const v = this.get(); return Math.max(0, v.until - Date.now()); },
+  fail() { const v = this.get(); v.n++; if (v.n >= 5) v.until = Date.now() + Math.min(15 * 60000, 30000 * Math.pow(2, v.n - 5)); this.set(v); return this.wait(); },
+  reset() { this.set({ n: 0, until: 0 }); },
+  say(ms) { const s = Math.ceil(ms / 1000); return s >= 60 ? Math.ceil(s / 60) + ' min' : s + ' sec'; }
+};
 function afterFinanceUnlock() {
   $('moneyTab').classList.remove('hidden');
+  if (typeof finAfterUnlock === 'function') finAfterUnlock();
+  sealDocNumbers();
+  setTimeout(() => AutoBackup.maybe(), 4000);
+  if (Fin.codeLen && Fin.codeLen < FIN_MIN_CODE && !window.__shortCodeNag) { window.__shortCodeNag = true; setTimeout(() => toast('Your private code is short and could be guessed. Change it to 8+ characters.', 'Change', () => openVault('change'), 9000), 2500); }
   flushPendingPosts(); rollRecurring(); setTimeout(backupNudge, 1500);
   const back = docReturn; docReturn = null;
   if (back && Sheets.isOpen('shDocView')) { openDocView(back); return; }
@@ -5341,6 +5678,54 @@ function onFinanceLocked(silent) {
   if (!silent) toast('Private section locked.');
 }
 $('vaOk').addEventListener('click', vaultSubmit);
+const Bio = {
+  KEY: 'r2_bio',
+  supported() { return !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext); },
+  get() { try { return JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch (e) { return null; } },
+  on() { const b = this.get(); return !!(b && finConfigured() && records[FINKEY_ID] && b.kid === records[FINKEY_ID].kid); },
+  forget() { try { localStorage.removeItem(this.KEY); } catch (e) {} },
+  rnd(n) { return crypto.getRandomValues(new Uint8Array(n)); },
+  async wrapKey(prfOut) {
+    const base = await crypto.subtle.importKey('raw', prfOut, 'HKDF', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: te.encode('register-bio-v1'), info: te.encode('private-code') }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  },
+  async prf(rawId, salt) {
+    const a = await navigator.credentials.get({ publicKey: { challenge: this.rnd(32), allowCredentials: [{ type: 'public-key', id: rawId }], userVerification: 'required', timeout: 60000,
+      extensions: { prf: { eval: { first: salt } } } } });
+    const r = a.getClientExtensionResults(); if (!r.prf || !r.prf.results || !r.prf.results.first) throw new Error('Face ID unlock is not supported on this device.');
+    return r.prf.results.first;
+  },
+  async enable(code) {
+    const salt = this.rnd(32);
+    const cred = await navigator.credentials.create({ publicKey: { challenge: this.rnd(32), rp: { name: 'Register' }, user: { id: this.rnd(16), name: 'register-private', displayName: 'Register private section' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], timeout: 60000,
+      authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'preferred', userVerification: 'required' }, extensions: { prf: { eval: { first: salt } } } } });
+    const ext = cred.getClientExtensionResults();
+    if (!ext.prf || ext.prf.enabled === false) throw new Error('Face ID unlock is not supported on this device (needs iOS 18 or later).');
+    const out = (ext.prf.results && ext.prf.results.first) || await this.prf(cred.rawId, salt);
+    const box = await aesEnc(await this.wrapKey(out), code);
+    localStorage.setItem(this.KEY, JSON.stringify({ id: b64(cred.rawId), salt: b64(salt), box, kid: records[FINKEY_ID].kid }));
+  },
+  async unlock() {
+    const b = this.get(); if (!b) return false;
+    const code = await aesDec(await this.wrapKey(await this.prf(unb64(b.id), unb64(b.salt))), b.box);
+    const ok = await unlockFinance(code);
+    if (!ok) this.forget();
+    return ok;
+  }
+};
+$('vaBio').addEventListener('click', async () => {
+  const err = $('vaErr'); err.textContent = '';
+  try { if (await Bio.unlock()) { VaultLimit.reset(); Sheets.close('shVault', true); afterFinanceUnlock(); } else { err.textContent = 'The code changed — enter it once, then turn Face ID on again in Settings.'; $('vaBio').classList.add('hidden'); } }
+  catch (e) { RLOG.warn('face id unlock', e.message); err.textContent = e.name === 'NotAllowedError' ? 'Face ID cancelled.' : (e.message || 'Face ID failed.'); }
+});
+$('setBio').addEventListener('click', () => {
+  if (Bio.on()) { Bio.forget(); $('setBioV').textContent = 'Off'; toast('Face ID unlock turned off on this iPhone.'); return; }
+  Sheets.close('shSettings', true);
+  vaultMode = 'bio'; $('vaCode').value = ''; $('vaErr').textContent = ''; $('vaCode2').classList.add('hidden'); $('vaBio').classList.add('hidden');
+  $('vaTitle').textContent = 'Face ID'; $('vaSub').textContent = 'Enter your private code once to turn on Face ID unlock on this iPhone.'; $('vaOk').textContent = 'Turn on';
+  Sheets.open('shVault'); setTimeout(() => $('vaCode').focus(), 320);
+});
 ['vaCode', 'vaCode2'].forEach(i => $(i).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); vaultSubmit(); } }));
 
 /* ---------- look & feel ---------- */
@@ -5362,6 +5747,8 @@ $('settingsBtn').addEventListener('click', openSettings);
 function openSettings() {
   $('setDecoy').checked = !!prefs.decoyLaunch; $('setDecoyReturn').value = String(prefs.decoyReturn);
   $('setVaultCode').classList.toggle('hidden', !finUnlocked()); $('setVaultLock').classList.toggle('hidden', !finUnlocked());
+  $('setBio').classList.toggle('hidden', !finUnlocked() || !Bio.supported()); $('setBioV').textContent = Bio.on() ? 'On' : 'Off';
+  $('setAutoBk').checked = !!prefs.autoBackup; $('setAutoBkInfo').textContent = AutoBackup.info();
   $('setUrl').value = prefs.cloudUrl; $('setToken').value = prefs.cloudToken; $('setDrive').value = prefs.driveFolder;
   $('setTheme').value = prefs.theme; $('setText').value = prefs.text; $('setContrast').checked = !!prefs.contrast; $('setLeft').checked = !!prefs.left;
   $('setStart').value = prefs.startTab; $('setSteps').checked = !!prefs.stepsOpen; $('setNoteEdit').checked = !!prefs.noteEdit;
@@ -5369,7 +5756,8 @@ function openSettings() {
   const n = Object.keys(records).filter(id => !SEALED_TYPES.has(records[id].type)).length + Object.keys(sealed).length;
   $('setCount').textContent = n.toLocaleString('en-IN');
   const dirty = Object.values(records).filter(r => r._dirty && !SEALED_TYPES.has(r.type)).length + Object.values(sealed).filter(s => s._dirty).length;
-  $('setSyncInfo').textContent = Sync.on() ? `Last synced ${Sync.lastOk ? timeAgo(Sync.lastOk) : 'never'}${dirty ? ` · ${dirty} change${dirty > 1 ? 's' : ''} waiting to upload` : ' · everything uploaded'}` : 'Not connected — everything stays on this iPhone.';
+  const big = Object.values(records).filter(r => r._tooBig && !r.deleted && !SEALED_TYPES.has(r.type)).length + Object.values(sealed).filter(s => s._tooBig && !s.deleted).length;
+  $('setSyncInfo').textContent = Sync.on() ? `Last synced ${Sync.lastOk ? timeAgo(Sync.lastOk) : 'never'}${dirty ? ` · ${dirty} change${dirty > 1 ? 's' : ''} waiting to upload` : big ? ` · ${big} item${big > 1 ? 's are' : ' is'} too large for the Sheet and only on this iPhone (shorten or split ${big > 1 ? 'them' : 'it'})` : ' · everything uploaded'}` : 'Not connected — everything stays on this iPhone.';
   $('setSyncMsg').textContent = ''; $('setDriveMsg').textContent = ''; $('setDataMsg').textContent = '';
   const hasOld = !!localStorage.getItem('reg_recs');
   $('setLegacyLocal').classList.toggle('hidden', !hasOld);
@@ -5446,13 +5834,63 @@ $('setBackup').addEventListener('click', () => {
   $('setDataMsg').className = 'msg ok'; $('setDataMsg').textContent = 'Backup created. Money entries inside it stay encrypted.';
 });
 $('setRestore').addEventListener('click', () => $('restoreFile').click());
+/* The whole backup (every record, money already sealed) is encrypted again with the private key, so the Drive file is unreadable without the code. */
+const AutoBackup = {
+  list() { try { return JSON.parse(localStorage.getItem('r2_autobk') || '[]'); } catch (e) { return []; } },
+  save(l) { try { localStorage.setItem('r2_autobk', JSON.stringify(l)); } catch (e) {} },
+  info() { const l = this.list(), last = l[l.length - 1]; return !driveOn() ? 'Needs the Drive folder in Sync settings.' : last ? `Last: ${fmtDate(last.date, true)} · ${last.count} items · ${l.length} kept` : 'No Drive backup yet.'; },
+  due() { const l = this.list(), last = l[l.length - 1]; return !last || Date.now() - last.at > 7 * 86400000; },
+  async maybe() { if (prefs.autoBackup && Fin.key && driveOn() && navigator.onLine && this.due()) { try { await this.run(); } catch (e) { RLOG.warn('auto backup', e.message); } } },
+  async run(say) {
+    if (!Fin.key) throw new Error('Unlock the private section first (the backup is encrypted with its key).');
+    if (!driveOn()) throw new Error('Set the Drive folder in Settings → Sync first.');
+    const rows = backupRows(), fk = records[FINKEY_ID];
+    const body = JSON.stringify({ v: 1, app: APP_VERSION, at: Date.now(), salt: fk.salt, iters: fk.iters || FIN_ITERS, enc: await aesEnc(Fin.key, JSON.stringify(rows)) });
+    const name = 'register-backup-' + todayISO() + '.rgbk';
+    const d = await Sync.call('driveUpload', { folderId: prefs.driveFolder, name, mime: 'application/octet-stream', data: b64(te.encode(body)) }, 240000);
+    if (!d.fileId) throw new Error('Drive did not return a file id');
+    const l = this.list(); l.push({ fileId: d.fileId, date: todayISO(), at: Date.now(), count: rows.length, name });
+    while (l.length > 8) { const old = l.shift(); try { await Sync.call('driveDelete', { fileId: old.fileId }, 60000); } catch (e) { RLOG.warn('old backup delete', e.message); } }
+    this.save(l); try { localStorage.setItem('r2_lastBackup', String(Date.now())); } catch (e) {}
+    RLOG.info('drive backup', name, rows.length);
+    return rows.length;
+  },
+  async test() {
+    const last = this.list().slice(-1)[0]; if (!last) throw new Error('No Drive backup yet.');
+    if (!Fin.key) throw new Error('Unlock the private section first.');
+    const d = await Sync.call('driveGet', { fileId: last.fileId }, 240000);
+    const pack = JSON.parse(td.decode(unb64(d.data)));
+    const key = pack.salt === Fin.salt ? Fin.key : null; if (!key) throw new Error('This backup was made under your previous private code. Restore it (download it from Drive, then Restore) and enter that code.');
+    const rows = JSON.parse(await aesDec(key, pack.enc));
+    if (!Array.isArray(rows) || !rows.every(r => r && r.id && r.type)) throw new Error('The backup file is damaged.');
+    return { rows: rows.length, date: last.date };
+  }
+};
+$('setAutoBk').addEventListener('change', () => { setPref('autoBackup', $('setAutoBk').checked); if ($('setAutoBk').checked) AutoBackup.maybe().then(() => { $('setAutoBkInfo').textContent = AutoBackup.info(); }); });
+$('setAutoBkNow').addEventListener('click', async () => {
+  const m = $('setDataMsg'); m.className = 'msg'; m.textContent = 'Backing up…';
+  try { const n = await AutoBackup.run(); m.className = 'msg ok'; m.textContent = `Backed up ${n} items to Drive (encrypted).`; $('setAutoBkInfo').textContent = AutoBackup.info(); }
+  catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+});
+$('setAutoBkTest').addEventListener('click', async () => {
+  const m = $('setDataMsg'); m.className = 'msg'; m.textContent = 'Downloading and checking…';
+  try { const r = await AutoBackup.test(); m.className = 'msg ok'; m.textContent = `The backup of ${fmtDate(r.date, true)} opens correctly: ${r.rows} items.`; }
+  catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+});
 $('restoreFile').addEventListener('change', e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
   const rd = new FileReader();
   rd.onload = async () => {
     let arr; try { arr = JSON.parse(rd.result); } catch (err) { toast('That file is not a Register backup.'); return; }
+    let oldCode = null;
+    if (arr && arr.enc && arr.salt) {
+      let key = Fin.key && arr.salt === Fin.salt ? Fin.key : null;
+      if (!key) { oldCode = prompt('This backup is encrypted. Enter the private code that was in use when it was made:'); if (!oldCode) return;
+        try { key = await deriveFinKey(oldCode, arr.salt, arr.iters); } catch (err) { key = null; } }
+      try { arr = JSON.parse(await aesDec(key, arr.enc)); } catch (err) { toast('Wrong code, or the file is damaged.'); return; } }
     if (!Array.isArray(arr)) { toast('Unexpected file format.'); return; }
     await importRecords(arr, 'backup file');
+    if (oldCode && Fin.key && Fin.lockedOut.length) { const n = await recoverLockedOut(oldCode); if (n) toast(`Money entries from the backup re-sealed under your current code (${n}).`); }
   };
   rd.readAsText(f);
 });
@@ -5629,6 +6067,7 @@ document.addEventListener('keydown', e => {
     await loadAll();
     await purgeOldTrash();
     Sync.lastOk = (await DB.get('lastSync')) || 0;
+    if (Sync.lastOk && !(await DB.get('firstSync'))) await DB.set('firstSync', Sync.lastOk);   // installs from before v2.7
     Sync.status(Sync.on() ? (Sync.lastOk ? 'ok' : '') : '', Sync.on() ? 'Last synced ' + timeAgo(Sync.lastOk) : 'Local only');
     showTab(prefs.startTab === 'last' ? prefs.lastTab : prefs.startTab || 'tasks');
     // first run after upgrading on the same address: offer to bring the old data across
