@@ -684,6 +684,20 @@ html.decoy-on #searchFab{display:none}
 .cr-row input[type=range]{flex:1}
 .scan-page .sp-crop{left:40px}
 .dfile .dfedit{width:34px;height:34px;font-size:14px}
+
+/* v2.15 */
+.ib-acts button.sug{background:var(--forest);color:#fff;font-weight:600}
+.ib-sug{font-size:.75rem;color:var(--forest);font-weight:600;margin:0 0 6px}
+.attn .attn-sec .attn-row{display:flex;align-items:center;gap:6px;border-bottom:.5px solid var(--line)}
+.attn .attn-sec .attn-row button.attn-go{flex:1;border:0}
+.attn .attn-sec .attn-row button.attn-ok{width:auto;flex:none;padding:4px 10px;border:1px solid var(--line);border-radius:8px;font-size:.75rem;color:var(--ink-soft)}
+.attn-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.attn-head b{flex:1}
+.attn-head button{width:auto!important;border:0!important;padding:2px 0!important;font-size:.75rem!important;color:var(--brass)!important}
+.attn-foot{padding:6px 14px 12px;font-size:.8125rem}
+.share-steps{font-size:.875rem;line-height:1.55;padding-left:20px;margin:6px 0}
+.share-steps li{margin:4px 0}
+.share-steps code{background:rgba(128,128,128,.14);padding:1px 5px;border-radius:5px;font-size:.8125rem}
 </style>
 </head>
 <body>
@@ -817,7 +831,7 @@ html.decoy-on #searchFab{display:none}
   <button id="fab" aria-label="Add">+</button>
 
   <nav class="tabbar" id="tabbar" aria-label="Sections">
-    <button class="tab" data-tab="tasks"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 12.2l2.7 2.7L16.2 9"/></svg><span class="tl">Tasks</span></button>
+    <button class="tab" data-tab="tasks"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 12.2l2.7 2.7L16.2 9"/></svg><span class="tl">Tasks</span><i class="badge hidden" id="tasksBadge"></i></button>
     <button class="tab" data-tab="notes"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8h5M9 12h7M9 15.5h7"/></svg><span class="tl">Notes</span></button>
     <button class="tab" data-tab="dates"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span class="tl">Dates</span><i class="badge hidden" id="datesBadge"></i></button>
     <button class="tab" data-tab="docs"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7a2 2 0 012-2h4l2 2.2h7a2 2 0 012 2v8.8a2 2 0 01-2 2h-13a2 2 0 01-2-2z"/></svg><span class="tl">Docs</span></button>
@@ -1161,6 +1175,14 @@ html.decoy-on #searchFab{display:none}
   </div>
 </div>
 
+<!-- share into Register (v2.15) -->
+<div class="sheet full" id="shShareIn">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><span class="sh-l"></span><h2>Share into Register</h2><button class="sh-r" data-close>Done</button></div>
+    <div class="sheet-body" id="siBody"></div>
+  </div>
+</div>
+
 <!-- document viewer -->
 <div class="sheet full" id="shDocView">
   <div class="sheet-card"><div class="sheet-grab"></div>
@@ -1352,6 +1374,7 @@ html.decoy-on #searchFab{display:none}
         <button class="set-row" id="setBackup">Download backup (.json)<span class="v">⤓</span></button>
         <button class="set-row" id="setRestore">Restore / import backup<span class="v">⤒</span></button>
         <button class="set-row" id="setBin">Recently deleted<span class="v">🗑</span></button>
+        <button class="set-row" id="setShareIn">Share into Register from other apps<span class="v">›</span></button>
         <button class="set-row" id="setArchive">Archive old years<span class="v">🗄</span></button>
         <button class="set-row" id="setDriveChk">Check files in Drive now<span class="v">✓</span></button>
         <button class="set-row" id="setImportDocs">Import documents from a Drive folder<span class="v">›</span></button>
@@ -1392,7 +1415,7 @@ html.decoy-on #searchFab{display:none}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.14.0';
+const APP_VERSION = '2.15.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -2404,7 +2427,7 @@ function toggleStep(key) {
 const prioRank = { High: 0, Medium: 1, Low: 2 };
 const byDueThenPrio = (a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999') || prioRank[a.priority] - prioRank[b.priority];
 function renderTasks() {
-  renderInboxCard();
+  renderInboxCard(); updateInboxBadge();
   const tasks = all('task');
   const open = tasks.filter(t => t.status !== 'done');
   // category chips
@@ -6427,7 +6450,7 @@ function handleGo() {
 
 /* ---------- Needs attention (Docs home) ---------- */
 const EXP_PHOTO = d => d.docType === 'Photo & Signature';
-function attnLists() {
+function attnListsOld() {
   const docs = all('doc'), t = todayISO();
   return [
     ['Inbox to sort', all('inbox')],
@@ -6438,7 +6461,7 @@ function attnLists() {
     ['Dates still to fill in', all('date').filter(d => !d.when && !d.sys)]
   ].filter(x => x[1].length);
 }
-function renderAttn() {
+function renderAttnOld() {
   const box = $('docAttn'); if (!box) return;
   if (docPath.who || window.GHOST) { box.innerHTML = ''; return; }
   const L = attnLists(), n = L.reduce((s, x) => s + x[1].length, 0);
@@ -6841,11 +6864,12 @@ function renderInboxCard() {
 }
 function openInbox() {
   const L = inboxItems(), fin = finUnlocked();
-  $('ibList').innerHTML = L.length ? L.map(i => `<div class="ib-item" data-ib="${i.id}">
+  $('ibList').innerHTML = L.length ? L.map(i => { const sg = suggestInbox(i); return `<div class="ib-item" data-ib="${i.id}" data-sug="${sg.k}">
       ${i.text ? `<div class="ib-t">${esc(i.text)}</div>` : ''}${(i.imgs || []).length ? `<div class="ib-imgs">${i.imgs.map(b => `<img data-blob="${b}" alt="photo">`).join('')}</div>` : ''}
-      <div class="ib-m">${timeAgo(i.createdAt)}</div>
-      <div class="ib-acts"><button data-ibto="note">🗒 Note</button><button data-ibto="task">☑︎ Task</button><button data-ibto="doc">📁 Document</button><button data-ibto="date">📅 Date</button>${fin ? '<button data-ibto="money">₹ Spend</button>' : ''}<button data-ibto="del" class="danger">🗑</button></div></div>`).join('')
+      <div class="ib-m">${timeAgo(i.createdAt)}${i.via ? ' · shared from another app' : ''}</div>${sg.k !== 'money' || fin ? `<div class="ib-sug">Suggested: ${esc(sg.why)}</div>` : ''}
+      <div class="ib-acts"><button data-ibto="note">🗒 Note</button><button data-ibto="task">☑︎ Task</button><button data-ibto="doc">📁 Document</button><button data-ibto="date">📅 Date</button>${fin ? '<button data-ibto="money">₹ Spend</button>' : ''}<button data-ibto="del" class="danger">🗑</button></div></div>`; }).join('')
     : '<div class="empty"><b>Inbox is empty</b>Press and hold + → Capture, or tap ＋ Capture above.</div>';
+  $$('#ibList [data-ib]').forEach(el => { const b = el.querySelector(`[data-ibto="${el.dataset.sug}"]`); if (b) { b.classList.add('sug'); b.parentElement.prepend(b); } });
   hydrateImgs($('ibList'));
   $$('#ibList img[data-blob]').forEach(im => im.addEventListener('click', () => im.src && openLightbox(im.src)));
   $$('[data-ibto]').forEach(b => b.addEventListener('click', () => inboxTo(b.closest('[data-ib]').dataset.ib, b.dataset.ibto)));
@@ -6885,7 +6909,8 @@ async function inboxTo(id, to) {
     inboxDone(i, false); toast('Set the type and person, then Save.'); return;
   }
   if (to === 'date') {
-    const x = put({ id: uid('d'), type: 'date', label: first || 'Date from Inbox', when: '', repeat: 'once', cat: guessDateCat({ label: first }), needsDetail: true, deleted: false });
+    const fd = findDateIn(text), lbl = dateLabelFrom(first, fd) || 'Date from Inbox';
+    const x = put({ id: uid('d'), type: 'date', label: lbl, when: fd ? fd.iso : '', repeat: 'once', cat: guessDateCat({ label: lbl }), needsDetail: fd ? undefined : true, deleted: false });
     inboxDone(i, true); showTab('dates'); openDate(x.id); return;
   }
   if (to === 'money') {
@@ -7005,6 +7030,140 @@ Scan.openEdit = function (f, pages) {
   chipGroup($('scMode'), [{ v: 'doc', l: 'Document' }, { v: 'bw', l: 'Black & white' }, { v: 'orig', l: 'Original' }], 'orig', v => { this.mode = v; this.render(); });
   this.render(); $('scMsg').className = 'msg'; $('scMsg').textContent = `Editing "${f.name}". Saving replaces it (the old file goes to Drive's Trash).`;
 };
+
+/* ==========================================================================
+   v2.15
+   ======================================================================== */
+/* ---------- suggested action for an Inbox line ---------- */
+const MON3 = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+const WDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+function findDateIn(text) {
+  const s = ' ' + String(text || '').toLowerCase() + ' ', t = todayISO(); let m;
+  const ok = (y, mo, d) => { const dt = new Date(y, mo - 1, d); return dt.getMonth() === mo - 1 && dt.getDate() === d ? isoLocal(dt) : null; };
+  const fut = (mo, d) => { const y = +t.slice(0, 4); let r = ok(y, mo, d); if (r && r < t) r = ok(y + 1, mo, d); return r; };
+  if ((m = s.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/))) { const y = +m[3] < 100 ? 2000 + +m[3] : +m[3], r = ok(y, +m[2], +m[1]); if (r) return { iso: r, hit: m[0] }; }
+  if ((m = s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/))) { const r = ok(+m[1], +m[2], +m[3]); if (r) return { iso: r, hit: m[0] }; }
+  if ((m = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:,?\s*(\d{4}))?\b/))) { const r = m[3] ? ok(+m[3], MON3[m[2]], +m[1]) : fut(MON3[m[2]], +m[1]); if (r) return { iso: r, hit: m[0] }; }
+  if ((m = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?\b/))) { const r = m[3] ? ok(+m[3], MON3[m[1]], +m[2]) : fut(MON3[m[1]], +m[2]); if (r) return { iso: r, hit: m[0] }; }
+  if ((m = s.match(/\b(\d{1,2})[/.](\d{1,2})\b/)) && +m[2] <= 12 && +m[1] <= 31 && !/[₹]|rs/.test(s.slice(Math.max(0, s.indexOf(m[0]) - 4), s.indexOf(m[0])))) { const r = fut(+m[2], +m[1]); if (r) return { iso: r, hit: m[0] }; }
+  if (/\b(today|aaj)\b/.test(s)) return { iso: t, hit: (s.match(/\b(today|aaj)\b/) || [''])[0] };
+  if (/\btomorrow\b/.test(s)) return { iso: addDays(1), hit: 'tomorrow' };
+  if ((m = s.match(/\bin (\d{1,3}) days?\b/))) return { iso: addDays(+m[1]), hit: m[0] };
+  if ((m = s.match(/\b(?:next |on |this )?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/))) { const w = WDAYS.indexOf(m[1]), now = new Date(t + 'T00:00:00').getDay(); let k = (w - now + 7) % 7 || 7; return { iso: addDays(k), hit: m[0] }; }
+  return null;
+}
+function suggestInbox(i) {
+  const text = String(i.text || '').trim(), first = text.split('\n')[0], low = first.toLowerCase();
+  if (!text && (i.imgs || []).length) return { k: 'doc', why: 'a photo — keep it as a document' };
+  if (/^\s*(₹|rs\.?|inr)?\s*\d[\d,]*(\.\d+)?\b/i.test(first) || /(₹|\brs\.?|\binr)\s*\d/i.test(first) || /\b(paid|spent|pay|bought|kharcha|kharch|diya|given)\b.*\d{2,}/i.test(low) && !findDateIn(first))
+    return { k: 'money', why: 'starts with an amount — a spend' };
+  const d = findDateIn(text); if (d) return { k: 'date', why: `mentions ${fmtDate(d.iso, true)} — a date`, date: d };
+  if (/^(call|pay|buy|send|submit|renew|book|file|apply|get|collect|check|meet|email|mail|reply|visit|fix|order|update)\b/i.test(first)) return { k: 'task', why: 'sounds like something to do — a task' };
+  if ((i.imgs || []).length) return { k: 'doc', why: 'has a photo — a document' };
+  return { k: 'note', why: 'something to remember — a note' };
+}
+
+function dateLabelFrom(first, fd) {
+  if (!fd) return first;
+  const h = fd.hit.trim(), k = first.toLowerCase().indexOf(h);
+  let out = k >= 0 ? first.slice(0, k) + first.slice(k + h.length) : first;
+  return out.replace(/\s+(on|by|till|before|dated)\s*$/i, '').replace(/\s{2,}/g, ' ').replace(/^[\s,-]+|[\s,-]+$/g, '').trim();
+}
+/* ---------- daily Inbox reminder, Tasks badge ---------- */
+function inboxNudge() {
+  if (window.GHOST || document.documentElement.classList.contains('decoy-on')) return;
+  const n = all('inbox').length; updateInboxBadge();
+  if (n <= 5) return;
+  const key = 'r2_inboxNudge', today = todayISO(); let last = ''; try { last = localStorage.getItem(key) || ''; } catch (e) {}
+  if (last === today) return;
+  try { localStorage.setItem(key, today); } catch (e) {}
+  toast(`📥 ${n} items are waiting in your Inbox.`, 'Sort now', openInbox, 9000);
+}
+function updateInboxBadge() {
+  const b = $('tasksBadge'); if (!b) return;
+  const n = window.GHOST ? 0 : all('inbox').length;
+  b.classList.toggle('hidden', n <= 5); b.textContent = n; b.setAttribute('aria-label', `${n} items in the Inbox`);
+}
+setTimeout(inboxNudge, 7000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(inboxNudge, 2500); });
+
+/* ---------- Needs attention: OK / ignore ---------- */
+const ATTN_ID = 'attn-ok';
+const attnCfg = () => records[ATTN_ID] && !records[ATTN_ID].deleted ? records[ATTN_ID] : { ok: {}, off: {} };
+function attnSave(fn) { const c = { id: ATTN_ID, type: 'attnok', ok: {}, off: {}, ...JSON.parse(JSON.stringify(attnCfg())), deleted: false }; fn(c); put(c, { render: false }); renderAttn(); }
+function attnListsAll() {
+  const docs = all('doc'), t = todayISO();
+  return [
+    ['inbox', 'Inbox to sort', all('inbox')],
+    ['exp', 'Expired', docs.filter(d => d.expiry && d.expiry < t)],
+    ['nofile', 'No file attached', docs.filter(d => !docFilesOf(d.id).length)],
+    ['unlocked', 'ID documents not locked', docs.filter(d => d.docType === 'Identity' && docFilesOf(d.id).length && !d.lockFiles)],
+    ['noexp', 'Usually expire, but no expiry date saved', docs.filter(d => !d.expiry && expiryKind(d))],
+    ['datefill', 'Dates still to fill in', all('date').filter(d => !d.when && !d.sys)]
+  ];
+}
+function attnLists() {
+  const c = attnCfg();
+  return attnListsAll().filter(([k]) => !c.off[k]).map(([k, h, L]) => [h, k === 'inbox' ? L : L.filter(x => !c.ok[k + ':' + x.id]), k]).filter(x => x[1].length);
+}
+function renderAttn() {
+  const box = $('docAttn'); if (!box) return;
+  if (docPath.who || window.GHOST) { box.innerHTML = ''; return; }
+  const L = attnLists(), c = attnCfg(), n = L.reduce((s, x) => s + x[1].length, 0);
+  const nOk = Object.keys(c.ok || {}).length, nOff = Object.keys(c.off || {}).filter(k => c.off[k]).length;
+  if (!n && !nOk && !nOff) { box.innerHTML = ''; return; }
+  const open = box.querySelector('details') && box.querySelector('details').open;
+  const row = (k, x) => {
+    const label = x.type === 'date' ? `📅 ${esc(x.label)}` : x.type === 'inbox' ? `📥 ${esc(x.text ? x.text.split('\n')[0].slice(0, 60) : 'Photo')}` : `${esc(x.title)} · ${esc(docOwners(x).join(' & '))}${x.expiry ? ' · ' + fmtDate(x.expiry, true) : ''}`;
+    return `<div class="attn-row"><button class="attn-go" data-attk="${k}" data-attid="${x.id}">${label}</button>${k === 'inbox' ? '' : `<button class="attn-ok" data-attok="${k}:${x.id}" aria-label="Mark OK">✓ OK</button>`}</div>`;
+  };
+  box.innerHTML = `<details class="attn"${open ? ' open' : ''}><summary>${n ? `⚠︎ Needs attention (${n})` : '✓ Nothing needs attention'}<small class="muted" style="display:block;font-weight:400;font-size:.8125rem;margin-top:2px">${L.map(x => `${x[1].length} ${x[0].toLowerCase()}`).join(' · ') || 'Everything is marked OK.'}</small></summary>
+    ${L.map(([h, items, k]) => `<div class="attn-sec"><div class="attn-head"><b>${esc(h)} (${items.length})</b>${k === 'inbox' ? '<button data-attinbox="1">Sort ›</button>' : `<button data-attall="${k}">All OK</button><button data-attoff="${k}">Stop checking this</button>`}</div>
+      ${items.slice(0, 40).map(x => row(k, x)).join('')}${items.length > 40 ? `<small class="muted">…and ${items.length - 40} more</small>` : ''}</div>`).join('')}
+    ${nOk || nOff ? `<div class="attn-foot muted">${nOk ? `${nOk} marked OK` : ''}${nOk && nOff ? ' · ' : ''}${nOff ? `${nOff} check${nOff > 1 ? 's' : ''} switched off` : ''} · <button class="linkbtn" id="attnReset" style="font-size:.8125rem;padding:0">Show them again</button></div>` : ''}</details>`;
+  $$('[data-attid]', box).forEach(b => b.addEventListener('click', () => { const k = b.dataset.attk, id = b.dataset.attid; if (k === 'inbox') openInbox(); else if (k === 'datefill') openDate(id); else openDoc(id); }));
+  $$('[data-attinbox]', box).forEach(b => b.addEventListener('click', openInbox));
+  $$('[data-attok]', box).forEach(b => b.addEventListener('click', () => attnSave(c2 => { c2.ok[b.dataset.attok] = Date.now(); })));
+  $$('[data-attall]', box).forEach(b => b.addEventListener('click', () => { const k = b.dataset.attall, sec = attnListsAll().find(s => s[0] === k); attnSave(c2 => { sec[2].forEach(x => { c2.ok[k + ':' + x.id] = Date.now(); }); }); }));
+  $$('[data-attoff]', box).forEach(b => b.addEventListener('click', () => { const k = b.dataset.attoff; attnSave(c2 => { c2.off[k] = true; }); toast('That check is off. "Show them again" at the bottom brings it back.'); }));
+  if ($('attnReset')) $('attnReset').addEventListener('click', () => attnSave(c2 => { c2.ok = {}; c2.off = {}; }));
+}
+
+/* ---------- Share into Register (iPhone Shortcut → Apps Script) ---------- */
+function openShareIn() {
+  const url = prefs.cloudUrl || '(connect the Sheet first — Settings → Sync)';
+  $('siBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">iPhone does not let web apps appear in the Share menu. A one-time Shortcut does it: Share → <b>Save to Register</b> sends the photo or text straight to your Inbox (through your own Apps Script, v21 or later). It shows up here on the next sync.</p>
+    <div class="group" style="padding:12px 14px">
+      <div class="field"><label>Web App URL</label><div style="display:flex;gap:8px"><input id="siUrl" readonly value="${esc(url)}" style="flex:1;min-width:0"><button class="btn small ghost" id="siCopyUrl">Copy</button></div></div>
+      <div class="field"><label>Token</label><div style="display:flex;gap:8px"><input id="siTok" readonly type="password" value="${esc(prefs.cloudToken || '')}" style="flex:1;min-width:0"><button class="btn small ghost" id="siCopyTok">Copy</button></div></div>
+    </div>
+    <div class="group-title">Make the Shortcut (once, about 5 minutes)</div>
+    <ol class="share-steps">
+      <li>Open the <b>Shortcuts</b> app → <b>＋</b> → name it <code>Save to Register</code>.</li>
+      <li>Tap <b>ⓘ</b> (Details) → switch on <b>Show in Share Sheet</b>. In the first box choose <b>Images</b>, <b>Text</b> and <b>URLs</b>.</li>
+      <li>Add <b>Ask for Input</b> → Prompt <code>A line about it (optional)</code>. Name the result <code>Line</code> (tap it → Rename).</li>
+      <li>Add <b>Get Images from Input</b> (Shortcut Input). Then <b>If</b> → <i>Images</i> <b>has any value</b>:
+        <ul><li><b>Repeat with Each</b> item in Images →</li>
+          <li>&nbsp;&nbsp;<b>Resize Image</b> (Repeat Item) → width <code>1600</code>, then <b>Convert Image</b> to <b>JPEG</b>, then <b>Base64 Encode</b> (Line Breaks: <b>None</b>).</li>
+          <li>&nbsp;&nbsp;<b>Get Contents of URL</b>: paste the URL above · Method <b>POST</b> · Request Body <b>JSON</b> with 4 Text fields: <code>token</code> = the token above, <code>action</code> = <code>inboxAdd</code>, <code>text</code> = <i>Line</i>, <code>data</code> = <i>Base64 Encoded</i>.</li>
+          <li><b>End Repeat</b></li></ul></li>
+      <li><b>Otherwise</b> (text or a link): <b>Get Text from Input</b>, then the same <b>Get Contents of URL</b> with <code>text</code> = <i>Line</i> + a new line + <i>Text</i> and no <code>data</code> field.</li>
+      <li><b>End If</b> → add <b>Show Notification</b> <code>Saved to Register Inbox</code>.</li>
+      <li>Try it: in Photos or WhatsApp tap <b>Share</b> → <b>Save to Register</b>.</li>
+    </ol>
+    <p class="hint">The photo goes into your Register Drive folder; nothing else in your Drive is touched. The token stays inside the Shortcut on your phone — do not share the Shortcut with anyone.</p>
+    <button class="btn ghost block" id="siTest">Send a test item now</button><div class="msg" id="siMsg"></div>`;
+  const cp = async (id, what) => { try { await navigator.clipboard.writeText($(id).value); toast(what + ' copied.'); } catch (e) { $(id).type = 'text'; $(id).select(); toast('Select and copy it.'); } };
+  $('siCopyUrl').addEventListener('click', () => cp('siUrl', 'URL')); $('siCopyTok').addEventListener('click', () => cp('siTok', 'Token'));
+  $('siTest').addEventListener('click', async () => {
+    const m = $('siMsg'); m.className = 'msg'; m.textContent = 'Sending…';
+    try { const r = await Sync.call('inboxAdd', { text: 'Test from Share setup ' + new Date().toLocaleTimeString('en-IN') }); if (r.error) throw new Error(r.error);
+      await Sync.run(); m.className = 'msg ok'; m.textContent = 'Arrived — check the Inbox (top of Tasks).'; renderInboxCard(); }
+    catch (e) { m.className = 'msg err'; m.textContent = /unknown action/.test(e.message) ? 'Your Apps Script is older than v21. Paste Code.gs v21 and redeploy.' : 'Failed: ' + e.message; }
+  });
+  Sheets.open('shShareIn');
+}
+$('setShareIn').addEventListener('click', () => { Sheets.close('shSettings', true); openShareIn(); });
 $('setImportDocs').addEventListener('click', openImport);
 $('docImportBtn').addEventListener('click', openImport);
 
