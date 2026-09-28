@@ -593,6 +593,30 @@ html.app-hidden #app{filter:blur(24px)}
 /* v2.10 */
 .imp-note{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:12px 14px;margin:0 0 12px;font-size:.9rem}
 .imp-note b{font-weight:600}.imp-note span{flex:1}
+
+/* v2.11 */
+.md-bar{flex-wrap:wrap;overflow:visible}
+.ne-folder{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:.875rem;color:var(--ink-soft)}
+.ne-folder select{width:auto;max-width:70%;padding:5px 8px;font-size:.875rem}
+.ne-folder input{flex:1;min-width:0;padding:5px 8px;font-size:.875rem}
+.has-mic{position:relative}
+.has-mic > input,.has-mic > textarea{padding-right:46px}
+.mic-btn{position:absolute;right:6px;top:6px;width:36px;height:36px;border-radius:50%;background:rgba(128,128,128,.13);font-size:17px;display:grid;place-items:center;min-height:0;padding:0}
+.mic-btn.on,#neMic.on{background:var(--seal);color:#fff;animation:micp 1.2s ease-in-out infinite}
+@keyframes micp{50%{opacity:.6}}
+.mic-live{font-size:.8125rem;color:var(--ink-faint);min-height:1.2em;margin:2px 4px}
+.doc-crumb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.doc-crumb b{font-size:16px}
+.folder small{display:block;color:var(--ink-faint);font-size:.75rem;margin-top:2px}
+.scan-pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;margin:10px 0}
+.scan-page{position:relative;background:var(--card);border-radius:10px;box-shadow:var(--shadow);padding:4px}
+.scan-page img{width:100%;display:block;border-radius:7px}
+.scan-page .sp-b{position:absolute;top:6px;width:28px;height:28px;min-height:0;padding:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:13px}
+.scan-page .sp-rot{left:6px}.scan-page .sp-del{right:6px}
+.scan-page span{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;font-size:11px;padding:1px 6px}
+.dash-accts summary{font-size:.8125rem;color:var(--ink-soft);cursor:pointer;margin-top:8px}
+.dash-accts .dash-line span small{color:var(--ink-faint);margin-left:4px}
+.bio-diag{font-size:.75rem;color:var(--ink-faint);padding:0 16px 10px;line-height:1.4}
 </style>
 </head>
 <body>
@@ -663,7 +687,7 @@ html.app-hidden #app{filter:blur(24px)}
     <!-- DOCUMENTS -->
     <section class="screen" id="scr-docs">
       <div class="large-title">Documents</div>
-      <div class="btn-row" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn ghost small" id="docQuickBtn">＋ Common documents</button><button class="btn ghost small" id="docImportBtn">⤓ Import from Drive</button></div>
+      <div class="btn-row" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn ghost small" id="docQuickBtn">＋ Common documents</button><button class="btn ghost small" id="docImportBtn">⤓ Import from Drive</button><button class="btn ghost small" id="docScanBtn">📷 Scan</button></div>
       <div class="chips" id="docChips"></div>
       <div id="docImpNote"></div>
       <div id="docYearBar"></div>
@@ -806,6 +830,7 @@ html.app-hidden #app{filter:blur(24px)}
     <div class="sheet-head"><button class="sh-l" id="neMore">•••</button><h2 id="neSaved">Note</h2><button class="sh-r" data-close>Done</button></div>
     <div class="sheet-body">
       <input class="title-input" id="neTitle" placeholder="Title">
+      <div class="ne-folder"><span aria-hidden="true">📁</span><select id="neFolder" aria-label="Folder"></select><input id="neFolderNew" class="hidden" placeholder="New folder name" enterkeyhint="done"></div>
       <div class="md-bar" id="neBar">
         <button id="neUndo" aria-label="Undo">↶</button><button id="neRedo" aria-label="Redo">↷</button>
         <button data-md="bold" aria-label="Bold"><b>B</b></button><button data-md="italic" aria-label="Italic"><i>I</i></button>
@@ -816,7 +841,7 @@ html.app-hidden #app{filter:blur(24px)}
         <button data-md="quote" aria-label="Quote">❝</button><button data-md="code" aria-label="Code">&lt;/&gt;</button>
         <button data-md="link" aria-label="Link">🔗</button><button data-md="hr" aria-label="Divider line">―</button>
         <button data-md="table" aria-label="Table">▦</button><button data-md="stamp" aria-label="Insert date and time">🕒</button>
-        <button id="neFindBtn" aria-label="Find and replace">🔎</button>
+        <button id="neMic" aria-label="Speak to type" aria-pressed="false">🎤</button><button id="neFindBtn" aria-label="Find and replace">🔎</button>
         <button id="neImgBtn" aria-label="Add picture">🖼</button><button id="nePrevBtn" aria-label="Preview">👁</button>
       </div>
       <div class="find-bar hidden" id="neFind">
@@ -827,6 +852,7 @@ html.app-hidden #app{filter:blur(24px)}
         <button id="neRepl">Replace</button><button id="neReplAll">All</button><button id="neFindClose" aria-label="Close find">✕</button>
       </div>
       <input type="file" id="neImgFile" accept="image/*" multiple class="hidden">
+      <div class="mic-live"></div>
       <textarea class="note-body" id="neBody" placeholder="Start writing… markdown works"></textarea>
       <div class="md" id="nePreview" style="display:none;min-height:45vh;padding:8px 2px"></div>
       <div class="wc" id="neCount" aria-live="polite"></div>
@@ -936,19 +962,34 @@ html.app-hidden #app{filter:blur(24px)}
         <div class="field"><label>Expiry</label><input type="date" id="doExpiry"></div>
       </div>
       <div class="field"><label>Issuer</label><input id="doIssuer"></div>
-      <div class="field"><label>Folder</label><input id="doFolder" list="docFolderDl" placeholder="e.g. Car, Wife's documents" autocomplete="off"><datalist id="docFolderDl"></datalist></div>
+      <div class="field hidden"><label>Folder</label><input id="doFolder" list="docFolderDl" placeholder="e.g. Car, Wife's documents" autocomplete="off"><datalist id="docFolderDl"></datalist></div>
       <div class="grid2"><div class="field"><label>Year (FY)</label><select id="doFy"></select></div>
         <div class="field"><label>Yearly files</label><label class="switch-row" style="padding:6px 0;min-height:0"><span style="font-size:.8125rem">Files by year<small>ITR, statements…</small></span><input type="checkbox" class="sw" id="doByYear"></label></div></div>
       <div class="field"><label>Notes</label><textarea id="doNotes" rows="3"></textarea></div>
       <div class="field"><label>Files</label>
         <div class="dfiles" id="doFiles"></div>
         <div class="field hidden" id="doFileFyW" style="margin:6px 0"><label>Year for the next files</label><select id="doFileFy"></select></div>
-        <button type="button" class="btn ghost small" id="doFileBtn">＋ Add photo or PDF</button>
+        <div class="btn-row" style="margin:0;flex-wrap:wrap"><button type="button" class="btn ghost small" id="doFileBtn">＋ Add photo or PDF</button><button type="button" class="btn ghost small" id="doScanBtn">📷 Scan pages</button></div>
         <input type="file" id="doFileIn" class="vh" accept="image/*,application/pdf,.pdf" multiple tabindex="-1" aria-hidden="true">
         <div class="msg" id="doFileMsg"></div>
       </div>
       <div class="group"><label class="switch-row"><span>Lock files<small class="dq-sub">Encrypted; opens only with your private code. Use for Aadhaar, PAN, passport.</small></span><input type="checkbox" class="sw" id="doLock"></label></div>
       <button class="btn ghost block" id="doRemind">📅 Add expiry to Key dates</button>
+    </div>
+  </div>
+</div>
+
+<!-- scan pages to PDF (v2.11) -->
+<div class="sheet full" id="shScan">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2>Scan</h2><button class="sh-r" id="scSave" disabled>Save</button></div>
+    <div class="sheet-body">
+      <div class="field" id="scTitleW"><label>Title</label><input id="scTitle"></div>
+      <div class="btn-row" style="margin:0 0 8px;flex-wrap:wrap"><button class="btn small" id="scAdd">📷 Add page</button><button class="btn ghost small" id="scPick">🖼 From photos</button></div>
+      <input type="file" id="scFile" accept="image/*" capture="environment" class="hidden"><input type="file" id="scFile2" accept="image/*" multiple class="hidden">
+      <div class="field"><label>Look</label><div class="wrapchips" id="scMode"></div></div>
+      <div class="hint" id="scCount"></div><div class="scan-pages" id="scPages"></div><div class="msg" id="scMsg"></div>
+      <p class="hint">Hold the phone straight above the page in good light and fill the frame. Saved as one PDF. For automatic edge-cropping, scan in the iPhone Files app (••• → Scan Documents) and add it with “Add photo or PDF”.</p>
     </div>
   </div>
 </div>
@@ -1104,6 +1145,7 @@ html.app-hidden #app{filter:blur(24px)}
         <button class="set-row hidden" id="setVaultCode">Change private-section code<span class="v">›</span></button>
         <button class="set-row hidden" id="setVaultLock">Lock private section now<span class="v">›</span></button>
         <button class="set-row hidden" id="setBio">Unlock with Face ID<span class="v" id="setBioV">Off</span></button>
+        <div class="bio-diag hidden" id="setBioDiag"></div>
       </div>
 
       <div class="group-title">Sync — Google Sheet</div>
@@ -1132,6 +1174,7 @@ html.app-hidden #app{filter:blur(24px)}
         <label class="switch-row">Left-handed (+ button on the left)<input type="checkbox" class="sw" id="setLeft"></label>
         <label class="switch-row">Show task steps expanded<input type="checkbox" class="sw" id="setSteps"></label>
         <label class="switch-row">Open notes straight into editing<input type="checkbox" class="sw" id="setNoteEdit"></label>
+        <div class="set-row">Voice typing language<select id="setDictLang"><option value="en-IN">English (India)</option><option value="hi-IN">Hindi</option><option value="en-US">English (US)</option></select></div>
       </div>
 
       <div class="group-title">Data</div>
@@ -1176,7 +1219,7 @@ html.app-hidden #app{filter:blur(24px)}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.10.0';
+const APP_VERSION = '2.11.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -2551,8 +2594,8 @@ function toggleCheckLine(id, ln) {
 }
 
 /* ---------- creation / deletion ---------- */
-function newNote(text, title, open) {
-  const inFolder = activeFolder !== '__all__' ? activeFolder : '';
+function newNote(text, title, open, folder) {
+  const inFolder = folder != null ? folder : activeFolder !== '__all__' ? activeFolder : '';
   const t = text || '';
   const n = put({ id: uid('n'), type: 'note', title: title != null ? title : (t.split('\n')[0] || '').replace(/^#+\s*/, '').trim().slice(0, 60),
     text: t, color: NOTE_COLORS[Math.floor(Math.random() * 5)], pinned: false, folder: inFolder, docRefs: [], imgs: [], deleted: false });
@@ -2587,7 +2630,7 @@ function openNoteEditor(id) {
   ta().style.display = ''; $('nePreview').style.display = 'none';
   $('neSaved').textContent = 'Note';
   $('neFind').classList.add('hidden');
-  resetUndo(); renderEditorImgs(); updateCount();
+  resetUndo(); renderEditorImgs(); updateCount(); neFolderInit();
   Sheets.open('shNote');
   if (!n.text && !n.title) setTimeout(() => $('neTitle').focus(), 350);
 }
@@ -2604,6 +2647,7 @@ $('neTitle').addEventListener('input', neQueue);
 ta().addEventListener('input', () => { neQueue(); undoOnType(); updateCount(); });
 document.addEventListener('selectionchange', () => { if (document.activeElement === ta()) updateCount(); });
 Sheets.onClose.shNote = async () => {
+  Dictate.stop(); { const nf = $('neFolderNew'); if (!nf.classList.contains('hidden') && nf.value.trim()) nf.blur(); }
   clearTimeout(neTimer); neSave();
   const n = records[editNoteId];
   if (n && n.type !== 'snote' && neOriginal && (neOriginal.text !== n.text || neOriginal.title !== n.title) && (neOriginal.text || neOriginal.title)) await saveVersion(n.id, neOriginal);
@@ -3105,56 +3149,108 @@ $$('#dateSeg button').forEach(b => b.addEventListener('click', () => { setPref('
 const fyOf = iso => { const y = +iso.slice(0, 4), m = +iso.slice(5, 7); const s = m >= 4 ? y : y - 1; return s + '-' + String((s + 1) % 100).padStart(2, '0'); };
 function fyList() { const cur = +fyOf(todayISO()).slice(0, 4), out = []; for (let s = cur + 1; s >= 2000; s--) out.push(s + '-' + String((s + 1) % 100).padStart(2, '0')); return out; }
 const fyOptions = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + fyList().map(f => `<option value="${f}"${f === sel ? ' selected' : ''}>FY ${f}</option>`).join('');
-const docPeople = () => [...new Set(all('doc').map(d => (d.who || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const docPeople = () => orderPeople([...PERSON_ORDER, ...all('doc').flatMap(docOwners)]);
+/* ---------- v2.11: people (aliases, surnames ignored) and broad groups for the Docs tab ---------- */
+const DOC_ME = 'Rahul';
+const PERSON_ALIAS = { rk: 'Rahul', rahul: 'Rahul', moni: 'Ruchi', ruchi: 'Ruchi', papa: 'Papa', naresh: 'Papa', mummy: 'Mummy', mom: 'Mummy', maa: 'Mummy', kavita: 'Mummy' };
+const PERSON_ORDER = ['Rahul', 'Ruchi', 'Papa', 'Mummy'];
+function personOne(s) {
+  const w = String(s || '').trim().split(/\s+/)[0]; if (!w) return '';
+  return PERSON_ALIAS[w.toLowerCase()] || (w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+function whoParts(raw) {
+  const out = [];
+  String(raw || '').split(/\s*(?:&|,|\+|\band\b)\s*/i).map(x => x.trim()).filter(Boolean).forEach(p => {
+    if (/^parents$/i.test(p)) out.push('Papa', 'Mummy'); else out.push(personOne(p));
+  });
+  return [...new Set(out.filter(Boolean))];
+}
+function docOwners(d) { const o = whoParts(d && d.who); return o.length ? o : [DOC_ME]; }
+function normWho(s) { return whoParts(s).join(' & '); }
+function orderPeople(list) {
+  return [...new Set(list)].sort((a, b) => { const ia = PERSON_ORDER.indexOf(a), ib = PERSON_ORDER.indexOf(b);
+    if (ia >= 0 || ib >= 0) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    if (a === 'Family') return 1; if (b === 'Family') return -1; return a.localeCompare(b); });
+}
+const DOC_GROUPS = [['Academic', ['Education', 'Exam'], '🎓'], ['IDs', ['Identity'], '🪪'], ['Certificates', ['Certificate'], '📜'], ['Office', ['Official'], '🏛'], ['Case files', ['Case'], '🗂'],
+  ['Financial', ['Financial', 'Tax', 'Insurance'], '💰'], ['Medical', ['Medical'], '🩺'], ['Property & vehicle', ['Property', 'Vehicle', 'Warranty'], '🏠'],
+  ['Photos & signature', ['Photo & Signature'], '🖼'], ['Other', ['Membership', 'Other'], '📄']];
+const docGroup = d => (DOC_GROUPS.find(g => g[1].includes(d.docType)) || DOC_GROUPS[DOC_GROUPS.length - 1])[0];
+const groupIcon = n => (DOC_GROUPS.find(g => g[0] === n) || [0, 0, '📁'])[2];
+let docPath = { who: null, grp: null };
+const docNewType = () => { const g = DOC_GROUPS.find(x => x[0] === docPath.grp); return g ? g[1][0] : 'Identity'; };
+/* one-time tidy of documents imported from CASE_/EVIDENCE_ files (typed "Other", some with a wrong person) */
+let docsMigrated = false;
+function migrateCaseDocs() {
+  if (docsMigrated) return; docsMigrated = true;
+  all('doc').forEach(d => {
+    const fs = docFilesOf(d.id); if (!fs.length || d.docType === 'Case') return;
+    if (!fs.every(f => /^(CASE|EVIDENCE)_/i.test(f.name || ''))) return;
+    const p = parseDocName(fs[0].name || '');
+    d.docType = 'Case'; d.who = ''; if (p && p.title) d.title = p.title;
+    put(d, { render: false });
+  });
+}
+
 let docWho = 'All';
 const docYears = d => [...new Set([d.fy, ...(d.byYear ? docFilesOf(d.id).map(f => f.fy) : [])].filter(Boolean))].sort().reverse();
 let docYear = 'All';
-const DOC_TYPES = ['Identity', 'Education', 'Exam', 'Tax', 'Financial', 'Insurance', 'Medical', 'Official', 'Property', 'Vehicle', 'Certificate', 'Photo & Signature', 'Warranty', 'Membership', 'Other'];
-const DOC_COLORS = { Tax: '#8a4b12', Medical: '#2E7D50', Official: '#2d4a6b', Exam: '#7a5c1e', Certificate: '#5b6e2f', 'Photo & Signature': '#6d5a8a', Insurance: '#1B4B8F', Vehicle: '#B45309', Identity: '#9C2963', Education: '#4F6B2F', Warranty: '#3F4F8C', Membership: '#2c6e6a', Property: '#6b3f5c', Financial: '#B8860B', Other: '#77818E' };
+const DOC_TYPES = ['Identity', 'Education', 'Exam', 'Tax', 'Financial', 'Insurance', 'Medical', 'Official', 'Case', 'Property', 'Vehicle', 'Certificate', 'Photo & Signature', 'Warranty', 'Membership', 'Other'];
+const DOC_COLORS = { Case: '#5a3a3a', Tax: '#8a4b12', Medical: '#2E7D50', Official: '#2d4a6b', Exam: '#7a5c1e', Certificate: '#5b6e2f', 'Photo & Signature': '#6d5a8a', Insurance: '#1B4B8F', Vehicle: '#B45309', Identity: '#9C2963', Education: '#4F6B2F', Warranty: '#3F4F8C', Membership: '#2c6e6a', Property: '#6b3f5c', Financial: '#B8860B', Other: '#77818E' };
 let docFilter = 'All', activeDocFolder = '__all__';
 const docFolder = d => (d.folder || '').trim();
 const docFolderList = () => [...new Set(all('doc').map(docFolder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const docFolderForNew = () => activeDocFolder !== '__all__' ? activeDocFolder : '';
 function renderDocs() {
+  migrateCaseDocs();
   const docs = all('doc');
   { const c = ImpCheck.get(), n = c && !c.off ? c.n : 0;
     $('docImpNote').innerHTML = n ? `<button class="imp-note" id="docImpGo"><span>📥 <b>${n} new file${n > 1 ? 's' : ''}</b> in your Docs folder</span><b>Review ›</b></button>` : '';
     if ($('docImpGo')) $('docImpGo').addEventListener('click', () => { openImport(); readImport(); });
     setTimeout(() => ImpCheck.maybe(), 800); }
-  if (activeDocFolder !== '__all__' && !docs.some(d => docFolder(d) === activeDocFolder)) activeDocFolder = '__all__';
-  chipGroup($('docChips'), ['All', ...DOC_TYPES.filter(t => docs.some(d => d.docType === t))].map(t => ({ v: t, l: t + ' ' + (t === 'All' ? docs.length : docs.filter(d => d.docType === t).length) })),
-    docFilter, v => { docFilter = v; renderDocs(); }, t => DOC_COLORS[t] || 'var(--ink-faint)');
+  $('docChips').innerHTML = ''; $('docChips').classList.add('hidden');
   const allYears = [...new Set(docs.flatMap(docYears))].sort().reverse();
   if (docYear !== 'All' && !allYears.includes(docYear)) docYear = 'All';
   $('docYearBar').innerHTML = allYears.length ? `<div class="doc-yearbar"><span class="muted">Year</span><select id="docYearSel" aria-label="Financial year"><option value="All">All years</option>${allYears.map(y => `<option value="${y}"${y === docYear ? ' selected' : ''}>FY ${y}</option>`).join('')}</select></div>` : '';
   if ($('docYearSel')) $('docYearSel').addEventListener('change', e => { docYear = e.target.value; renderDocs(); });
-  const people = docPeople(); if (docWho !== 'All' && !people.includes(docWho)) docWho = 'All';
-  if (people.length) { $('docYearBar').insertAdjacentHTML(allYears.length ? 'afterbegin' : 'beforeend', `<div class="doc-yearbar"><span class="muted">Person</span><select id="docWhoSel" aria-label="Belongs to"><option value="All">Everyone</option>${people.map(p => `<option${p === docWho ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select></div>`);
-    $('docWhoSel').addEventListener('change', e => { docWho = e.target.value; renderDocs(); }); }
-  const shown = docs.filter(d => (docFilter === 'All' || d.docType === docFilter) && (docYear === 'All' || docYears(d).includes(docYear)) && (docWho === 'All' || (d.who || '').trim() === docWho));
-  const fbox = $('docFolders');
-  if (activeDocFolder === '__all__') {
-    const fs = docFolderList().filter(f => shown.some(d => docFolder(d) === f));
-    fbox.innerHTML = fs.length ? `<div class="folders">${fs.map(f => { const n = shown.filter(d => docFolder(d) === f).length;
-      return `<button class="folder" data-dfolder="${esc(f)}"><b>📁 ${esc(f)}</b><span>${n} document${n > 1 ? 's' : ''}</span></button>`; }).join('')}</div>` : '';
-  } else fbox.innerHTML = `<div class="back-row"><button class="chip" id="docFolderBack">‹ All documents</button><b style="font-size:16px">📁 ${esc(activeDocFolder)}</b><span class="muted">${shown.filter(d => docFolder(d) === activeDocFolder).length}</span></div>`;
-  $$('[data-dfolder]', fbox).forEach(b => b.addEventListener('click', () => { activeDocFolder = b.dataset.dfolder; renderDocs(); $('main').scrollTop = 0; }));
-  if ($('docFolderBack')) $('docFolderBack').addEventListener('click', () => { activeDocFolder = '__all__'; renderDocs(); });
-  const list = shown.filter(d => activeDocFolder === '__all__' ? !docFolder(d) : docFolder(d) === activeDocFolder).sort((a, b) => {
-    if (!a.expiry && !b.expiry) return a.title.localeCompare(b.title);
-    if (!a.expiry) return 1; if (!b.expiry) return -1; return a.expiry.localeCompare(b.expiry);
-  });
-  $('docList').innerHTML = list.length ? list.map(d => {
+  const shown = docs.filter(d => docYear === 'All' || docYears(d).includes(docYear));
+  const people = orderPeople(shown.flatMap(docOwners));
+  if (docPath.who && !people.includes(docPath.who)) docPath = { who: null, grp: null };
+  const mine = docPath.who ? shown.filter(d => docOwners(d).includes(docPath.who)) : [];
+  if (docPath.grp && !mine.some(d => docGroup(d) === docPath.grp)) docPath.grp = null;
+  const fbox = $('docFolders'), cnt = n => `${n} document${n === 1 ? '' : 's'}`;
+  let list = [], showWho = false;
+  if (!docPath.who) {
+    fbox.innerHTML = (people.length ? `<div class="folders">${people.map(p => { const own = shown.filter(d => docOwners(d).includes(p));
+      const gs = DOC_GROUPS.filter(g => own.some(d => docGroup(d) === g[0])).map(g => g[0]);
+      return `<button class="folder" data-dwho="${esc(p)}"><b>👤 ${esc(p)}</b><span>${cnt(own.length)}</span><small>${esc(gs.slice(0, 4).join(' · ') + (gs.length > 4 ? ' …' : ''))}</small></button>`; }).join('')}</div>` : '');
+    list = shown.filter(d => d.expiry && daysUntilISO(d.expiry) <= 60).sort((a, b) => a.expiry.localeCompare(b.expiry));
+    if (list.length) fbox.innerHTML += '<div class="group-title">Expiring within 60 days</div>';
+    showWho = true;
+  } else if (!docPath.grp) {
+    const gs = DOC_GROUPS.filter(g => mine.some(d => docGroup(d) === g[0]));
+    fbox.innerHTML = `<div class="doc-crumb"><button class="chip" data-dback="home">‹ Everyone</button><b>👤 ${esc(docPath.who)}</b><span class="muted">${cnt(mine.length)}</span></div>
+      <div class="folders">${gs.map(g => { const n = mine.filter(d => docGroup(d) === g[0]).length; return `<button class="folder" data-dgrp="${esc(g[0])}"><b>${g[2]} ${esc(g[0])}</b><span>${cnt(n)}</span></button>`; }).join('')}</div>`;
+  } else {
+    fbox.innerHTML = `<div class="doc-crumb"><button class="chip" data-dback="who">‹ ${esc(docPath.who)}</button><b>${groupIcon(docPath.grp)} ${esc(docPath.grp)}</b><span class="muted">${cnt(mine.filter(d => docGroup(d) === docPath.grp).length)}</span></div>`;
+    list = mine.filter(d => docGroup(d) === docPath.grp).sort((a, b) => a.docType.localeCompare(b.docType) || a.title.localeCompare(b.title) || String(b.fy || '').localeCompare(String(a.fy || '')));
+    showWho = list.some(d => docOwners(d).length > 1);
+  }
+  $$('[data-dwho]', fbox).forEach(b => b.addEventListener('click', () => { docPath = { who: b.dataset.dwho, grp: null }; renderDocs(); $('main').scrollTop = 0; }));
+  $$('[data-dgrp]', fbox).forEach(b => b.addEventListener('click', () => { docPath.grp = b.dataset.dgrp; renderDocs(); $('main').scrollTop = 0; }));
+  $$('[data-dback]', fbox).forEach(b => b.addEventListener('click', () => { if (b.dataset.dback === 'home') docPath = { who: null, grp: null }; else docPath.grp = null; renderDocs(); }));
+  $('docList').innerHTML = list.map(d => {
     const days = d.expiry ? daysUntilISO(d.expiry) : null;
     return swipeHtml(`<div class="row" style="border-left:4px solid ${DOC_COLORS[d.docType] || '#77818E'}">
       ${d.expiry ? countHtml(days, 'expired') : '<div class="count past" aria-label="no expiry">∞<small>no expiry</small></div>'}
-      <div class="row-main"><div class="row-title">${esc(d.title)}</div>
+      <div class="row-main"><div class="row-title">${esc(d.title)}${showWho ? ` <span class="muted" style="font-weight:400">· ${esc(docOwners(d).join(' & '))}</span>` : ''}</div>
         <div class="row-sub"><span>${d.docType}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
       <span class="chev">›</span></div>`, '', 'Delete 🗑', `data-doc="${d.id}"`);
-  }).join('') : activeDocFolder !== '__all__' ? '<div class="empty">No documents of this type in this folder.</div>' : docs.length && shown.some(d => docFolder(d)) ? '' : '<div class="empty"><b>No documents</b>Policies, RC, passport, warranties — tap + to add. Expiry is optional. Put them in folders from each document\'s Folder field.</div>';
-  $('docList').classList.toggle('hidden', !list.length && activeDocFolder === '__all__' && shown.some(d => docFolder(d)));
+  }).join('') || (!docs.length ? '<div class="empty"><b>No documents</b>Aadhaar, PAN, marksheets, ITRs, policies — tap + to add, 📷 Scan, or Import from Drive. Each person gets a folder, with groups inside.</div>' : '');
+  $('docList').classList.toggle('hidden', !$('docList').innerHTML);
   $$('[data-doc]', $('docList')).forEach(w => { const id = w.dataset.doc; bindSwipe(w, null, () => deleteWithUndo(id)); onTap(w, () => showDoc(id)); });
 }
+
 let editDocId = null;
 function openDoc(id) {
   const d = records[id]; if (!d) return;
@@ -3179,7 +3275,7 @@ $('doSave').addEventListener('click', async () => {
   d.title = $('doTitle').value.trim() || d.title; d.docType = chipValue($('doType')) || d.docType;
   if (!numLocked) { d.number = $('doNumber').value.trim(); if (!d.number) { delete d.numEnc; delete d.numTail; } } d.expiry = $('doExpiry').value || null; d.issuer = $('doIssuer').value.trim(); d.notes = $('doNotes').value;
   d.folder = $('doFolder').value.trim();
-  d.who = $('doWho').value.trim();
+  d.who = normWho($('doWho').value);
   d.fy = $('doFy').value || null; d.byYear = $('doByYear').checked;
   if (d.lockFiles && d.number) await sealDocNumber(d);
   put(d); Sheets.close('shDoc'); toast('Saved.');
@@ -3291,7 +3387,7 @@ async function fileToBytes(file) {
 function docFileBadge(d) {
   const n = docFilesOf(d.id).length;
   const ys = d.byYear ? docYears(d).filter(y => y !== d.fy) : [];
-  return (d.who ? `<span>👤 ${esc(d.who)}</span>` : '') + (d.fy ? `<span>FY ${d.fy}</span>` : '') + (ys.length ? `<span>${ys.length === 1 ? 'FY ' + ys[0] : ys.length + ' years · latest ' + ys[0]}</span>` : '') + (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
+  return (d.who ? `<span>👤 ${esc(docOwners(d).join(' & '))}</span>` : '') + (d.fy ? `<span>FY ${d.fy}</span>` : '') + (ys.length ? `<span>${ys.length === 1 ? 'FY ' + ys[0] : ys.length + ' years · latest ' + ys[0]}</span>` : '') + (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
 }
 /* Long ID numbers show only their last 4 characters on screen (Aadhaar, PAN, passport, licence). */
 const docNumShown = d => d.number ? maskNo(d.number) : d.numEnc ? '•••• ' + (d.numTail || '') : '';
@@ -3414,7 +3510,7 @@ function openDocView(id) {
   viewDocId = id;
   $('dvTitle').textContent = d.title;
   const days = d.expiry ? daysUntilISO(d.expiry) : null;
-  $('dvMeta').innerHTML = (d.who ? `<span>👤 ${esc(d.who)}</span>` : '') + `<span>${esc(d.docType || '')}</span>` + (docNumShown(d) ? `<span class="mono" id="dvNum">${esc(docNumShown(d))}</span>`
+  $('dvMeta').innerHTML = (d.who ? `<span>👤 ${esc(docOwners(d).join(' & '))}</span>` : '') + `<span>${esc(d.docType || '')}</span>` + (docNumShown(d) ? `<span class="mono" id="dvNum">${esc(docNumShown(d))}</span>`
       + (d.numEnc || maskNo(d.number) !== d.number ? '<button class="linkbtn" id="dvNumShow" style="padding:0 2px">Show</button>' : '') + '<button class="linkbtn" id="dvNumCopy" style="padding:0 2px">Copy</button>' : '')
     + (d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : '');
   const sh = $('dvNumShow'); if (sh) sh.addEventListener('click', async () => { const on = sh.textContent === 'Show';
@@ -3627,7 +3723,7 @@ $('dsGo').addEventListener('click', async () => {
 const COMMON_DOCS = [['Aadhaar card', 'Identity'], ['PAN card', 'Identity'], ['Driving licence', 'Identity'], ['Passport', 'Identity'],
   ['Voter ID', 'Identity'], ['10th marksheet', 'Education'], ['12th marksheet', 'Education'], ['Degree certificate', 'Education'], ['Vehicle RC', 'Vehicle']];
 function openDocQuick() {
-  const have = new Set(all('doc').map(d => (d.title || '').trim().toLowerCase()));
+  const forWho = docPath.who || DOC_ME, have = new Set(all('doc').filter(d => docOwners(d).includes(forWho)).map(d => (d.title || '').trim().toLowerCase()));
   $('dqList').innerHTML = COMMON_DOCS.map(([t, ty], i) => {
     const got = have.has(t.toLowerCase());
     return `<label class="switch-row"><span>${t}<small class="dq-sub">${got ? 'Already in your list' : ty}</small></span><input type="checkbox" class="sw" data-dq="${i}"${got ? ' disabled' : ''}></label>`;
@@ -3638,7 +3734,7 @@ $('docQuickBtn').addEventListener('click', openDocQuick);
 $('dqAdd').addEventListener('click', () => {
   const picks = $$('[data-dq]', $('dqList')).filter(c => c.checked && !c.disabled).map(c => COMMON_DOCS[+c.dataset.dq]);
   if (!picks.length) { toast('Pick at least one.'); return; }
-  picks.forEach(([t, ty]) => put({ id: uid('doc'), type: 'doc', title: t, docType: ty, number: '', expiry: null, issuer: '', notes: '', folder: docFolderForNew(), deleted: false }, { render: false }));
+  picks.forEach(([t, ty]) => put({ id: uid('doc'), type: 'doc', title: t, docType: ty, number: '', expiry: null, issuer: '', notes: '', folder: docFolderForNew(), who: docPath.who && docPath.who !== DOC_ME ? docPath.who : '', deleted: false }, { render: false }));
   Sheets.close('shDocQuick'); scheduleRender();
   toast(`Added ${picks.length}. Tap one to attach its file.`);
 });
@@ -5077,6 +5173,7 @@ function dashChart(pts) {
 }
 function renderDash() {
   const box = $('ledgerDash'); if (!box) return;
+  if (!['fy', 'upto'].includes(Dash.kind)) { Dash.kind = 'fy'; Dash.key = null; }
   const cur = isoMonth(new Date());
   const { plan: c, rows } = dashSeries(Dash.kind === 'upto' && /^\d{4}-\d{2}$/.test(Dash.key || '') ? Dash.key : null);
   const startYm = c ? c.startMonth : (rows[0] ? rows[0].ym : cur);
@@ -5101,6 +5198,10 @@ function renderDash() {
       ${line('Others owe you (udhaar)', '+' + rs(U.owed))}${U.owe ? line('You owe others (udhaar)', '−' + rs(U.owe), 'neg') : ''}
       <div class="dash-sep"></div>
       ${line('Money in hand (bank + cash − card dues)', rs(B.hand), B.hand < 0 ? 'neg' : '')}${B.loan ? line('Loan balance (separate)', rs(B.loan)) : ''}
+      ${(() => { const L = accts(true).filter(a => !a.archived || Math.abs(B.accts[a.id] || 0) >= 1), ord = ['bank', 'cash', 'invest', 'card', 'loan'];
+        if (!L.length) return ''; L.sort((a, b) => ord.indexOf(bucketOf(a.kind)) - ord.indexOf(bucketOf(b.kind)) || (B.accts[b.id] || 0) - (B.accts[a.id] || 0));
+        return `<details class="dash-accts" open><summary>Each account · ${esc(B.mode === 'plan' ? 'plan' : 'actual')}</summary>${L.map(a => { const v = B.accts[a.id] || 0, k = bucketOf(a.kind);
+          return line(esc(a.name) + `<small>${k === 'card' ? 'card' : k === 'loan' ? 'loan' : k === 'invest' ? 'investment' : k === 'cash' ? 'cash' : 'bank'}</small>`, (k === 'card' || k === 'loan') && v < 0 ? (k === 'card' ? 'due ' : 'owed ') + rs(-v) : rs(v), v < 0 && k !== 'loan' && k !== 'card' ? 'neg' : ''); }).join('')}</details>`; })()}
       <div class="s muted" style="margin-top:6px">${B.mode === 'plan' ? 'A future month shows the plan for its last day (includes estimates, and udhaar instalments still to come).' : Dash.asOn === cur ? 'This month: actual up to today. No estimates.' : 'Actual at the end of the month: opening balances + Ledger. No estimates.'} Money you have = bank + cash + investments + udhaar net − card dues. Loans are not taken out.</div></div>`;
     const ms = (() => { if (Dash.kind === 'month') return [Dash.key]; const all = []; const end = Dash.kind === 'upto' && Dash.key > planHorizon(c) ? Dash.key : planHorizon(c); for (let ym = c.startMonth, i = 0; ym <= end && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) if (inP(ym)) all.push(ym); return all; })();
     const inc = incomeSummary(c, ms), tot = k => inc.reduce((s, x) => s + x[k], 0);
@@ -5129,11 +5230,9 @@ function renderDash() {
   }
   const keyOpts = Dash.kind === 'upto' ? `<label class="dash-upto">from ${monthShort(startYm)} to <input type="month" id="dashKey" value="${Dash.key}" min="${startYm}" max="${monthAdd(startYm, PLAN_MAX_MONTHS - 1)}" aria-label="Up to month"></label>` : Dash.kind === 'all' ? '' : `<select id="dashKey" aria-label="Period">${opts[Dash.kind].map(k => `<option value="${k}"${String(k) === String(Dash.key) ? ' selected' : ''}>${Dash.kind === 'month' ? monthLong(k) : yearLabel(k, Dash.kind)}</option>`).join('')}</select>`;
   box.innerHTML = `<div class="dash">
-    <div class="dash-per"><div class="seg" id="dashKind" style="margin:0;flex:1;min-width:230px">${[['month', 'Month'], ['fy', 'FY'], ['cal', 'Year'], ['upto', 'Up to'], ['all', 'All']].map(([k, l]) => `<button data-k="${k}" class="${Dash.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>${keyOpts}</div>
+    <div class="dash-per"><div class="seg" id="dashKind" style="margin:0;flex:1;min-width:230px">${[['fy', 'Financial year'], ['upto', 'Up to month']].map(([k, l]) => `<button data-k="${k}" class="${Dash.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>${keyOpts}</div>
     <div class="dash-cards">${c1}${c2}</div>
     ${cInc}
-    <div class="dash-card dash-chart"><div class="k">Income, spending and investment · ${esc(pLabel)}</div>${dashChart(pts)}
-      <div class="dash-legend"><span><i style="background:var(--forest)"></i>Income</span><span><i style="background:var(--seal)"></i>Spending</span><span><i style="background:var(--brass)"></i>Into investments</span>${pts.some(p => p.planned) ? '<span class="muted">Paler bars include planned figures</span>' : ''}</div></div>
   </div>`;
   $$('#dashKind button').forEach(b => b.addEventListener('click', () => { Dash.kind = b.dataset.k; Dash.key = null; renderDash(); }));
   const ks = $('dashKey'); if (ks) ks.addEventListener('change', () => { if (Dash.kind !== 'upto' || /^\d{4}-\d{2}$/.test(ks.value)) { Dash.key = ks.value; renderDash(); } });
@@ -5269,10 +5368,12 @@ async function wipeDevice() {
    into the Register folder on the server (nothing is downloaded to the phone).
    ======================================================================== */
 const IMPORT_MAP = { ID: 'Identity', EDU: 'Education', EXAM: 'Exam', TAX: 'Tax', FIN: 'Financial', SALARY: 'Financial', MED: 'Medical', OFF: 'Official',
-  PROPERTY: 'Property', CERT: 'Certificate', PHOTO: 'Photo & Signature', SIGNATURE: 'Photo & Signature', DOC: 'Other' };
-const IMPORT_SKIP = { PERSONAL: 'personal / misc', MISC: 'personal / misc', VIDEO: 'not a PDF or photo' };
+  PROPERTY: 'Property', CERT: 'Certificate', PHOTO: 'Photo & Signature', SIGNATURE: 'Photo & Signature', DOC: 'Other',
+  CASE: 'Case', EVIDENCE: 'Case', MISC: 'Other', PERSONAL: 'Other', UNKNOWN: 'Other', ACAD: 'Education', MARKSHEET: 'Education', BANK: 'Financial', INS: 'Insurance', INSURANCE: 'Insurance',
+  VEH: 'Vehicle', VEHICLE: 'Vehicle', WARRANTY: 'Warranty', MEMBER: 'Membership', MEMBERSHIP: 'Membership', OFFICE: 'Official', OFFICIAL: 'Official', IDS: 'Identity', MEDICAL: 'Medical', EXAMS: 'Exam' };
+const IMPORT_SKIP = { VIDEO: 'not a PDF or photo' };
 const IMPORT_OK_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'webp'];
-const splitCamel = s => String(s).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/-/g, ' - ').replace(/\s+/g, ' ').trim();
+const splitCamel = s => String(s).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/(\d)([A-Z])/g, '$1 $2').replace(/-/g, ' - ').replace(/\s+/g, ' ').trim();
 const isDateTok = t => /^(AY|FY)?\d{4}(-\d{2}){0,2}$/i.test(t) || /^(YYYY|Undated)$/i.test(t);
 function fyFromToken(t) {
   let m;
@@ -5291,22 +5392,26 @@ function parseDocName(name) {
   const pre = tk[0].toUpperCase();
   if (IMPORT_SKIP[pre]) return { skip: IMPORT_SKIP[pre] };
   if (tk.some(t => /^(Dup\d*|Copy\d*)$/i.test(t))) return { skip: 'duplicate copy' };
-  if (tk.some(t => /^(Unknown|Unlabeled|Unlabelled)$/i.test(t))) return { skip: 'unknown / unlabelled' };
-  const type = IMPORT_MAP[pre] || 'Other';
-  let rest = tk.slice(1), who = '', fy = null;
-  const nameTok = t => /^[A-Za-z]+(-[A-Za-z]+)*$/.test(t) && !/[a-z][A-Z]/.test(t);
-  if ((rest.length >= 2 || pre === 'SIGNATURE') && rest.length && nameTok(rest[0])) {
-    who = rest.shift().split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' & ');
-  }
+  const type = IMPORT_MAP[pre] || 'Other', noPerson = ['CASE', 'EVIDENCE', 'UNKNOWN'].includes(pre);
+  let rest = tk.slice(1), who = '', fy = null, unknown = false, unsorted = false;
+  rest = rest.filter(t => { if (/^(Unknown|ThirdParty|Unconfirmed)$/i.test(t)) { unknown = unknown || /^Unknown$/i.test(t); return false; } if (/^(Unlabeled|Unlabelled)$/i.test(t)) { unsorted = true; return false; } return true; });
+  const nameTok = t => (/^[A-Z][a-z]+(-[A-Z][a-z]+)*$/.test(t) || /^(family|parents)$/i.test(t) || !!PERSON_ALIAS[t.toLowerCase()]) && !/^(Photo|Picsart|WhatsApp|Scan|Doc|Passport)$/i.test(t);
+  if (!noPerson && (rest.filter(t => !isDateTok(t)).length >= 2 || pre === 'SIGNATURE' || unsorted) && rest.length && nameTok(rest[0])) who = normWho(rest.shift().replace(/-/g, ' & '));
+  const junk = t => /^(New|Old\d*|\d{1,2}|Final|Draft|All)$/i.test(t);
+  while (rest.length > 1 && junk(rest[rest.length - 1])) rest.pop();
   if (rest.length && isDateTok(rest[rest.length - 1])) fy = fyFromToken(rest.pop());
-  while (rest.length > 1 && /^(New|Old\d*|\d{1,2}|Final|Draft)$/i.test(rest[rest.length - 1])) rest.pop();
+  while (rest.length && isDateTok(rest[rest.length - 1])) rest.pop();
+  while (rest.length > 1 && junk(rest[rest.length - 1])) rest.pop();
+  if (rest.length === 1 && /^\d{1,2}$/.test(rest[0])) rest = [];
   let head = rest.join(' ');
   if (pre === 'TAX' && rest.length) { head = rest[0].split('-')[0]; if (/^ITR\d*$/i.test(head)) head = 'ITR'; }
   let title = rest.length ? splitCamel(head) : '';
-  if (pre === 'PHOTO') title = /photo$/i.test(title) ? title : (title || 'Photo') + ' photo';
+  if (unsorted) title = 'Unsorted photos';
+  else if (pre === 'PHOTO') title = /photo$/i.test(title) ? title : (title || 'Photo') + ' photo';
   if (pre === 'SIGNATURE') title = 'Signature';
-  if (!title) title = splitCamel(base);
-  return { type, who, fy, title, label: splitCamel(tk.slice(1).join(' ')) || base };
+  if (!title) title = splitCamel(base.replace(/_/g, ' '));
+  if (unknown && !unsorted) title += ' — unknown person';
+  return { type: unsorted ? 'Photo & Signature' : type, who, fy, title, label: splitCamel(tk.slice(1).join(' ')) || base };
 }
 function planImport(files) {
   const groups = new Map(), skipped = [];
@@ -5316,7 +5421,7 @@ function planImport(files) {
     if (declined.has(f.id)) { skipped.push({ name: f.name, why: 'you chose not to import', declined: true }); return; }
     const p = parseDocName(f.name);
     if (p.skip) { skipped.push({ name: f.name, why: p.skip }); return; }
-    const key = [p.type, p.who, p.title.toLowerCase()].join('|');
+    const key = [p.type, docOwners(p).join('&'), p.title.toLowerCase()].join('|');
     if (!groups.has(key)) groups.set(key, { key, type: p.type, who: p.who, title: p.title, files: [] });
     groups.get(key).files.push({ ...f, fy: p.fy, label: p.label });
   });
@@ -5325,7 +5430,7 @@ function planImport(files) {
     g.byYear = g.files.length > 1 && ys.length > 0;
     g.fy = !g.byYear && ys.length === 1 ? ys[0] : null;
     g.years = ys.sort().reverse();
-    g.into = all('doc').find(d => d.title.toLowerCase() === g.title.toLowerCase() && (d.who || '') === g.who) || null;
+    g.into = all('doc').find(d => d.title.toLowerCase() === g.title.toLowerCase() && docOwners(d).join('&') === docOwners(g).join('&') && d.docType === g.type) || null;
     return g;
   }).sort((a, b) => a.type.localeCompare(b.type) || a.who.localeCompare(b.who) || a.title.localeCompare(b.title));
   return { list, skipped };
@@ -5333,9 +5438,11 @@ function planImport(files) {
 let importPlan = null;
 function openImport() {
   Sheets.closeAll();
-  $('impBody').innerHTML = `<p class="hint">Reads the Docs folder set as <b>IMPORT_FOLDER_ID</b> in your Apps Script (v18), and copies the chosen files into your Register folder. Your Docs folder is not changed.</p>
+  $('impBody').innerHTML = `<p class="hint">Reads the Docs folder set as <b>IMPORT_FOLDER_ID</b> in your Apps Script (v18), and moves the chosen files into your Register folder (no second copy). Files without a person go under Rahul.</p>
+    <button class="btn ghost block hidden" id="impTidy" style="margin-bottom:8px"></button>
     <button class="btn block" id="impRead">Read the Docs folder</button><div class="msg" id="impMsg"></div><div id="impList"></div>`;
   $('impRead').addEventListener('click', readImport);
+  $('impTidy').addEventListener('click', tidyImported); renderTidyBtn();
   Sheets.open('shImport');
 }
 async function readImport() {
@@ -5352,7 +5459,7 @@ async function readImport() {
   const byWhy = {}; P.skipped.forEach(s => { (byWhy[s.why] = byWhy[s.why] || []).push(s.name); });
   $('impList').innerHTML = `<div class="btn-row" style="margin:8px 0"><button class="btn ghost small" id="impAll">Tick all</button><button class="btn ghost small" id="impNone">Untick all</button></div>
     <div class="group">${P.list.map((g, i) => `<label class="imp-row"><input type="checkbox" data-imp="${i}" checked><span><b>${esc(g.title)}</b>${g.who ? ' · ' + esc(g.who) : ''}
-      <small>${esc(g.type)} · ${g.files.length} file${g.files.length > 1 ? 's' : ''}${g.byYear ? ' · by year: ' + g.years.join(', ') : g.fy ? ' · FY ' + g.fy : ''}${g.into ? ' · adds to your existing document' : ''}</small>
+      <small>${esc(docOwners({ who: g.who }).join(' & '))} › ${esc(docGroup({ docType: g.type }))} · ${esc(g.type)} · ${g.files.length} file${g.files.length > 1 ? 's' : ''}${g.byYear ? ' · by year: ' + g.years.join(', ') : g.fy ? ' · FY ' + g.fy : ''}${g.into ? ' · adds to your existing document' : ''}</small>
       <small>${g.files.map(f => esc(f.name)).join('<br>')}</small></span></label>`).join('')}</div>
     <details class="fold"><summary>Skipped (${P.skipped.length})</summary>${Object.entries(byWhy).map(([w, l]) => `<div class="imp-skip"><b>${esc(w)}</b> (${l.length}): ${l.map(esc).join(', ')}</div>`).join('')}</details>
     ${P.skipped.some(s => s.declined) ? '<button class="linkbtn" id="impUndo" style="margin:6px 4px">Offer the files I said no to again</button>' : ''}
@@ -5375,18 +5482,18 @@ async function runImport() {
   const total = pick.reduce((s, g) => s + g.files.length, 0); let n = 0, ok = 0; const bad = [];
   for (const g of pick) {
     let d = g.into && records[g.into.id] && !records[g.into.id].deleted ? records[g.into.id] : null;
-    if (!d) d = put({ id: uid('doc'), type: 'doc', title: g.title, who: g.who || '', docType: g.type, number: '', expiry: null, issuer: '', notes: '', folder: '', fy: g.fy || null, byYear: g.byYear, deleted: false }, { render: false });
+    if (!d) d = put({ id: uid('doc'), type: 'doc', title: g.title, who: normWho(g.who), docType: g.type, number: '', expiry: null, issuer: '', notes: '', folder: '', fy: g.fy || null, byYear: g.byYear, deleted: false }, { render: false });
     else if (g.byYear && !d.byYear) { d.byYear = true; put(d, { render: false }); }
     for (let i = 0; i < g.files.length; i += 5) {
       const batch = g.files.slice(i, i + 5);
       m.className = 'msg'; m.textContent = `Copying ${Math.min(n + batch.length, total)} of ${total}… keep the app open.`;
       let res;
-      try { res = await Sync.call('driveCopyIn', { files: batch.map(f => ({ id: f.id, name: f.name })) }, 300000); }
+      try { res = await Sync.call('driveCopyIn', { move: true, files: batch.map(f => ({ id: f.id, name: f.name })) }, 300000); }
       catch (e) { batch.forEach(f => bad.push(f.name + ': ' + e.message)); n += batch.length; continue; }
       (res.done || []).forEach(r => {
         const f = batch.find(x => x.id === r.id); n++;
         if (!r.fileId) { bad.push((f ? f.name : r.id) + ': ' + (r.error || 'failed')); return; }
-        put({ id: uid('df'), type: 'docfile', docId: d.id, name: f.name, mime: r.mime || f.mime, bytes: r.bytes || f.size || 0, fileId: r.fileId, srcId: f.id, locked: false,
+        put({ id: uid('df'), type: 'docfile', docId: d.id, name: f.name, mime: r.mime || f.mime, bytes: r.bytes || f.size || 0, fileId: r.fileId, srcId: f.id, srcGone: r.fileId === f.id || undefined, locked: false,
               fy: d.byYear ? (f.fy || undefined) : undefined, deleted: false }, { render: false });
         ok++;
       });
@@ -5395,7 +5502,7 @@ async function runImport() {
   scheduleRender(); go.disabled = false;
   m.className = bad.length ? 'msg err' : 'msg ok';
   m.textContent = `Imported ${ok} of ${total} files into ${pick.length} documents.` + (bad.length ? ' Not copied: ' + bad.slice(0, 8).join('; ') + (bad.length > 8 ? ` … and ${bad.length - 8} more.` : '') : ' Lock sensitive ones (Aadhaar, PAN…) from each document\'s editor.');
-  toast(`Imported ${ok} files.`);
+  toast(`Imported ${ok} files.`); renderTidyBtn();
   ImpCheck.set({ at: Date.now(), n: bad.length });
 }
 
@@ -5427,6 +5534,201 @@ const ImpCheck = {
   },
   refresh(files) { this.set({ at: Date.now(), n: this.newCount(files) }); }
 };
+
+/* ---------- v2.11: note folder picker (editor and quick add) ---------- */
+function folderPick(sel, inp, cur, list, onSet) {
+  const fs = [...new Set([...list, cur].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = `<option value="">No folder</option>${fs.map(f => `<option value="${esc(f)}"${f === cur ? ' selected' : ''}>${esc(f)}</option>`).join('')}<option value="__new">＋ New folder…</option>`;
+  inp.classList.add('hidden'); inp.value = '';
+  sel.onchange = () => { if (sel.value === '__new') { inp.classList.remove('hidden'); inp.focus(); } else { inp.classList.add('hidden'); onSet && onSet(sel.value); } };
+  const commit = () => { const v = inp.value.trim(); if (!v) return; folderPick(sel, inp, v, list.concat(v), onSet); onSet && onSet(v); };
+  inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } };
+  inp.onblur = commit;
+}
+const pickedFolder = (sel, inp) => sel.value === '__new' ? inp.value.trim() : sel.value;
+function neFolderInit() {
+  const n = records[editNoteId]; if (!n) return;
+  const list = [...new Set(all(n.type).map(noteFolder).filter(Boolean))];
+  folderPick($('neFolder'), $('neFolderNew'), noteFolder(n), list, v => { const x = records[editNoteId]; if (!x || noteFolder(x) === v) return; x.folder = v; put(x, { render: false }); scheduleRender(); toast(v ? 'Moved to ' + v + '.' : 'Removed from folder.'); });
+  $('neMic').classList.toggle('hidden', n.type === 'snote');
+}
+
+/* ---------- v2.11: voice typing ---------- */
+const Dictate = {
+  SR: window.SpeechRecognition || window.webkitSpeechRecognition,
+  cur: null,
+  stop() { if (this.cur) { try { this.cur.rec.stop(); } catch (e) {} } },
+  start(el, btn, insert) {
+    if (this.cur) { const same = this.cur.btn === btn; this.stop(); if (same) return; }
+    if (!this.SR) { toast('Voice typing is not available here — use the 🎤 on the iPhone keyboard instead.', null, null, 6000); return; }
+    const rec = new this.SR(); rec.lang = prefs.dictLang || 'en-IN'; rec.continuous = true; rec.interimResults = true;
+    const live = btn.closest('.sheet-body') && btn.closest('.sheet-body').querySelector('.mic-live');
+    this.cur = { rec, btn }; btn.classList.add('on'); btn.setAttribute('aria-pressed', 'true');
+    rec.onresult = e => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i], txt = r[0].transcript.trim(); if (!txt) continue;
+        if (r.isFinal) { const v = el.value, s = el.selectionStart != null ? el.selectionStart : v.length;
+          const pre = s > 0 && !/\s$/.test(v.slice(0, s)) ? ' ' : ''; insert(pre + txt); }
+        else interim += txt + ' ';
+      }
+      if (live) live.textContent = interim ? '🎤 ' + interim : '';
+    };
+    rec.onerror = e => { RLOG.warn('dictation', e.error);
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Microphone blocked. Allow it for this app (iPhone Settings → Apps → Safari → Microphone), or use the keyboard 🎤.', null, null, 7000);
+      else if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Voice typing stopped (' + e.error + ').'); };
+    rec.onend = () => { btn.classList.remove('on'); btn.setAttribute('aria-pressed', 'false'); if (live) live.textContent = ''; if (this.cur && this.cur.rec === rec) this.cur = null; };
+    try { rec.start(); } catch (e) { rec.onend(); toast('Could not start voice typing.'); }
+  }
+};
+function insertAtCursor(el, txt) {
+  const s = el.selectionStart != null ? el.selectionStart : el.value.length, e = el.selectionEnd != null ? el.selectionEnd : s;
+  el.setRangeText(txt, s, e, 'end'); el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function addMic(el) {
+  if (!el || el.parentElement.classList.contains('has-mic')) return;
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'mic-btn'; b.textContent = '🎤'; b.setAttribute('aria-label', 'Speak to type');
+  const w = document.createElement('div'); w.className = 'has-mic'; el.parentNode.insertBefore(w, el); w.appendChild(el); w.appendChild(b);
+  b.addEventListener('mousedown', e => e.preventDefault());
+  b.addEventListener('click', () => Dictate.start(el, b, t => insertAtCursor(el, t)));
+}
+{ const sc = Sheets.close.bind(Sheets); Sheets.close = (id, silent) => { if (Dictate.cur && $(id) && $(id).contains(Dictate.cur.btn)) Dictate.stop(); return sc(id, silent); }; }
+
+/* ---------- v2.11: scan pages to a PDF ---------- */
+const Scan = {
+  pages: [], mode: 'doc', docId: null,
+  open(docId) {
+    this.pages = []; this.docId = docId || null;
+    $('scTitleW').classList.toggle('hidden', !!docId);
+    $('scTitle').value = 'Scan ' + new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    $('scMsg').textContent = ''; this.render();
+    chipGroup($('scMode'), [{ v: 'doc', l: 'Document' }, { v: 'bw', l: 'Black & white' }, { v: 'orig', l: 'Original' }], this.mode, v => { this.mode = v; this.render(); });
+    Sheets.open('shScan');
+  },
+  async add(files) {
+    for (const f of files) {
+      try {
+        const url = URL.createObjectURL(f), img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = url; });
+        const k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); this.pages.push({ src: c, rot: 0 });
+      } catch (e) { toast('That photo could not be read.'); }
+    }
+    this.render();
+  },
+  process(p, maxSide) {
+    const r = p.rot % 360, sw = p.src.width, sh = p.src.height, k = maxSide ? Math.min(1, maxSide / Math.max(sw, sh)) : 1;
+    const w = Math.round(sw * k), h = Math.round(sh * k), c = document.createElement('canvas'), x = c.getContext('2d');
+    c.width = r % 180 ? h : w; c.height = r % 180 ? w : h;
+    x.translate(c.width / 2, c.height / 2); x.rotate(r * Math.PI / 180); x.drawImage(p.src, -w / 2, -h / 2, w, h); x.setTransform(1, 0, 0, 1, 0, 0);
+    if (this.mode !== 'orig') scanFilter(x, c.width, c.height, this.mode);
+    return c;
+  },
+  render() {
+    $('scPages').innerHTML = this.pages.map((p, i) => `<div class="scan-page"><img src="${this.process(p, 260).toDataURL('image/jpeg', .7)}" alt="Page ${i + 1}"><button class="sp-b sp-rot" data-sprot="${i}" aria-label="Rotate page ${i + 1}">↻</button><button class="sp-b sp-del" data-spdel="${i}" aria-label="Remove page ${i + 1}">✕</button><span>${i + 1}</span></div>`).join('');
+    $$('[data-sprot]').forEach(b => b.addEventListener('click', () => { this.pages[+b.dataset.sprot].rot += 90; this.render(); }));
+    $$('[data-spdel]').forEach(b => b.addEventListener('click', () => { this.pages.splice(+b.dataset.spdel, 1); this.render(); }));
+    $('scSave').disabled = !this.pages.length;
+    $('scCount').textContent = this.pages.length ? `${this.pages.length} page${this.pages.length > 1 ? 's' : ''}` : 'No pages yet — tap Add page and take a photo of each page.';
+  },
+  async save() {
+    if (!this.pages.length) return;
+    $('scMsg').className = 'msg'; $('scMsg').textContent = 'Making the PDF…';
+    await new Promise(r => setTimeout(r, 30));
+    const pages = this.pages.map(p => { const c = this.process(p, 2000), d = c.toDataURL('image/jpeg', this.mode === 'orig' ? .82 : .78); return { bytes: unb64(d.slice(d.indexOf(',') + 1)), w: c.width, h: c.height }; });
+    const pdf = jpegsToPdf(pages), file = new File([pdf], 'scan.pdf', { type: 'application/pdf' });
+    if (file.size > DOCFILE_MAX) { $('scMsg').className = 'msg err'; $('scMsg').textContent = 'Too large for one file — save fewer pages at a time.'; return; }
+    let id = this.docId;
+    if (!id) {
+      const d = put({ id: uid('doc'), type: 'doc', title: $('scTitle').value.trim() || 'Scan', who: docPath.who && docPath.who !== DOC_ME ? docPath.who : '', docType: docNewType(), number: '', expiry: null, issuer: '', notes: '', folder: '', fy: null, deleted: false });
+      id = d.id;
+    }
+    Sheets.close('shScan', true);
+    if (!Sheets.isOpen('shDoc') || editDocId !== id) openDoc(id);
+    await addDocFiles(id, [file]);
+  }
+};
+function scanFilter(x, w, h, mode) {
+  const im = x.getImageData(0, 0, w, h), p = im.data, n = w * h, g = new Float32Array(n);
+  for (let i = 0; i < n; i++) g[i] = .299 * p[i * 4] + .587 * p[i * 4 + 1] + .114 * p[i * 4 + 2];
+  if (mode === 'bw') {                                         // adaptive threshold against the local average (handles shadows)
+    const I = new Float64Array((w + 1) * (h + 1)), R = Math.max(8, Math.round(Math.min(w, h) / 16));
+    for (let y = 0; y < h; y++) { let s = 0; for (let xx = 0; xx < w; xx++) { s += g[y * w + xx]; I[(y + 1) * (w + 1) + xx + 1] = I[y * (w + 1) + xx + 1] + s; } }
+    for (let y = 0; y < h; y++) for (let xx = 0; xx < w; xx++) {
+      const x0 = Math.max(0, xx - R), x1 = Math.min(w, xx + R + 1), y0 = Math.max(0, y - R), y1 = Math.min(h, y + R + 1);
+      const m = (I[y1 * (w + 1) + x1] - I[y0 * (w + 1) + x1] - I[y1 * (w + 1) + x0] + I[y0 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0));
+      const v = g[y * w + xx] < m * 0.88 ? 0 : 255, j = (y * w + xx) * 4; p[j] = p[j + 1] = p[j + 2] = v;
+    }
+  } else {                                                     // "Document": grey, stretched so paper is white and ink is dark
+    const hist = new Uint32Array(256); for (let i = 0; i < n; i++) hist[g[i] | 0]++;
+    let lo = 0, hi = 255, acc = 0; for (; lo < 255; lo++) { acc += hist[lo]; if (acc > n * .02) break; }
+    acc = 0; for (; hi > 0; hi--) { acc += hist[hi]; if (acc > n * .10) break; }
+    const span = Math.max(20, hi - lo);
+    for (let i = 0; i < n; i++) { let v = (g[i] - lo) / span; v = Math.max(0, Math.min(1, v)); v = Math.pow(v, 1.4) * 255; const j = i * 4; p[j] = p[j + 1] = p[j + 2] = v; }
+  }
+  x.putImageData(im, 0, 0);
+}
+/* smallest possible PDF: one JPEG per page, page width A4 (595 pt), height from the photo */
+function jpegsToPdf(pages) {
+  const te2 = new TextEncoder(), parts = [], offs = []; let len = 0;
+  const push = b => { if (typeof b === 'string') b = te2.encode(b); parts.push(b); len += b.length; };
+  const obj = (id, body) => { offs[id] = len; push(`${id} 0 obj\n${body}\nendobj\n`); };
+  push(new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 226, 227, 207, 211, 10]));
+  const n = pages.length, kids = pages.map((_, i) => `${3 + i * 3} 0 R`).join(' ');
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2, `<< /Type /Pages /Kids [${kids}] /Count ${n} >>`);
+  pages.forEach((pg, i) => {
+    const P = 3 + i * 3, W = 595.28, H = +(W * pg.h / pg.w).toFixed(2), cs = `q ${W} 0 0 ${H} 0 0 cm /Im0 Do Q`;
+    obj(P, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /Im0 ${P + 1} 0 R >> >> /Contents ${P + 2} 0 R >>`);
+    offs[P + 1] = len; push(`${P + 1} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${pg.w} /Height ${pg.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${pg.bytes.length} >>\nstream\n`);
+    push(pg.bytes); push('\nendstream\nendobj\n');
+    obj(P + 2, `<< /Length ${cs.length} >>\nstream\n${cs}\nendstream`);
+  });
+  const total = 3 + n * 3, x0 = len;
+  let xref = `xref\n0 ${total}\n0000000000 65535 f \n`; for (let i = 1; i < total; i++) xref += String(offs[i]).padStart(10, '0') + ' 00000 n \n';
+  push(xref + `trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${x0}\n%%EOF\n`);
+  const out = new Uint8Array(len); let o = 0; parts.forEach(b => { out.set(b, o); o += b.length; }); return out;
+}
+$('scAdd').addEventListener('click', () => $('scFile').click());
+$('scFile').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) Scan.add(f); });
+$('scPick').addEventListener('click', () => $('scFile2').click());
+$('scFile2').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) Scan.add(f); });
+$('scSave').addEventListener('click', () => Scan.save().catch(e => { RLOG.error('scan', e); $('scMsg').className = 'msg err'; $('scMsg').textContent = 'Could not make the PDF: ' + e.message; }));
+$('doScanBtn').addEventListener('click', () => Scan.open(editDocId));
+$('docScanBtn').addEventListener('click', () => Scan.open(null));
+
+/* ---------- v2.11: clean imported originals out of the Docs folder (Code.gs v19) ---------- */
+const tidyList = () => all('docfile').filter(f => f.srcId && f.srcId !== f.fileId && !f.srcGone && records[f.docId] && !records[f.docId].deleted);
+async function tidyImported() {
+  const L = tidyList(), m = $('impMsg');
+  if (!L.length) { toast('Nothing to clean — no imported originals are left in the Docs folder.'); return; }
+  if (!confirm(`Remove ${L.length} files from your Docs folder that are already in Register?\n\nOnly files Register has a copy of are touched. They go to Google Drive's Trash (recoverable for 30 days).`)) return;
+  let gone = 0, miss = 0; const bad = [];
+  for (let i = 0; i < L.length; i += 50) {
+    const batch = L.slice(i, i + 50);
+    m.className = 'msg'; m.textContent = `Cleaning ${Math.min(i + batch.length, L.length)} of ${L.length}…`;
+    let res;
+    try { res = await Sync.call('driveTidyImport', { ids: batch.map(f => f.srcId) }, 300000); }
+    catch (e) { m.className = 'msg err'; m.textContent = /unknown action/.test(e.message) ? 'Your Apps Script is older than v19. Paste Code.gs v19 and redeploy.' : e.message; return; }
+    (res.done || []).forEach(r => { const f = batch.find(x => x.srcId === r.id); if (!f) return;
+      if (r.ok || r.missing) { f.srcGone = true; put(f, { render: false }); r.ok ? gone++ : miss++; } else bad.push(f.name + ': ' + (r.error || 'refused')); });
+  }
+  m.className = bad.length ? 'msg err' : 'msg ok';
+  m.textContent = `Moved ${gone} file${gone === 1 ? '' : 's'} to Drive's Trash${miss ? `, ${miss} were already gone` : ''}.` + (bad.length ? ' Not touched: ' + bad.slice(0, 6).join('; ') : '');
+  renderTidyBtn();
+}
+function renderTidyBtn() { const b = $('impTidy'); if (!b) return; const n = tidyList().length; b.classList.toggle('hidden', !n); b.textContent = `🧹 Remove ${n} already-imported file${n === 1 ? '' : 's'} from the Docs folder`; }
+
+/* ---------- v2.11: Face ID helpers ---------- */
+async function bioDiag() {
+  const out = [];
+  if (!window.PublicKeyCredential) return 'This browser has no passkey support.';
+  try { if (!(await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())) out.push('No Face ID / Touch ID / Windows Hello found on this device.'); } catch (e) {}
+  try { if (PublicKeyCredential.getClientCapabilities) { const c = await PublicKeyCredential.getClientCapabilities(); if (c && c['extension:prf'] === false) out.push('This browser cannot do passkey PRF (needs iOS 18+ Safari / home-screen app).'); } } catch (e) {}
+  return out.join(' ');
+}
+$('neMic').addEventListener('click', () => Dictate.start(ta(), $('neMic'), txt => insertText(txt)));
+addMic($('teNotes'));
 $('setImportDocs').addEventListener('click', openImport);
 $('docImportBtn').addEventListener('click', openImport);
 
@@ -5587,7 +5889,8 @@ function dueChips(el, val, onPick) {
   chipGroup(el, opts, opts.some(o => o.v === val) ? val : 'pick', v => onPick(v));
 }
 
-function renderAddForm(focus) {
+function renderAddForm(focus) { Dictate.stop(); renderAddForm0(focus); ['afTitle', 'afBody'].forEach(i => { if ($(i) && addKind !== 'money') addMic($(i)); }); }
+function renderAddForm0(focus) {
   const f = $('addForm'); Object.keys(AF).forEach(k => delete AF[k]);
   const k = addKind;
   if (k === 'task') {
@@ -5618,12 +5921,13 @@ function renderAddForm(focus) {
     f.innerHTML = `<div class="field"><input id="afTitle" placeholder="Title (optional)" autocomplete="off"></div>
       <div class="field"><textarea id="afBody" rows="7" placeholder="Write or paste anything… markdown works"></textarea></div>
       <div class="btn-row" style="margin-top:0"><button class="btn ghost small" id="afPaste">📋 Paste from clipboard</button><button class="btn ghost small" id="afFull">✎ Open full editor</button></div>
-      ${activeFolder !== '__all__' ? `<p class="hint">Goes into folder “${esc(activeFolder)}”.</p>` : ''}`;
+      <div class="field"><label>Folder</label><div class="ne-folder" style="margin:0"><select id="afFolder" aria-label="Folder"></select><input id="afFolderNew" class="hidden" placeholder="New folder name"></div></div>`;
+    folderPick($('afFolder'), $('afFolderNew'), activeFolder !== '__all__' ? activeFolder : '', folderList(), null);
     $('afPaste').addEventListener('click', async () => {
       try { const t = await navigator.clipboard.readText(); if (t) { $('afBody').value += ($('afBody').value ? '\n' : '') + t; toast('Pasted.'); } else toast('Clipboard is empty.'); }
       catch (e) { $('afBody').focus(); toast('Tap and hold in the box, then Paste.'); }
     });
-    $('afFull').addEventListener('click', () => { const t = $('afBody').value, ti = $('afTitle').value; Sheets.close('shAdd', true); newNote(t, ti || null); });
+    $('afFull').addEventListener('click', () => { const t = $('afBody').value, ti = $('afTitle').value; Sheets.close('shAdd', true); newNote(t, ti || null, true, pickedFolder($('afFolder'), $('afFolderNew'))); });
   } else if (k === 'date') {
     f.innerHTML = `<div class="field"><input id="afTitle" placeholder="e.g. Car insurance renewal" autocomplete="off"></div>
       <div class="field"><label>Date</label><input type="date" id="afDate"></div>
@@ -5643,9 +5947,9 @@ function renderAddForm(focus) {
       <div class="field"><label>Type</label><div class="wrapchips" id="afType"></div></div>
       <div class="grid2"><div class="field"><label>Number / ID</label><input id="afNum" autocapitalize="characters"></div>
         <div class="field"><label>Expiry (optional)</label><input type="date" id="afDate"></div></div>
-      <div class="grid2"><div class="field"><label>Belongs to</label><input id="afDocWho" list="afWhoDl" autocomplete="off" placeholder="Rahul, Ruchi…"><datalist id="afWhoDl">${docPeople().map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
+      <div class="grid2"><div class="field"><label>Belongs to</label><input id="afDocWho" list="afWhoDl" autocomplete="off" placeholder="Blank = Rahul" value="${esc(docPath.who && docPath.who !== DOC_ME ? docPath.who : '')}"><datalist id="afWhoDl">${docPeople().map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
         <div class="field"><label>Year (FY, optional)</label><select id="afFy">${fyOptions('', '— none —')}</select></div></div>`;
-    AF.type = 'Insurance'; chipGroup($('afType'), DOC_TYPES, 'Insurance', v => AF.type = v, t => DOC_COLORS[t]);
+    AF.type = docNewType(); chipGroup($('afType'), DOC_TYPES, AF.type, v => AF.type = v, t => DOC_COLORS[t]);
   } else if (k === 'money') {
     const last = all('fin').sort((a, b) => b.createdAt - a.createdAt)[0];
     const descs = [...new Set(all('fin').sort((a, b) => b.createdAt - a.createdAt).map(e => e.desc).filter(Boolean))].slice(0, 40);
@@ -5699,7 +6003,7 @@ function saveAdd(another) {
   } else if (k === 'note') {
     const ti = v('afTitle'), body = $('afBody').value;
     if (!ti && !body.trim()) { $('afBody').focus(); return; }
-    newNote(body, ti || null, false); toast('Note saved.');
+    const fo = pickedFolder($('afFolder'), $('afFolderNew')); newNote(body, ti || null, false, fo); toast(fo ? 'Note saved in ' + fo + '.' : 'Note saved.');
   } else if (k === 'date') {
     const l = v('afTitle'), d = v('afDate');
     if (!l) { $('afTitle').focus(); return; } if (!d) { toast('Pick the date.'); $('afDate').focus(); return; }
@@ -5711,7 +6015,7 @@ function saveAdd(another) {
     toast('Bill added.');
   } else if (k === 'doc') {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
-    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, who: v('afDocWho'), deleted: false });
+    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, who: normWho(v('afDocWho')), deleted: false });
     toast(docFolderForNew() ? 'Document added to ' + docFolderForNew() + '.' : 'Document added.');
   } else if (k === 'money') {
     const amt = calcAmount(v('afAmt'));
@@ -5746,7 +6050,7 @@ function showTab(tab) {
   renderAll();
 }
 $$('.tab').forEach(t => t.addEventListener('click', () => {
-  if (t.dataset.tab === currentTab) { $('main').scrollTo({ top: 0, behavior: 'smooth' }); if (currentTab === 'notes' && activeFolder !== '__all__') { activeFolder = '__all__'; renderNotes(); } if (currentTab === 'docs' && activeDocFolder !== '__all__') { activeDocFolder = '__all__'; renderDocs(); } return; }
+  if (t.dataset.tab === currentTab) { $('main').scrollTo({ top: 0, behavior: 'smooth' }); if (currentTab === 'notes' && activeFolder !== '__all__') { activeFolder = '__all__'; renderNotes(); } if (currentTab === 'docs' && (docPath.who || activeDocFolder !== '__all__')) { activeDocFolder = '__all__'; docPath = { who: null, grp: null }; renderDocs(); } return; }
   showTab(t.dataset.tab);
 }));
 function renderAll() {
@@ -5771,7 +6075,7 @@ function hl(text, q) {
 }
 function runSearch() {
   const q = $('searchIn').value.trim().toLowerCase(), box = $('searchRes');
-  if (!q) { box.innerHTML = '<div class="empty">Type to search tasks, steps, notes, dates and documents' + (finUnlocked() ? ' — and Money' : '') + '.</div>'; return; }
+  if (!q) { box.innerHTML = '<div class="empty">Type to search tasks, steps, notes, dates and documents (try “aadhar ruchi”)' + (finUnlocked() ? ' — and Money' : '') + '.</div>'; return; }
   const hits = [], has = s => String(s || '').toLowerCase().includes(q);
   all('task').forEach(t => {
     if (has(t.title)) hits.push({ k: 'Task', id: t.id, t: hl(t.title, q), s: t.status === 'done' ? 'done' : relDay(t.dueDate) });
@@ -5781,7 +6085,17 @@ function runSearch() {
   if (finUnlocked()) all('snote').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder)) hits.push({ k: 'Private', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: 'private note' }); });
   all('note').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder)) hits.push({ k: 'Note', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: n.folder || '' }); });
   all('date').forEach(d => { if (has(d.label)) hits.push({ k: 'Date', id: d.id, t: hl(d.label, q), s: fmtDate(d.when) }); });
-  all('doc').forEach(d => { if (has(d.title) || has(d.number) || has(d.notes) || has(d.issuer) || has(d.who)) hits.push({ k: 'Doc', id: d.id, t: has(d.title) ? hl(d.title, q) : esc(d.title) + '<br><small class="muted">' + (has(d.number) ? 'number ' + esc(docNumShown(d)) : hl(has(d.notes) ? d.notes : d.issuer, q)) + '</small>', s: d.docType }); });
+  { const norm = s => String(s || '').toLowerCase().replace(/aadhaar/g, 'aadhar').replace(/licen[cs]e/g, 'licence');
+    const toks = norm(q).split(/\s+/).filter(Boolean), docHits = [];
+    all('doc').forEach(d => {
+      const own = docOwners(d), files = docFilesOf(d.id).map(f => f.name).join(' ');
+      const hay = norm([d.title, own.join(' '), d.who, d.docType, docGroup(d), d.number, d.numTail, d.notes, d.issuer, d.fy ? 'fy ' + d.fy + ' ' + d.fy : '', docYears(d).join(' '), files].join(' | '));
+      if (!toks.every(tk => hay.includes(tk) || (PERSON_ALIAS[tk] && hay.includes(PERSON_ALIAS[tk].toLowerCase())))) return;
+      const sub = [docGroup(d) + ' › ' + d.docType, d.fy ? 'FY ' + d.fy : '', docNumShown(d)].filter(Boolean).join(' · ');
+      docHits.push({ k: 'Doc', id: d.id, own, t: hl(d.title, toks[0]) + ` · <b>${esc(own.join(' & '))}</b><br><small class="muted">${esc(sub)}</small>`, s: own.join(' & ') });
+    });
+    const ordL = orderPeople(docHits.map(h => h.own[0]));
+    docHits.sort((a, b) => ordL.indexOf(a.own[0]) - ordL.indexOf(b.own[0])).forEach(h => hits.push(h)); }
   if (finUnlocked()) all('fin').forEach(f => { if (has(f.desc) || has(f.who)) hits.push({ k: '₹', id: f.id, t: hl(f.desc + (f.who ? ' · ' + f.who : ''), q), s: fmtMoney(f.amount) }); });
   box.innerHTML = hits.length ? hits.slice(0, 80).map(h => `<button class="sr" data-k="${h.k}" data-id="${h.id}"><span class="k">${h.k}</span><span class="t" style="white-space:normal">${h.t}</span><span class="s">${esc(h.s || '')}</span></button>`).join('')
     : '<div class="empty">No matches.</div>';
@@ -5874,20 +6188,27 @@ function openVault(mode) {
   $('vaSub').textContent = setup ? 'Choose an access code. Money entries are encrypted with it — if it is forgotten, they cannot be read.' : change ? 'Enter the new code twice. Everything is re-encrypted with it.' : 'Enter the access code.';
   $('vaCode2').classList.toggle('hidden', !(setup || change));
   $('vaOk').textContent = setup ? 'Set code' : change ? 'Change code' : 'Unlock';
-  $('vaBio').classList.toggle('hidden', !(vaultMode === 'unlock' && Bio.on()));
+  const bioOn = vaultMode === 'unlock' && Bio.on();
+  $('vaBio').classList.toggle('hidden', !bioOn);
   Sheets.open('shVault');
-  setTimeout(() => $('vaCode').focus(), 320);
+  if (bioOn) bioAuto(); else setTimeout(() => $('vaCode').focus(), 320);
 }
 async function vaultSubmit() {
   const c = $('vaCode').value, c2 = $('vaCode2').value, err = $('vaErr');
+  if (vaultMode === 'bioconfirm') {
+    try { await Bio.confirm(); Sheets.close('shVault', true); toast('Face ID unlock is on for this device. Next time, opening Money asks for Face ID.'); }
+    catch (e) { RLOG.warn('face id confirm', e.name, e.message); err.textContent = e.name === 'NotAllowedError' ? 'Face ID was cancelled or timed out — tap Confirm again.' : (e.message || 'Could not turn on Face ID.'); }
+    return;
+  }
   if (!c) { err.textContent = 'Enter the code.'; return; }
   if (vaultMode === 'bio') {
     const fk = records[FINKEY_ID];
     try { const k = await deriveFinKey(c, fk.salt, fk.iters); if (await aesDec(k, fk.check) !== 'register-ok') throw new Error('x'); }
     catch (e) { const w = VaultLimit.fail(); err.textContent = w ? `Incorrect code. Wait ${VaultLimit.say(w)}.` : 'Incorrect code.'; return; }
     VaultLimit.reset();
-    try { await Bio.enable(c); Sheets.close('shVault', true); toast('Face ID unlock is on for this iPhone.'); }
-    catch (e) { RLOG.warn('face id setup', e.message); err.textContent = e.name === 'NotAllowedError' ? 'Face ID cancelled.' : (e.message || 'Could not turn on Face ID.'); }
+    try { const r = await Bio.enable(c); if (r === 'confirm') { vaultMode = 'bioconfirm'; $('vaSub').textContent = 'Almost done — tap the button below and look at the phone once more.'; $('vaOk').textContent = 'Confirm with Face ID'; return; }
+      Sheets.close('shVault', true); toast('Face ID unlock is on for this device.'); }
+    catch (e) { RLOG.warn('face id setup', e.name, e.message); err.textContent = e.name === 'NotAllowedError' ? 'Face ID was cancelled or timed out. Check that iCloud Keychain (Passwords) is on, then try again.' : e.name === 'InvalidStateError' ? 'A Register passkey already exists — try again.' : (e.message || 'Could not turn on Face ID.'); }
     return;
   }
   if (vaultMode !== 'unlock') {
@@ -5961,10 +6282,12 @@ const Bio = {
       authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'preferred', userVerification: 'required' }, extensions: { prf: { eval: { first: salt } } } } });
     const ext = cred.getClientExtensionResults();
     if (!ext.prf || ext.prf.enabled === false) throw new Error('Face ID unlock is not supported on this device (needs iOS 18 or later).');
-    const out = (ext.prf.results && ext.prf.results.first) || await this.prf(cred.rawId, salt);
-    const box = await aesEnc(await this.wrapKey(out), code);
-    localStorage.setItem(this.KEY, JSON.stringify({ id: b64(cred.rawId), salt: b64(salt), box, kid: records[FINKEY_ID].kid }));
+    const p = { id: b64(cred.rawId), salt: b64(salt) };
+    if (ext.prf.results && ext.prf.results.first) { await this.finish(code, p, ext.prf.results.first); return 'done'; }
+    this.pending = { code, ...p }; return 'confirm';            // Safari needs a second tap to read the key (one Face ID per tap)
   },
+  async confirm() { const p = this.pending; if (!p) throw new Error('Start again from Settings.'); const out = await this.prf(unb64(p.id), unb64(p.salt)); await this.finish(p.code, p, out); this.pending = null; },
+  async finish(code, p, out) { const box = await aesEnc(await this.wrapKey(out), code); localStorage.setItem(this.KEY, JSON.stringify({ id: p.id, salt: p.salt, box, kid: records[FINKEY_ID].kid })); },
   async unlock() {
     const b = this.get(); if (!b) return false;
     const code = await aesDec(await this.wrapKey(await this.prf(unb64(b.id), unb64(b.salt))), b.box);
@@ -5973,16 +6296,20 @@ const Bio = {
     return ok;
   }
 };
+let bioAutoRun = false;
+function bioAuto() { bioAutoRun = true; $('vaBio').click(); }       // still inside the tap that opened Money, so Face ID may start at once
 $('vaBio').addEventListener('click', async () => {
+  const auto = bioAutoRun; bioAutoRun = false;
   const err = $('vaErr'); err.textContent = '';
   try { if (await Bio.unlock()) { VaultLimit.reset(); Sheets.close('shVault', true); afterFinanceUnlock(); } else { err.textContent = 'The code changed — enter it once, then turn Face ID on again in Settings.'; $('vaBio').classList.add('hidden'); } }
-  catch (e) { RLOG.warn('face id unlock', e.message); err.textContent = e.name === 'NotAllowedError' ? 'Face ID cancelled.' : (e.message || 'Face ID failed.'); }
+  catch (e) { RLOG.warn('face id unlock', e.name, e.message); if (auto && e.name === 'NotAllowedError') return; err.textContent = e.name === 'NotAllowedError' ? 'Face ID cancelled — tap Unlock with Face ID, or type the code.' : (e.message || 'Face ID failed.'); }
 });
 $('setBio').addEventListener('click', () => {
-  if (Bio.on()) { Bio.forget(); $('setBioV').textContent = 'Off'; toast('Face ID unlock turned off on this iPhone.'); return; }
+  if (!finUnlocked() && !Bio.on()) { toast('Open Money with your private code first, then turn this on.'); return; }
+  if (Bio.on()) { Bio.forget(); $('setBioV').textContent = 'Off'; toast('Face ID unlock turned off on this device.'); return; }
   Sheets.close('shSettings', true);
   vaultMode = 'bio'; $('vaCode').value = ''; $('vaErr').textContent = ''; $('vaCode2').classList.add('hidden'); $('vaBio').classList.add('hidden');
-  $('vaTitle').textContent = 'Face ID'; $('vaSub').textContent = 'Enter your private code once to turn on Face ID unlock on this iPhone.'; $('vaOk').textContent = 'Turn on';
+  $('vaTitle').textContent = 'Face ID'; $('vaSub').textContent = 'Enter your private code once. Then Face ID (or fingerprint / Windows Hello) opens Money on this device.'; $('vaOk').textContent = 'Turn on';
   Sheets.open('shVault'); setTimeout(() => $('vaCode').focus(), 320);
 });
 ['vaCode', 'vaCode2'].forEach(i => $(i).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); vaultSubmit(); } }));
@@ -6006,7 +6333,9 @@ $('settingsBtn').addEventListener('click', openSettings);
 function openSettings() {
   $('setDecoy').checked = !!prefs.decoyLaunch; $('setDecoyReturn').value = String(prefs.decoyReturn);
   $('setVaultCode').classList.toggle('hidden', !finUnlocked()); $('setVaultLock').classList.toggle('hidden', !finUnlocked());
-  $('setBio').classList.toggle('hidden', !finUnlocked() || !Bio.supported()); $('setBioV').textContent = Bio.on() ? 'On' : 'Off';
+  $('setBio').classList.toggle('hidden', !finConfigured() || !Bio.supported()); $('setBioV').textContent = Bio.on() ? 'On' : finUnlocked() ? 'Off' : 'Off · open Money first';
+  $('setBioDiag').classList.add('hidden'); if (Bio.supported()) bioDiag().then(s => { if (s) { $('setBioDiag').textContent = s; $('setBioDiag').classList.remove('hidden'); } });
+  $('setDictLang').value = prefs.dictLang || 'en-IN';
   $('setAutoBk').checked = !!prefs.autoBackup; $('setAutoBkInfo').textContent = AutoBackup.info();
   $('setUrl').value = prefs.cloudUrl; $('setToken').value = prefs.cloudToken; $('setDrive').value = prefs.driveFolder;
   $('setTheme').value = prefs.theme; $('setText').value = prefs.text; $('setContrast').checked = !!prefs.contrast; $('setLeft').checked = !!prefs.left;
@@ -6034,6 +6363,7 @@ $('setLeft').addEventListener('change', () => { setPref('left', $('setLeft').che
 $('setStart').addEventListener('change', () => setPref('startTab', $('setStart').value));
 $('setSteps').addEventListener('change', () => { setPref('stepsOpen', $('setSteps').checked); openSteps.clear(); scheduleRender(); });
 $('setNoteEdit').addEventListener('change', () => setPref('noteEdit', $('setNoteEdit').checked));
+$('setDictLang').addEventListener('change', () => setPref('dictLang', $('setDictLang').value));
 $('setConnect').addEventListener('click', async () => {
   const url = normaliseScriptUrl($('setUrl').value), token = $('setToken').value.trim(), msg = $('setSyncMsg');
   $('setUrl').value = url;
