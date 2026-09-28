@@ -31,6 +31,17 @@
   ],
   "shortcuts": [
     {
+      "name": "Capture (sort later)",
+      "short_name": "Capture",
+      "url": "./index.html?go=capture",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
       "name": "Add spend",
       "short_name": "Spend",
       "url": "./index.html?go=spend",

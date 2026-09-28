@@ -650,6 +650,40 @@ html.app-hidden #app{filter:blur(24px)}
 .imp-sum{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:10px 0}
 .imp-sum div{background:var(--card);border-radius:10px;padding:10px;box-shadow:var(--shadow);font-size:.8125rem}
 .imp-sum div b{display:block;font-size:1.25rem}
+
+/* v2.14 */
+#searchOpen{display:none!important}
+#searchFab{position:fixed;right:23px;bottom:calc(var(--tabbar-h) + var(--safe-b) + 86px);z-index:19;width:48px;height:48px;border-radius:50%;background:var(--card);color:var(--ink);box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:20px;display:grid;place-items:center;min-height:0;padding:0;border:1px solid var(--line)}
+html[data-hand="left"] #searchFab{right:auto;left:23px}
+html.decoy-on #searchFab{display:none}
+#lightbox{touch-action:none;overflow:hidden}
+#lightbox img{max-width:100%;max-height:100%;transform-origin:0 0;will-change:transform;user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
+#lbTools{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--safe-b) + 18px);display:flex;gap:10px;z-index:2;background:rgba(0,0,0,.62);padding:6px 10px;border-radius:30px}
+#lightbox #lbClose{background:rgba(0,0,0,.62);color:#fff;z-index:2}
+.cr-row input[type=range]{border:0;background:none;padding:0;box-shadow:none}
+#lbTools button{position:static;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:20px;min-height:0;padding:0}
+#lbPct{color:#fff;font-size:13px;align-self:center;min-width:44px;text-align:center}
+.inbox-card{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:12px 14px;margin:0 0 12px;border-left:4px solid var(--forest);font-size:.9375rem}
+.inbox-card span{flex:1}
+.ib-item{background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:10px 12px;margin:0 0 10px}
+.ib-item .ib-t{white-space:pre-wrap;font-size:.9375rem;margin:0 0 6px}
+.ib-item .ib-m{font-size:.75rem;color:var(--ink-faint);margin-bottom:8px}
+.ib-imgs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.ib-imgs img{width:72px;height:72px;object-fit:cover;border-radius:8px;background:var(--line)}
+.ib-acts{display:flex;flex-wrap:wrap;gap:6px}
+.ib-acts button{min-height:0;padding:6px 10px;font-size:.8125rem;border-radius:9px;background:rgba(128,128,128,.13)}
+.ib-acts button.danger{color:var(--seal)}
+.cap-imgs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.cap-imgs img{width:84px;height:84px;object-fit:cover;border-radius:10px}
+#crWrap{position:relative;margin:6px auto 10px;touch-action:none;background:#222;border-radius:8px;overflow:hidden}
+#crWrap canvas{display:block;width:100%;height:auto}
+#crSvg{position:absolute;inset:0;width:100%;height:100%}
+#crSvg circle{fill:rgba(255,255,255,.9);stroke:var(--forest);stroke-width:3;cursor:grab}
+#crSvg polygon{fill:rgba(46,125,80,.12);stroke:#4ade80;stroke-width:2}
+.cr-row{display:flex;align-items:center;gap:10px;font-size:.875rem}
+.cr-row input[type=range]{flex:1}
+.scan-page .sp-crop{left:40px}
+.dfile .dfedit{width:34px;height:34px;font-size:14px}
 </style>
 </head>
 <body>
@@ -684,6 +718,7 @@ html.app-hidden #app{filter:blur(24px)}
     <!-- TASKS -->
     <section class="screen" id="scr-tasks">
       <div class="large-title">Tasks <span class="sub" id="taskSub"></span></div>
+      <div id="inboxCard"></div>
       <div class="stats">
         <div class="stat"><div class="n" id="stActive">0</div><div class="l">Open</div></div>
         <div class="stat"><div class="n" id="stToday">0</div><div class="l">Done today</div></div>
@@ -778,6 +813,7 @@ html.app-hidden #app{filter:blur(24px)}
     </section>
   </main>
 
+  <button id="searchFab" aria-label="Search">🔍</button>
   <button id="fab" aria-label="Add">+</button>
 
   <nav class="tabbar" id="tabbar" aria-label="Sections">
@@ -1003,7 +1039,7 @@ html.app-hidden #app{filter:blur(24px)}
       <div class="field"><label>Type</label><div class="wrapchips" id="doType"></div></div>
       <div class="grid2">
         <div class="field"><label>Number / ID</label><input id="doNumber" autocapitalize="characters"></div>
-        <div class="field"><label>Expiry</label><input type="date" id="doExpiry"></div>
+        <div class="field"><label><select id="doDueKind" style="width:auto;padding:0;border:0;background:none;font:inherit;color:inherit"></select></label><input type="date" id="doExpiry"></div>
       </div>
       <div class="field"><label>Issuer</label><input id="doIssuer"></div>
       <div class="field hidden"><label>Folder</label><input id="doFolder" list="docFolderDl" placeholder="e.g. Car, Wife's documents" autocomplete="off"><datalist id="docFolderDl"></datalist></div>
@@ -1018,7 +1054,7 @@ html.app-hidden #app{filter:blur(24px)}
         <div class="msg" id="doFileMsg"></div>
       </div>
       <div class="group"><label class="switch-row"><span>Lock files<small class="dq-sub">Encrypted; opens only with your private code. Use for Aadhaar, PAN, passport.</small></span><input type="checkbox" class="sw" id="doLock"></label></div>
-      <button class="btn ghost block" id="doRemind">📅 Add expiry to Key dates</button>
+      <button class="btn ghost block hidden" id="doRemind">📅 Add expiry to Key dates</button>
     </div>
   </div>
 </div>
@@ -1089,6 +1125,38 @@ html.app-hidden #app{filter:blur(24px)}
       <div class="btn-row" style="margin:0 0 10px;flex-wrap:wrap"><button class="btn ghost small" id="diExport">⤓ Download my list</button><button class="btn small" id="diPick">Choose the filled file</button></div>
       <input type="file" id="diFile" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden">
       <div id="diPrev"></div><div class="msg" id="diMsg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- quick capture + inbox (v2.14) -->
+<div class="sheet" id="shCapture">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2>Capture</h2><button class="sh-r" id="capSave">Save</button></div>
+    <div class="sheet-body">
+      <div class="field"><textarea id="capText" rows="4" placeholder="A line to remember — sort it later"></textarea></div>
+      <div class="btn-row" style="margin:0;flex-wrap:wrap"><button class="btn ghost small" id="capCam">📷 Photo</button><button class="btn ghost small" id="capLib">🖼 From photos</button></div>
+      <input type="file" id="capFileCam" accept="image/*" capture="environment" class="hidden"><input type="file" id="capFileLib" accept="image/*" multiple class="hidden">
+      <div class="cap-imgs" id="capImgs"></div>
+      <p class="hint">Goes to the Inbox (top of Tasks). Later, turn it into a note, task, document, date or spend.</p>
+    </div>
+  </div>
+</div>
+<div class="sheet full" id="shInbox">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Close</button><h2>Inbox</h2><button class="sh-r" id="ibNew">＋ Capture</button></div>
+    <div class="sheet-body"><div id="ibList"></div></div>
+  </div>
+</div>
+<!-- crop & straighten (v2.14) -->
+<div class="sheet full" id="shCrop">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2>Crop &amp; straighten</h2><button class="sh-r" id="crDone">Done</button></div>
+    <div class="sheet-body">
+      <div id="crWrap"><canvas id="crCv"></canvas><svg id="crSvg"></svg></div>
+      <div class="cr-row"><span>Straighten</span><input type="range" id="crAng" min="-20" max="20" step="0.5" value="0"><b id="crAngV">0°</b></div>
+      <div class="btn-row" style="margin:10px 0 0;flex-wrap:wrap"><button class="btn ghost small" id="crL">↺ 90°</button><button class="btn ghost small" id="crR">↻ 90°</button><button class="btn ghost small" id="crAuto">✨ Find edges</button><button class="btn ghost small" id="crReset">Reset</button></div>
+      <p class="hint">Drag the four corners onto the corners of the page. Tilted or angled photos are made flat.</p>
     </div>
   </div>
 </div>
@@ -1324,7 +1392,7 @@ html.app-hidden #app{filter:blur(24px)}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.13.0';
+const APP_VERSION = '2.14.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -2147,9 +2215,9 @@ function hydrateImgs(root) {
     catch (e) { im.alt = 'unavailable offline'; im.parentElement && im.parentElement.classList.add('muted'); }
   });
 }
-function openLightbox(src) { $('lbImg').src = src; $('lightbox').classList.remove('hidden'); }
+var openLightbox = function (src) { $('lbImg').src = src; $('lightbox').classList.remove('hidden'); }
 $('lbClose').addEventListener('click', () => { $('lightbox').classList.add('hidden'); $('lbImg').src = ''; });
-$('lightbox').addEventListener('click', e => { if (e.target.id === 'lightbox') $('lbClose').click(); });
+
 
 /* ==========================================================================
    TASKS
@@ -2336,6 +2404,7 @@ function toggleStep(key) {
 const prioRank = { High: 0, Medium: 1, Low: 2 };
 const byDueThenPrio = (a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999') || prioRank[a.priority] - prioRank[b.priority];
 function renderTasks() {
+  renderInboxCard();
   const tasks = all('task');
   const open = tasks.filter(t => t.status !== 'done');
   // category chips
@@ -3365,7 +3434,7 @@ function openDoc(id) {
   if (d.numEnc) { $('doNumber').disabled = true; $('doNumber').placeholder = Fin.key ? 'Opening…' : 'Locked — enter your private code to see or change';
     if (Fin.key) docNumFull(d).then(n => { if (editDocId === id) { $('doNumber').value = n; $('doNumber').disabled = false; $('doNumber').placeholder = ''; if (Sheets.onOpen.shDoc) Sheets.onOpen.shDoc(); } })
       .catch(() => { if (editDocId === id) $('doNumber').placeholder = 'Locked under an older code — unchanged'; }); }
-  $('doIssuer').value = d.issuer || ''; $('doNotes').value = d.notes || '';
+  $('doIssuer').value = d.issuer || ''; $('doNotes').value = d.notes || ''; $('doDueKind').innerHTML = dueKindOpts(d.dueKind);
   $('doFolder').value = d.folder || '';
   $('doFy').innerHTML = fyOptions(d.fy || '', '— none —'); $('doByYear').checked = !!d.byYear;
   $('doFileFy').innerHTML = fyOptions((docYear !== 'All' ? docYear : null) || docYears(d)[0] || fyOf(todayISO()));
@@ -3382,8 +3451,9 @@ $('doSave').addEventListener('click', async () => {
   d.folder = $('doFolder').value.trim();
   d.who = normWho($('doWho').value);
   d.fy = $('doFy').value || null; d.byYear = $('doByYear').checked;
+  d.dueKind = $('doDueKind').value || 'expiry';
   if (d.lockFiles && d.number) await sealDocNumber(d);
-  put(d); Sheets.close('shDoc'); toast('Saved.');
+  put(d); const dx = syncDocDate(d); Sheets.close('shDoc'); toast(d.expiry && dx ? 'Saved — the ' + dueWord(d.dueKind) + ' is in Dates.' : 'Saved.');
 });
 $('doDelete').addEventListener('click', () => { const id = editDocId; Sheets.close('shDoc', true); deleteWithUndo(id); });
 $('doRemind').addEventListener('click', () => {
@@ -3516,12 +3586,13 @@ function renderDocEditFiles() {
   const row = f => `<div class="dfile">
       <span class="dficon" aria-hidden="true">${f.locked ? '🔒' : isPdf(f) ? 'PDF' : 'IMG'}</span>
       <span class="dfname">${esc(f.name)}<small>${fmtBytes(f.bytes || 0)}${f.locked ? ' · locked' : ''}</small>${d.byYear ? `<select class="dffy" data-dffy="${f.id}" aria-label="Year">${fyOptions(f.fy || '', 'No year')}</select>` : ''}</span>
-      <button class="icon-btn" data-dfrm="${f.id}" aria-label="Remove ${esc(f.name)}" style="width:34px;height:34px;font-size:14px">✕</button></div>`;
+      ${/^image\//.test(f.mime || '') || isPdf(f) ? `<button class="icon-btn dfedit" data-dfed="${f.id}" aria-label="Crop or straighten ${esc(f.name)}">✂</button>` : ''}<button class="icon-btn" data-dfrm="${f.id}" aria-label="Remove ${esc(f.name)}" style="width:34px;height:34px;font-size:14px">✕</button></div>`;
   const groups = d.byYear ? [...new Set(fs.map(f => f.fy || ''))].sort().reverse() : [null];
   $('doFiles').innerHTML = (fs.length ? groups.map(g => (g === null ? '' : `<div class="dfyear">${g ? 'FY ' + g : 'No year'}</div>`) + fs.filter(f => g === null || (f.fy || '') === g).map(row).join('')).join('')
     : '<div class="hint" style="margin:0 4px 4px">No files yet.</div>')
     + (mismatch ? `<button class="linkbtn" id="doFinish">Finish ${d.lockFiles ? 'locking' : 'unlocking'} (${mismatch} left)</button>` : '');
   $$('[data-dfrm]', $('doFiles')).forEach(b => b.addEventListener('click', () => removeDocFile(b.dataset.dfrm)));
+  $$('[data-dfed]', $('doFiles')).forEach(b => b.addEventListener('click', () => editDocFile(b.dataset.dfed)));
   $$('[data-dffy]', $('doFiles')).forEach(s => s.addEventListener('change', () => { const f = records[s.dataset.dffy]; f.fy = s.value || undefined; put(f, { render: false }); renderDocEditFiles(); scheduleRender(); }));
   const fin = $('doFinish'); if (fin) fin.addEventListener('click', () => convertDocFiles(d));
 }
@@ -3648,7 +3719,7 @@ async function showDocFile(f) {
     if (viewDocId !== f.docId || !box.isConnected) return;
     if (isPdf(f)) { await renderPdfInto(box, blob); return; }
     box.innerHTML = `<img alt="${esc(f.name)}" src="${url}">`;
-    box.addEventListener('click', e => { if (e.target.tagName === 'IMG') box.classList.toggle('zoom'); });
+    box.addEventListener('click', e => { if (e.target.tagName === 'IMG') openLightbox(e.target.src); });
   } catch (e) {
     RLOG.warn('doc view failed', e.message);
     box.innerHTML = `<div class="dv-wait err">${e.code === 'LOCKED' ? 'Locked. Enter the code to view.' : 'Could not open: ' + esc(e.message)}</div>`;
@@ -3692,7 +3763,7 @@ async function renderPdfInto(box, blob, password) {
     box.innerHTML = `<div class="dv-wait err">Could not read this PDF: ${esc(e.message || String(e))}</div>`; return;
   }
   box.innerHTML = '';
-  box.onclick = e => { if (e.target.tagName === 'CANVAS') box.classList.toggle('zoom'); };
+  box.onclick = e => { if (e.target.tagName === 'CANVAS') zoomPdfPage(doc, [...box.querySelectorAll('canvas.dv-page')].indexOf(e.target) + 1, e.target); };
   const width = Math.max(280, Math.min(box.clientWidth || 600, 900));
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let next = 1;
@@ -5712,7 +5783,7 @@ function addMic(el) {
 const Scan = {
   pages: [], mode: 'doc', docId: null,
   open(docId) {
-    this.pages = []; this.docId = docId || null;
+    this.pages = []; this.docId = docId || null; this.replace = null; if (this.mode === 'orig' && !docId) this.mode = 'doc';
     $('scTitleW').classList.toggle('hidden', !!docId);
     $('scTitle').value = 'Scan ' + new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     $('scMsg').textContent = ''; this.render();
@@ -5739,9 +5810,10 @@ const Scan = {
     return c;
   },
   render() {
-    $('scPages').innerHTML = this.pages.map((p, i) => `<div class="scan-page"><img src="${this.process(p, 260).toDataURL('image/jpeg', .7)}" alt="Page ${i + 1}"><button class="sp-b sp-rot" data-sprot="${i}" aria-label="Rotate page ${i + 1}">↻</button><button class="sp-b sp-del" data-spdel="${i}" aria-label="Remove page ${i + 1}">✕</button><span>${i + 1}</span></div>`).join('');
+    $('scPages').innerHTML = this.pages.map((p, i) => `<div class="scan-page"><img src="${this.process(p, 260).toDataURL('image/jpeg', .7)}" alt="Page ${i + 1}"><button class="sp-b sp-rot" data-sprot="${i}" aria-label="Rotate page ${i + 1}">↻</button><button class="sp-b sp-crop" data-spcrop="${i}" aria-label="Crop page ${i + 1}">✂</button><button class="sp-b sp-del" data-spdel="${i}" aria-label="Remove page ${i + 1}">✕</button><span>${i + 1}</span></div>`).join('');
     $$('[data-sprot]').forEach(b => b.addEventListener('click', () => { this.pages[+b.dataset.sprot].rot += 90; this.render(); }));
     $$('[data-spdel]').forEach(b => b.addEventListener('click', () => { this.pages.splice(+b.dataset.spdel, 1); this.render(); }));
+    $$('[data-spcrop]').forEach(b => b.addEventListener('click', () => openCrop(this.pages[+b.dataset.spcrop], () => this.render())));
     $('scSave').disabled = !this.pages.length;
     $('scCount').textContent = this.pages.length ? `${this.pages.length} page${this.pages.length > 1 ? 's' : ''}` : 'No pages yet — tap Add page and take a photo of each page.';
   },
@@ -5750,7 +5822,8 @@ const Scan = {
     $('scMsg').className = 'msg'; $('scMsg').textContent = 'Making the PDF…';
     await new Promise(r => setTimeout(r, 30));
     const pages = this.pages.map(p => { const c = this.process(p, 2000), d = c.toDataURL('image/jpeg', this.mode === 'orig' ? .82 : .78); return { bytes: unb64(d.slice(d.indexOf(',') + 1)), w: c.width, h: c.height }; });
-    const pdf = jpegsToPdf(pages), file = new File([pdf], 'scan.pdf', { type: 'application/pdf' });
+    const rep1 = this.replace, asImg = rep1 && !isPdf(rep1) && pages.length === 1;
+    const file = asImg ? new File([pages[0].bytes], 'photo.jpg', { type: 'image/jpeg' }) : new File([jpegsToPdf(pages)], 'scan.pdf', { type: 'application/pdf' });
     if (file.size > DOCFILE_MAX) { $('scMsg').className = 'msg err'; $('scMsg').textContent = 'Too large for one file — save fewer pages at a time.'; return; }
     let id = this.docId;
     if (!id) {
@@ -5759,7 +5832,10 @@ const Scan = {
     }
     Sheets.close('shScan', true);
     if (!Sheets.isOpen('shDoc') || editDocId !== id) openDoc(id);
-    await addDocFiles(id, [file]);
+    if (rep1 && rep1.fy && $('doFileFy')) $('doFileFy').value = rep1.fy;
+    const before = docFilesOf(id).length; await addDocFiles(id, [file]);
+    if (rep1 && docFilesOf(id).length > before) { softDelete(rep1.id, { render: false }); setTimeout(() => driveDelete(rep1.fileId), 1500); if (rep1.keyId && records[rep1.keyId]) softDelete(rep1.keyId, { render: false }); renderDocEditFiles(); $('doFileMsg').className = 'msg ok'; $('doFileMsg').textContent = 'Edited file saved; the old one is in Drive\'s Trash.'; }
+    this.replace = null;
   }
 };
 function scanFilter(x, w, h, mode) {
@@ -5866,7 +5942,7 @@ function enterGhost() {
   $('decoyRetry').addEventListener('click', () => { const n = Date.now(); taps = taps.filter(x => n - x < 8000); taps.push(n); if (taps.length >= 2) { taps = []; setTimeout(enterGhost, 1600); } }); }
 
 /* ---------- Recently deleted ---------- */
-const BIN_TYPES = { task: 'Task', note: 'Note', date: 'Date', doc: 'Document', docfile: 'File', snote: 'Private note', fin: 'Money entry' };
+const BIN_TYPES = { inbox: 'Inbox item', task: 'Task', note: 'Note', date: 'Date', doc: 'Document', docfile: 'File', snote: 'Private note', fin: 'Money entry' };
 function binItems() {
   if (window.GHOST) return [];
   const cutoff = nowMs() - 30 * 86400000;
@@ -6226,7 +6302,7 @@ function dateRowHtml({ d, w, days }, showCat) {
       <span class="chev">›</span></div>`, '', 'Delete 🗑', `data-date="${d.id}"`);
 }
 function renderDates() {
-  if (!window.GHOST) { seedDates(); tidySeededExpiry(); }
+  if (!window.GHOST) { seedDates(); tidySeededExpiry(); syncAllDocDates(); }
   const dates = all('date'), cats = dateCats(), home = $('dateHome');
   if (datePath && !cats.some(c => c[0] === datePath)) datePath = null;
   let list = [];
@@ -6317,7 +6393,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) { up
    v2.13
    ======================================================================== */
 /* ---------- quick actions: long-press +, and ?go= links (app shortcuts) ---------- */
-const QUICK = [['spend', '₹', 'Add spend', true], ['note', '🗒', 'New note'], ['task', '☑︎', 'New task'], ['scan', '📷', 'Scan document'], ['date', '📅', 'Key date'], ['ask', '🔍', 'Ask / search']];
+const QUICK = [['capture', '📥', 'Capture (sort later)'], ['spend', '₹', 'Add spend', true], ['note', '🗒', 'New note'], ['task', '☑︎', 'New task'], ['scan', '📷', 'Scan document'], ['date', '📅', 'Key date'], ['ask', '🔍', 'Ask / search']];
 let pendingGo = null;
 function doQuick(k) {
   Sheets.closeAll();
@@ -6327,6 +6403,7 @@ function doQuick(k) {
   else if (k === 'scan') { showTab('docs'); Scan.open(null); }
   else if (k === 'date') { showTab('dates'); openAdd('date'); }
   else if (k === 'ask') openSearch();
+  else if (k === 'capture') openCapture();
 }
 function openQuick() {
   $('qaGrid').innerHTML = QUICK.filter(q => !q[3] || finUnlocked()).map(([k, i, l]) => `<button data-qa="${k}"><b>${i}</b>${l}</button>`).join('');
@@ -6353,6 +6430,7 @@ const EXP_PHOTO = d => d.docType === 'Photo & Signature';
 function attnLists() {
   const docs = all('doc'), t = todayISO();
   return [
+    ['Inbox to sort', all('inbox')],
     ['Expired', docs.filter(d => d.expiry && d.expiry < t)],
     ['No file attached', docs.filter(d => !docFilesOf(d.id).length)],
     ['ID documents not locked', docs.filter(d => d.docType === 'Identity' && docFilesOf(d.id).length && !d.lockFiles)],
@@ -6368,9 +6446,10 @@ function renderAttn() {
   const open = box.querySelector('details') && box.querySelector('details').open;
   box.innerHTML = `<details class="attn"${open ? ' open' : ''}><summary>⚠︎ Needs attention (${n})<small class="muted" style="display:block;font-weight:400;font-size:.8125rem;margin-top:2px">${L.map(x => `${x[1].length} ${x[0].toLowerCase()}`).join(' · ')}</small></summary>
     ${L.map(([h, items]) => `<div class="attn-sec"><b>${esc(h)} (${items.length})</b>${items.slice(0, 40).map(x => x.type === 'date'
-      ? `<button data-attd="${x.id}">📅 ${esc(x.label)}</button>` : `<button data-attn="${x.id}">${esc(x.title)} · ${esc(docOwners(x).join(' & '))}${x.expiry ? ' · ' + fmtDate(x.expiry, true) : ''}</button>`).join('')}${items.length > 40 ? `<small class="muted">…and ${items.length - 40} more</small>` : ''}</div>`).join('')}</details>`;
+      ? `<button data-attd="${x.id}">📅 ${esc(x.label)}</button>` : x.type === 'inbox' ? `<button data-attib="1">📥 ${esc(x.text ? x.text.split('\n')[0].slice(0, 60) : 'Photo')}</button>` : `<button data-attn="${x.id}">${esc(x.title)} · ${esc(docOwners(x).join(' & '))}${x.expiry ? ' · ' + fmtDate(x.expiry, true) : ''}</button>`).join('')}${items.length > 40 ? `<small class="muted">…and ${items.length - 40} more</small>` : ''}</div>`).join('')}</details>`;
   $$('[data-attn]', box).forEach(b => b.addEventListener('click', () => openDoc(b.dataset.attn)));
   $$('[data-attd]', box).forEach(b => b.addEventListener('click', () => openDate(b.dataset.attd)));
+  $$('[data-attib]', box).forEach(b => b.addEventListener('click', openInbox));
 }
 
 /* expiry-type documents (tighter than v2.12: no photos, no bills, no receipts) */
@@ -6658,6 +6737,274 @@ $('diFile').addEventListener('change', async e => {
 });
 $('diGo').addEventListener('click', runDateImport);
 function openDateImport() { DI.plan = null; $('diPrev').innerHTML = ''; $('diMsg').textContent = ''; $('diGo').disabled = true; Sheets.open('shDateImp'); }
+
+/* ==========================================================================
+   v2.14
+   ======================================================================== */
+/* ---------- 1. a document's due date lives in Dates too ---------- */
+const DUE_KINDS = [['expiry', 'Expiry'], ['renewal', 'Renewal'], ['deadline', 'Deadline'], ['lastdate', 'Last date']];
+const dueWord = k => ({ expiry: 'expiry', renewal: 'renewal', deadline: 'deadline', lastdate: 'last date' })[k || 'expiry'] || 'expiry';
+const dueKindOpts = sel => DUE_KINDS.map(([v, l]) => `<option value="${v}"${v === (sel || 'expiry') ? ' selected' : ''}>${l}</option>`).join('');
+function syncDocDate(d) {
+  if (!d || d.deleted) return null;
+  const x = all('date').find(z => z.docRef === d.id);
+  const label = `${d.title} — ${docOwners(d).join(' & ')} — ${dueWord(d.dueKind)}`;
+  if (!d.expiry) { if (x && x.when) { x.when = ''; x.needsDetail = true; put(x, { render: false }); } return x || null; }
+  if (x) { if (x.when !== d.expiry || x.label !== label) { x.when = d.expiry; x.label = label; delete x.needsDetail; put(x, { render: false }); } return x; }
+  return put({ id: uid('d'), type: 'date', label, when: d.expiry, repeat: 'once', cat: 'docexp', docRef: d.id, deleted: false }, { render: false });
+}
+function syncAllDocDates() {
+  const cfg = records[DATE_CFG]; if (window.GHOST || (cfg && cfg.dues214)) return;
+  all('doc').filter(d => d.expiry).forEach(syncDocDate);
+  put({ ...(cfg || { id: DATE_CFG, type: 'datecfg', hidden: [], custom: [] }), dues214: true, deleted: false }, { render: false });
+}
+
+/* ---------- 4. search button above + ---------- */
+$('searchFab').addEventListener('click', openSearch);
+
+/* ---------- 3. zoom: pinch, drag, double-tap, wheel, buttons ---------- */
+const LB = { s: 1, x: 0, y: 0, pts: new Map(), last: null, moved: false, tapT: 0 };
+function lbApply() { $('lbImg').style.transform = `translate(${LB.x}px,${LB.y}px) scale(${LB.s})`; $('lbPct').textContent = Math.round(LB.s * 100) + '%'; }
+function lbReset() { LB.s = 1; LB.x = 0; LB.y = 0; lbApply(); }
+function lbZoomAt(ns, cx, cy) {
+  const im = $('lbImg'), r = im.getBoundingClientRect(), s0 = LB.s;
+  ns = Math.max(1, Math.min(8, ns)); if (ns === s0) return;
+  const ox = r.left - LB.x, oy = r.top - LB.y;                        // untransformed top-left
+  const px = (cx - ox - LB.x) / s0, py = (cy - oy - LB.y) / s0;        // point in image space
+  LB.s = ns; LB.x = cx - ox - px * ns; LB.y = cy - oy - py * ns;
+  if (ns === 1) { LB.x = 0; LB.y = 0; }
+  lbApply();
+}
+openLightbox = function (src) { $('lbImg').src = src; lbReset(); $('lightbox').classList.remove('hidden'); };
+{ const lb = $('lightbox'), im = $('lbImg');
+  lb.insertAdjacentHTML('beforeend', '<div id="lbTools"><button id="lbOut" aria-label="Zoom out">−</button><span id="lbPct">100%</span><button id="lbIn" aria-label="Zoom in">+</button><button id="lbFit" aria-label="Fit to screen">⤢</button></div>');
+  const mid = () => { const r = lb.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  $('lbIn').addEventListener('click', e => { e.stopPropagation(); lbZoomAt(LB.s * 1.6, ...mid()); });
+  $('lbOut').addEventListener('click', e => { e.stopPropagation(); lbZoomAt(LB.s / 1.6, ...mid()); });
+  $('lbFit').addEventListener('click', e => { e.stopPropagation(); lbReset(); });
+  lb.addEventListener('wheel', e => { e.preventDefault(); lbZoomAt(LB.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY); }, { passive: false });
+  lb.addEventListener('pointerdown', e => { if (e.target.closest('#lbTools') || e.target.id === 'lbClose') return; lb.setPointerCapture(e.pointerId); LB.pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); LB.moved = false;
+    if (LB.pts.size === 2) { const [a, b] = [...LB.pts.values()]; LB.last = { d: Math.hypot(a.x - b.x, a.y - b.y), s: LB.s }; } });
+  lb.addEventListener('pointermove', e => {
+    const p = LB.pts.get(e.pointerId); if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y; if (Math.abs(dx) + Math.abs(dy) > 3) LB.moved = true;
+    p.x = e.clientX; p.y = e.clientY;
+    if (LB.pts.size === 2 && LB.last) { const [a, b] = [...LB.pts.values()]; lbZoomAt(LB.last.s * Math.hypot(a.x - b.x, a.y - b.y) / LB.last.d, (a.x + b.x) / 2, (a.y + b.y) / 2); }
+    else if (LB.pts.size === 1 && LB.s > 1) { LB.x += dx; LB.y += dy; lbApply(); }
+  });
+  const up = e => {
+    if (!LB.pts.has(e.pointerId)) return; LB.pts.delete(e.pointerId); if (LB.pts.size < 2) LB.last = null;
+    if (LB.pts.size || LB.moved || e.target.closest('#lbTools')) return;
+    const now = Date.now();
+    if (now - LB.tapT < 320) { LB.tapT = 0; LB.s > 1 ? lbReset() : lbZoomAt(2.5, e.clientX, e.clientY); return; }
+    LB.tapT = now;
+    if (e.target === lb && LB.s === 1) setTimeout(() => { if (LB.tapT === now) $('lbClose').click(); }, 330);
+  };
+  lb.addEventListener('pointerup', up); lb.addEventListener('pointercancel', e => { LB.pts.delete(e.pointerId); LB.last = null; });
+  im.addEventListener('dragstart', e => e.preventDefault()); }
+async function zoomPdfPage(doc, n, cv) {
+  openLightbox(cv.toDataURL('image/jpeg', .9));
+  try { const page = await doc.getPage(n), v1 = page.getViewport({ scale: 1 }), sc = Math.min(4, 2600 / Math.max(v1.width, v1.height)), vp = page.getViewport({ scale: sc });
+    const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    if (!$('lightbox').classList.contains('hidden')) { const s = LB.s, x = LB.x, y = LB.y; $('lbImg').src = c.toDataURL('image/jpeg', .9); LB.s = s; LB.x = x; LB.y = y; lbApply(); } }
+  catch (e) { RLOG.warn('pdf zoom', e.message); }
+}
+
+/* ---------- 2. Inbox: capture now, sort later ---------- */
+const CAP = { files: [] };
+function openCapture(text) {
+  CAP.files = []; $('capText').value = text || ''; $('capImgs').innerHTML = ''; Sheets.open('shCapture');
+  setTimeout(() => $('capText').focus(), 320);
+}
+function capShow() { $('capImgs').innerHTML = CAP.files.map((f, i) => `<img src="${URL.createObjectURL(f)}" alt="photo ${i + 1}">`).join(''); }
+$('capCam').addEventListener('click', () => $('capFileCam').click());
+$('capLib').addEventListener('click', () => $('capFileLib').click());
+['capFileCam', 'capFileLib'].forEach(id => $(id).addEventListener('change', e => { CAP.files.push(...e.target.files); e.target.value = ''; capShow(); }));
+$('capSave').addEventListener('click', async () => {
+  const text = $('capText').value.trim();
+  if (!text && !CAP.files.length) { toast('Write a line or add a photo.'); return; }
+  const b = $('capSave'); b.disabled = true;
+  try {
+    const imgs = CAP.files.length ? await storeImages(CAP.files, 0) : [];
+    put({ id: uid('ib'), type: 'inbox', text, imgs, deleted: false });
+    CAP.files = []; Sheets.close('shCapture', true); toast('Saved to Inbox.', 'Open', openInbox);
+  } finally { b.disabled = false; }
+});
+addMic($('capText'));
+const inboxItems = () => all('inbox').sort((a, b) => b.createdAt - a.createdAt);
+function renderInboxCard() {
+  const box = $('inboxCard'); if (!box) return;
+  const n = window.GHOST ? 0 : inboxItems().length;
+  box.innerHTML = n ? `<button class="inbox-card" id="inboxGo"><span>📥 <b>Inbox · ${n} to sort</b><br><small class="muted">${esc(inboxItems().slice(0, 2).map(i => i.text ? i.text.split('\n')[0].slice(0, 40) : '📷 photo').join(' · '))}</small></span><b>Sort ›</b></button>` : '';
+  if ($('inboxGo')) $('inboxGo').addEventListener('click', openInbox);
+}
+function openInbox() {
+  const L = inboxItems(), fin = finUnlocked();
+  $('ibList').innerHTML = L.length ? L.map(i => `<div class="ib-item" data-ib="${i.id}">
+      ${i.text ? `<div class="ib-t">${esc(i.text)}</div>` : ''}${(i.imgs || []).length ? `<div class="ib-imgs">${i.imgs.map(b => `<img data-blob="${b}" alt="photo">`).join('')}</div>` : ''}
+      <div class="ib-m">${timeAgo(i.createdAt)}</div>
+      <div class="ib-acts"><button data-ibto="note">🗒 Note</button><button data-ibto="task">☑︎ Task</button><button data-ibto="doc">📁 Document</button><button data-ibto="date">📅 Date</button>${fin ? '<button data-ibto="money">₹ Spend</button>' : ''}<button data-ibto="del" class="danger">🗑</button></div></div>`).join('')
+    : '<div class="empty"><b>Inbox is empty</b>Press and hold + → Capture, or tap ＋ Capture above.</div>';
+  hydrateImgs($('ibList'));
+  $$('#ibList img[data-blob]').forEach(im => im.addEventListener('click', () => im.src && openLightbox(im.src)));
+  $$('[data-ibto]').forEach(b => b.addEventListener('click', () => inboxTo(b.closest('[data-ib]').dataset.ib, b.dataset.ibto)));
+  if (!Sheets.isOpen('shInbox')) Sheets.open('shInbox');
+}
+$('ibNew').addEventListener('click', () => openCapture());
+function inboxDone(i, keepImgs) {
+  if (keepImgs && (i.imgs || []).length) { i.text = ''; put(i, { render: false }); toast('Photos stay in the Inbox — sort them next.'); }
+  else softDelete(i.id, { render: false });
+  renderInboxCard();
+}
+async function inboxTo(id, to) {
+  const i = records[id]; if (!i) return;
+  const text = i.text || '', first = text.split('\n')[0].trim(), imgs = (i.imgs || []).filter(b => records[b] && !records[b].deleted);
+  if (to === 'del') { softDelete(id); toast('Deleted — in Recently deleted for 30 days.', 'Undo', () => { restore(id); openInbox(); }); openInbox(); renderInboxCard(); return; }
+  Sheets.close('shInbox', true);
+  if (to === 'note') {
+    const n = newNote(text, first.slice(0, 60) || (imgs.length ? 'Photo' : ''), false, '');
+    if (imgs.length) { n.imgs = imgs.slice(0, IMG_PER_NOTE); put(n, { render: false }); }
+    inboxDone(i, false); showTab('notes'); openNoteEditor(n.id); return;
+  }
+  if (to === 'task') {
+    let noteTxt = text.split('\n').slice(1).join('\n').trim();
+    if (imgs.length) { const n = newNote(text, 'Photos — ' + (first || 'task'), false, ''); n.imgs = imgs.slice(0, IMG_PER_NOTE); put(n, { render: false }); noteTxt = (noteTxt ? noteTxt + '\n' : '') + `Photos are in the note "${n.title}".`; }
+    const t = newTask({ title: first || 'Task from Inbox', notes: noteTxt });
+    inboxDone(i, false); showTab('tasks'); openTaskEditor(t.id); return;
+  }
+  if (to === 'doc') {
+    const d = put({ id: uid('doc'), type: 'doc', title: first.slice(0, 60) || 'Document from Inbox', who: '', docType: 'Other', number: '', expiry: null, issuer: '', notes: text.split('\n').slice(1).join('\n'), folder: '', fy: null, deleted: false });
+    showTab('docs'); openDoc(d.id);
+    if (imgs.length) {
+      const files = [];
+      for (const b of imgs) { try { const src = await imgSrc(records[b]); const blob = await (await fetch(src)).blob(); files.push(new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' })); } catch (e) { RLOG.warn('inbox photo', e.message); } }
+      if (files.length) await addDocFiles(d.id, files);
+      if (docFilesOf(d.id).length >= files.length) imgs.forEach(b => softDelete(b, { render: false }));
+    }
+    inboxDone(i, false); toast('Set the type and person, then Save.'); return;
+  }
+  if (to === 'date') {
+    const x = put({ id: uid('d'), type: 'date', label: first || 'Date from Inbox', when: '', repeat: 'once', cat: guessDateCat({ label: first }), needsDetail: true, deleted: false });
+    inboxDone(i, true); showTab('dates'); openDate(x.id); return;
+  }
+  if (to === 'money') {
+    showTab('money'); openAdd('money');
+    const m = text.match(/(\d[\d,]*(?:\.\d+)?)/), rest = text.replace(m ? m[1] : '', '').replace(/\s+/g, ' ').trim();
+    setTimeout(() => { if (m && $('afAmt')) { $('afAmt').value = m[1].replace(/,/g, ''); $('afAmt').dispatchEvent(new Event('input')); } if ($('afTitle')) { $('afTitle').value = rest.slice(0, 80); $('afTitle').dispatchEvent(new Event('input')); } }, 60);
+    inboxDone(i, true); return;
+  }
+}
+
+/* ---------- 5. crop & straighten (scans, and saved photos / PDFs later) ---------- */
+const CR = { page: null, rot: 0, ang: 0, q: null, base: null, work: null, done: null };
+function crWorkCanvas() {
+  const src = CR.base, r = ((CR.rot % 360) + 360) % 360, a = (r + CR.ang) * Math.PI / 180, W = src.width, H = src.height;
+  const cw = Math.round(Math.abs(W * Math.cos(a)) + Math.abs(H * Math.sin(a))), ch = Math.round(Math.abs(W * Math.sin(a)) + Math.abs(H * Math.cos(a)));
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch; const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, cw, ch); x.translate(cw / 2, ch / 2); x.rotate(a); x.drawImage(src, -W / 2, -H / 2);
+  return c;
+}
+function crDraw() {
+  CR.work = crWorkCanvas();
+  const cv = $('crCv'), k = Math.min(1, 900 / Math.max(CR.work.width, CR.work.height));
+  cv.width = Math.round(CR.work.width * k); cv.height = Math.round(CR.work.height * k); cv.getContext('2d').drawImage(CR.work, 0, 0, cv.width, cv.height);
+  const wrap = $('crWrap'), maxH = Math.max(240, window.innerHeight * .55); wrap.style.maxWidth = Math.min(cv.width, maxH * cv.width / cv.height) + 'px';
+  crSvg();
+}
+function crSvg() {
+  const svg = $('crSvg'), W = $('crCv').width, H = $('crCv').height, q = CR.q;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('preserveAspectRatio', 'none');
+  const P = q.map(([u, v]) => [u * W, v * H]), rr = Math.max(10, Math.min(W, H) * .035);
+  svg.innerHTML = `<polygon points="${P.map(p => p.join(',')).join(' ')}"/>${P.map((p, i) => `<circle data-cr="${i}" cx="${p[0]}" cy="${p[1]}" r="${rr}"/>`).join('')}`;
+}
+{ const svg = $('crSvg'); let drag = null;
+  svg.addEventListener('pointerdown', e => { const c = e.target.closest('[data-cr]'); if (!c) return; drag = +c.dataset.cr; svg.setPointerCapture(e.pointerId); e.preventDefault(); });
+  svg.addEventListener('pointermove', e => { if (drag == null) return; const r = svg.getBoundingClientRect();
+    CR.q[drag] = [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; crSvg(); });
+  const end = () => { drag = null; }; svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end); }
+const CR_FULL = () => [[0, 0], [1, 0], [1, 1], [0, 1]];
+function openCrop(page, done) {
+  CR.page = page; CR.done = done; CR.base = page.orig || page.src; CR.rot = page.orig ? (page.crop ? page.crop.rot : 0) : (page.rot || 0);
+  CR.ang = page.crop ? page.crop.ang : 0; CR.q = page.crop ? page.crop.q.map(p => p.slice()) : CR_FULL();
+  $('crAng').value = CR.ang; $('crAngV').textContent = CR.ang + '°';
+  Sheets.open('shCrop'); setTimeout(crDraw, 60);
+}
+$('crAng').addEventListener('input', () => { CR.ang = +$('crAng').value; $('crAngV').textContent = CR.ang + '°'; crDraw(); });
+$('crL').addEventListener('click', () => { CR.rot -= 90; CR.q = CR_FULL(); crDraw(); });
+$('crR').addEventListener('click', () => { CR.rot += 90; CR.q = CR_FULL(); crDraw(); });
+$('crReset').addEventListener('click', () => { CR.rot = 0; CR.ang = 0; $('crAng').value = 0; $('crAngV').textContent = '0°'; CR.q = CR_FULL(); crDraw(); });
+$('crAuto').addEventListener('click', () => { const q = findEdges(CR.work); if (q) { CR.q = q; crSvg(); } else toast('Could not find the page edges — drag the corners.'); });
+/* rough automatic page finder: the largest bright region against a darker background */
+function findEdges(c) {
+  const k = Math.min(1, 320 / Math.max(c.width, c.height)), w = Math.max(8, Math.round(c.width * k)), h = Math.max(8, Math.round(c.height * k));
+  const t = document.createElement('canvas'); t.width = w; t.height = h; const x = t.getContext('2d'); x.drawImage(c, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data, g = new Float32Array(w * h); let sum = 0;
+  for (let i = 0; i < w * h; i++) { g[i] = .299 * d[i * 4] + .587 * d[i * 4 + 1] + .114 * d[i * 4 + 2]; sum += g[i]; }
+  const hist = new Uint32Array(256); for (let i = 0; i < w * h; i++) hist[g[i] | 0]++;
+  let best = 0, th = sum / (w * h), tot = w * h, sB = 0, wB = 0, all = 0; for (let i = 0; i < 256; i++) all += i * hist[i];
+  for (let i = 0; i < 256; i++) { wB += hist[i]; if (!wB) continue; const wF = tot - wB; if (!wF) break; sB += i * hist[i]; const mB = sB / wB, mF = (all - sB) / wF, v = wB * wF * (mB - mF) * (mB - mF); if (v > best) { best = v; th = i; } }
+  const on = (xx, yy) => g[yy * w + xx] > th;
+  let n = 0; const P = [[1e9, null], [-1e9, null], [-1e9, null], [1e9, null]];   // tl: min x+y, tr: max x-y, br: max x+y, bl: min x-y
+  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (on(xx, yy)) { n++; const s = xx + yy, df = xx - yy;
+    if (s < P[0][0]) P[0] = [s, [xx, yy]]; if (df > P[1][0]) P[1] = [df, [xx, yy]]; if (s > P[2][0]) P[2] = [s, [xx, yy]]; if (df < P[3][0]) P[3] = [df, [xx, yy]]; }
+  if (n < w * h * .15 || n > w * h * .97 || P.some(p => !p[1])) return null;
+  return P.map(p => [p[1][0] / (w - 1), p[1][1] / (h - 1)]);
+}
+function warpQuad(src, q) {
+  const S = q.map(([u, v]) => [u * (src.width - 1), v * (src.height - 1)]), dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  let W = Math.round(Math.max(dist(S[0], S[1]), dist(S[3], S[2]))), H = Math.round(Math.max(dist(S[0], S[3]), dist(S[1], S[2])));
+  const k = Math.min(1, 2400 / Math.max(W, H)); W = Math.max(2, Math.round(W * k)); H = Math.max(2, Math.round(H * k));
+  const [x0, y0] = S[0], [x1, y1] = S[1], [x2, y2] = S[2], [x3, y3] = S[3];
+  const dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+  let a, b, c, d, e, f, g = 0, h = 0;
+  if (Math.abs(dx3) < 1e-9 && Math.abs(dy3) < 1e-9) { a = x1 - x0; b = x3 - x0; c = x0; d = y1 - y0; e = y3 - y0; f = y0; }
+  else { const den = dx1 * dy2 - dx2 * dy1; g = (dx3 * dy2 - dx2 * dy3) / den; h = (dx1 * dy3 - dx3 * dy1) / den; a = x1 - x0 + g * x1; b = x3 - x0 + h * x3; c = x0; d = y1 - y0 + g * y1; e = y3 - y0 + h * y3; f = y0; }
+  const sd = src.getContext('2d').getImageData(0, 0, src.width, src.height), sp = sd.data, SW = src.width, SH = src.height;
+  const out = document.createElement('canvas'); out.width = W; out.height = H; const ox = out.getContext('2d'), od = ox.createImageData(W, H), op = od.data;
+  for (let j = 0; j < H; j++) { const v = j / (H - 1 || 1);
+    for (let i = 0; i < W; i++) { const u = i / (W - 1 || 1), z = g * u + h * v + 1, sx = (a * u + b * v + c) / z, sy = (d * u + e * v + f) / z;
+      const X = Math.max(0, Math.min(SW - 1.001, sx)), Y = Math.max(0, Math.min(SH - 1.001, sy)), xi = X | 0, yi = Y | 0, fx = X - xi, fy = Y - yi;
+      const i00 = (yi * SW + xi) * 4, i10 = i00 + 4, i01 = i00 + SW * 4, i11 = i01 + 4, o = (j * W + i) * 4;
+      for (let ch = 0; ch < 3; ch++) op[o + ch] = (sp[i00 + ch] * (1 - fx) + sp[i10 + ch] * fx) * (1 - fy) + (sp[i01 + ch] * (1 - fx) + sp[i11 + ch] * fx) * fy;
+      op[o + 3] = 255; } }
+  ox.putImageData(od, 0, 0); return out;
+}
+$('crDone').addEventListener('click', async () => {
+  const b = $('crDone'); b.disabled = true; await new Promise(r => setTimeout(r, 20));
+  try {
+    const full = CR.q.every((p, i) => Math.abs(p[0] - CR_FULL()[i][0]) < .002 && Math.abs(p[1] - CR_FULL()[i][1]) < .002);
+    const out = full ? CR.work : warpQuad(CR.work, CR.q), pg = CR.page;
+    pg.orig = CR.base; pg.crop = { rot: CR.rot, ang: CR.ang, q: CR.q.map(p => p.slice()) }; pg.src = out; pg.rot = 0;
+    Sheets.close('shCrop', true); if (CR.done) CR.done();
+  } finally { b.disabled = false; }
+});
+/* edit a saved photo or PDF later: its pages come back into the scanner */
+async function editDocFile(fid) {
+  const f = records[fid]; if (!f) return;
+  const msg = $('doFileMsg'); msg.className = 'msg'; msg.textContent = 'Opening the file…';
+  try {
+    const { blob } = await docFileBlob(f), pages = [];
+    if (isPdf(f)) {
+      const lib = await pdfjs(), doc = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false }).promise;
+      if (doc.numPages > 30) throw new Error('more than 30 pages — too many to edit here');
+      for (let n = 1; n <= doc.numPages; n++) { const p = await doc.getPage(n), v1 = p.getViewport({ scale: 1 }), vp = p.getViewport({ scale: Math.min(3, 2000 / Math.max(v1.width, v1.height)) });
+        const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+        await p.render({ canvasContext: x, viewport: vp }).promise; pages.push({ src: c, rot: 0 }); }
+    } else {
+      const url = URL.createObjectURL(blob), img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('not a picture')); i.src = url; });
+      const k = Math.min(1, 2400 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); pages.push({ src: c, rot: 0 });
+    }
+    msg.textContent = '';
+    Scan.openEdit(f, pages);
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'Could not open it for editing: ' + (e.code === 'LOCKED' ? 'enter your private code first' : e.message); }
+}
+Scan.openEdit = function (f, pages) {
+  this.open(f.docId); this.replace = f; this.mode = 'orig'; this.pages = pages;
+  chipGroup($('scMode'), [{ v: 'doc', l: 'Document' }, { v: 'bw', l: 'Black & white' }, { v: 'orig', l: 'Original' }], 'orig', v => { this.mode = v; this.render(); });
+  this.render(); $('scMsg').className = 'msg'; $('scMsg').textContent = `Editing "${f.name}". Saving replaces it (the old file goes to Drive's Trash).`;
+};
 $('setImportDocs').addEventListener('click', openImport);
 $('docImportBtn').addEventListener('click', openImport);
 
@@ -6876,7 +7223,7 @@ function renderAddForm0(focus) {
     f.innerHTML = `<div class="field"><input id="afTitle" placeholder="e.g. Car insurance — Creta" autocomplete="off"></div>
       <div class="field"><label>Type</label><div class="wrapchips" id="afType"></div></div>
       <div class="grid2"><div class="field"><label>Number / ID</label><input id="afNum" autocapitalize="characters"></div>
-        <div class="field"><label>Expiry (optional)</label><input type="date" id="afDate"></div></div>
+        <div class="field"><label><select id="afDueKind" style="width:auto;padding:0;border:0;background:none;font:inherit;color:inherit">${dueKindOpts()}</select> (optional)</label><input type="date" id="afDate"></div></div>
       <div class="grid2"><div class="field"><label>Belongs to</label><input id="afDocWho" list="afWhoDl" autocomplete="off" placeholder="Blank = Rahul" value="${esc(docPath.who && docPath.who !== DOC_ME ? docPath.who : '')}"><datalist id="afWhoDl">${docPeople().map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
         <div class="field"><label>Year (FY, optional)</label><select id="afFy">${fyOptions('', '— none —')}</select></div></div>`;
     AF.type = docNewType(); chipGroup($('afType'), DOC_TYPES, AF.type, v => AF.type = v, t => DOC_COLORS[t]);
@@ -6945,7 +7292,7 @@ function saveAdd(another) {
     toast('Bill added.');
   } else if (k === 'doc') {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
-    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, who: normWho(v('afDocWho')), deleted: false });
+    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, who: normWho(v('afDocWho')), dueKind: $('afDueKind') ? $('afDueKind').value : 'expiry', deleted: false }); { const nd = all('doc').sort((a, b) => b.createdAt - a.createdAt)[0]; if (nd && nd.expiry) { syncDocDate(nd); toast('Document added — the ' + dueWord(nd.dueKind) + ' is in Dates too.'); } }
     toast(docFolderForNew() ? 'Document added to ' + docFolderForNew() + '.' : 'Document added.');
   } else if (k === 'money') {
     const amt = calcAmount(v('afAmt'));
