@@ -698,6 +698,47 @@ html.decoy-on #searchFab{display:none}
 .share-steps{font-size:.875rem;line-height:1.55;padding-left:20px;margin:6px 0}
 .share-steps li{margin:4px 0}
 .share-steps code{background:rgba(128,128,128,.14);padding:1px 5px;border-radius:5px;font-size:.8125rem}
+
+/* v2.17 */
+#todayFab{position:fixed;right:23px;bottom:calc(var(--tabbar-h) + var(--safe-b) + 142px);z-index:19;width:48px;height:48px;border-radius:50%;background:var(--card);color:var(--ink);box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:20px;display:grid;place-items:center;min-height:0;padding:0;border:1px solid var(--line)}
+html[data-hand="left"] #todayFab{right:auto;left:23px}
+html.decoy-on #todayFab{display:none}
+#todayFab .badge{position:absolute;top:-4px;right:-4px}
+.td-h{font-family:var(--serif);font-size:20px;margin:0 4px 12px}
+.td-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 14px;border-bottom:.5px solid var(--line);font-size:.9375rem;background:none}
+.td-row:last-child{border-bottom:0}
+.td-row .t{flex:1;min-width:0}
+.td-row small{display:block;color:var(--ink-faint);font-size:.8125rem}
+.td-row .w{font-size:.8125rem;color:var(--ink-soft);white-space:nowrap}
+.td-row .w.neg{color:var(--neg)}
+.td-clear{text-align:center;padding:26px 10px;color:var(--ink-soft)}
+.sug-panel{padding:6px 2px 10px}
+.sug-panel .sug-t{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);margin:10px 4px 6px;display:flex;justify-content:space-between}
+.sug-chips{display:flex;flex-wrap:wrap;gap:6px}
+.sug-chips button{border:1px solid var(--line);border-radius:16px;padding:6px 12px;font-size:.875rem;background:var(--card);color:var(--ink)}
+.sug-row{display:flex;gap:6px;overflow-x:auto;padding:8px 10px;border-bottom:.5px solid var(--line);scrollbar-width:none}
+.sug-row button{flex:none;border:1px solid var(--line);border-radius:16px;padding:5px 11px;font-size:.8125rem;background:var(--card);color:var(--ink)}
+.ib-pdf,.cap-pdf{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:.8125rem;background:var(--card);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.new-type{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.new-type input{flex:1 1 140px;min-width:0}
+.new-type select{flex:1 1 120px;width:auto}
+.crumb-acts{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 2px 10px}
+.crumb-acts button{border:1px solid var(--line);border-radius:14px;padding:4px 10px;font-size:.8125rem;background:var(--card);color:var(--ink-soft)}
+.df-row{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:.5px solid var(--line);flex-wrap:wrap}
+.df-row b{flex:1;min-width:0}
+.df-row small{color:var(--ink-faint);width:100%}
+.df-row button{border:1px solid var(--line);border-radius:12px;padding:3px 9px;font-size:.75rem;background:var(--card);color:var(--ink-soft)}
+.df-types{display:flex;flex-wrap:wrap;gap:5px;width:100%}
+.df-types button{border-style:dashed}
+.dm-opt{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-bottom:.5px solid var(--line)}
+.dm-opt input{margin-top:4px;width:auto}
+.al-pin{margin-top:18px;display:flex;gap:8px;justify-content:center}
+.al-pin input{width:9em;text-align:center;font-size:18px;letter-spacing:.3em}
+.ds-banner{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);margin:0 0 12px;font-size:.9375rem;text-align:left}
+.attn-row small.ds-from{display:block;color:var(--ink-faint);font-size:.75rem}
+#dsgBody .attn-row{display:flex;align-items:center;gap:6px;border-bottom:.5px solid var(--line);padding:0 8px}
+#dsgBody .attn-go{flex:1;text-align:left;padding:10px 6px;border:0;background:none;color:var(--ink)}
+#dsgBody .attn-ok{width:auto;flex:none;padding:4px 10px;border:1px solid var(--line);border-radius:8px;font-size:.75rem;color:var(--ink-soft);background:var(--card)}
 </style>
 </head>
 <body>
@@ -710,6 +751,7 @@ html.decoy-on #searchFab{display:none}
        Check your network and try again.</p>
     <button class="decoy-retry" id="decoyRetry">Retry</button>
     <div class="decoy-code">ERR_CONNECTION_TIMED_OUT</div>
+    <div class="al-pin hidden" id="alPin"><input type="password" inputmode="numeric" id="alPinIn" autocomplete="off" aria-label="PIN"><button class="decoy-retry" id="alPinGo" style="margin:0">OK</button></div>
   </div>
 </div>
 
@@ -774,7 +816,7 @@ html.decoy-on #searchFab{display:none}
     <!-- DOCUMENTS -->
     <section class="screen" id="scr-docs">
       <div class="large-title">Documents</div>
-      <div class="btn-row" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn ghost small hidden" id="docQuickBtn">＋ Common documents</button><button class="btn ghost small" id="docImportBtn">⤓ Import from Drive</button><button class="btn ghost small" id="docScanBtn">📷 Scan</button><button class="btn ghost small" id="docSelBtn">☑ Select</button></div>
+      <div class="btn-row" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn ghost small hidden" id="docQuickBtn">＋ Common documents</button><button class="btn ghost small" id="docImportBtn">⤓ Import from Drive</button><button class="btn ghost small" id="docScanBtn">📷 Scan</button><button class="btn ghost small" id="docSelBtn">☑ Select</button><button class="btn ghost small" id="docFoldersBtn">🗂 People &amp; categories</button></div>
       <div class="chips" id="docChips"></div>
       <div id="docChkNote"></div>
       <div id="docAttn"></div>
@@ -782,7 +824,7 @@ html.decoy-on #searchFab{display:none}
       <div id="docYearBar"></div>
       <div id="docFolders"></div>
       <div class="group" id="docList"></div>
-      <div class="sel-bar hidden" id="docSelBar"><span id="docSelN"></span><button class="btn small brass" id="docSelShare">Share</button><button class="btn small ghost" id="docSelCancel">Cancel</button></div>
+      <div class="sel-bar hidden" id="docSelBar"><span id="docSelN"></span><button class="btn small brass" id="docSelShare">Share</button><button class="btn small" id="docSelMove">Move</button><button class="btn small" id="docSelMerge">Merge</button><button class="btn small ghost" id="docSelCancel">Cancel</button></div>
     </section>
 
     <!-- MONEY (private) -->
@@ -827,6 +869,7 @@ html.decoy-on #searchFab{display:none}
     </section>
   </main>
 
+  <button id="todayFab" aria-label="Today">☀︎<i class="badge hidden" id="todayBadge"></i></button>
   <button id="searchFab" aria-label="Search">🔍</button>
   <button id="fab" aria-label="Add">+</button>
 
@@ -871,7 +914,7 @@ html.decoy-on #searchFab{display:none}
       <div class="field"><label>Priority</label><div class="wrapchips" id="tePrio"></div></div>
       <div class="field"><label>Status</label><div class="wrapchips" id="teStatus"></div></div>
       <div class="grid2">
-        <div class="field"><label>Due</label><input type="date" id="teDue"></div>
+        <div class="field"><label>Due</label><div style="display:flex;gap:8px"><input type="date" id="teDue" style="flex:1;min-width:0"><input type="time" id="teTime" style="width:8.5em;flex:none" aria-label="Time"></div></div>
         <div class="field"><label>Repeats</label><select id="teRepeat">
           <option value="none">Never</option><option value="daily">Daily</option>
           <option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
@@ -1050,7 +1093,8 @@ html.decoy-on #searchFab{display:none}
     <div class="sheet-body">
       <div class="field"><label>Title</label><input id="doTitle"></div>
       <div class="field"><label>Belongs to</label><input id="doWho" list="docWhoDl" placeholder="e.g. Rahul, Ruchi, Papa" autocomplete="off"><datalist id="docWhoDl"></datalist></div>
-      <div class="field"><label>Type</label><div class="wrapchips" id="doType"></div></div>
+      <div class="field"><label>Type</label><div class="wrapchips" id="doType"></div>
+        <div class="new-type hidden" id="doNewTypeW"><input id="doNewType" placeholder="New type, e.g. Ration card" autocomplete="off"><select id="doNewTypeGrp" aria-label="Category"></select><button class="btn small" id="doNewTypeAdd" type="button">Add</button></div></div>
       <div class="grid2">
         <div class="field"><label>Number / ID</label><input id="doNumber" autocapitalize="characters"></div>
         <div class="field"><label><select id="doDueKind" style="width:auto;padding:0;border:0;background:none;font:inherit;color:inherit"></select></label><input type="date" id="doExpiry"></div>
@@ -1149,8 +1193,8 @@ html.decoy-on #searchFab{display:none}
     <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2>Capture</h2><button class="sh-r" id="capSave">Save</button></div>
     <div class="sheet-body">
       <div class="field"><textarea id="capText" rows="4" placeholder="A line to remember — sort it later"></textarea></div>
-      <div class="btn-row" style="margin:0;flex-wrap:wrap"><button class="btn ghost small" id="capCam">📷 Photo</button><button class="btn ghost small" id="capLib">🖼 From photos</button></div>
-      <input type="file" id="capFileCam" accept="image/*" capture="environment" class="hidden"><input type="file" id="capFileLib" accept="image/*" multiple class="hidden">
+      <div class="btn-row" style="margin:0;flex-wrap:wrap"><button class="btn ghost small" id="capCam">📷 Photo</button><button class="btn ghost small" id="capLib">🖼 From photos</button><button class="btn ghost small" id="capPdf">📄 PDF / file</button></div>
+      <input type="file" id="capFileCam" accept="image/*" capture="environment" class="hidden"><input type="file" id="capFileLib" accept="image/*" multiple class="hidden"><input type="file" id="capFilePdf" accept="application/pdf,.pdf,image/*" multiple class="hidden">
       <div class="cap-imgs" id="capImgs"></div>
       <p class="hint">Goes to the Inbox (top of Tasks). Later, turn it into a note, task, document, date or spend.</p>
     </div>
@@ -1180,6 +1224,43 @@ html.decoy-on #searchFab{display:none}
   <div class="sheet-card"><div class="sheet-grab"></div>
     <div class="sheet-head"><span class="sh-l"></span><h2>Share into Register</h2><button class="sh-r" data-close>Done</button></div>
     <div class="sheet-body" id="siBody"></div>
+  </div>
+</div>
+
+<!-- v2.17: Today, doc move / merge / folders, dates found in notes, Face ID app lock -->
+<div class="sheet full" id="shToday">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><span class="sh-l"></span><h2>Today</h2><button class="sh-r" data-close>Done</button></div>
+    <div class="sheet-body" id="tdBody"></div>
+  </div>
+</div>
+<div class="sheet" id="shDocAct">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2 id="daTitle">Move</h2><span class="sh-r"></span></div>
+    <div class="sheet-body" id="daBody"></div>
+  </div>
+</div>
+<div class="sheet full" id="shDocFolders">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><span class="sh-l"></span><h2>People &amp; categories</h2><button class="sh-r" data-close>Done</button></div>
+    <div class="sheet-body" id="dfBody"></div>
+  </div>
+</div>
+<div class="sheet full" id="shDateSug">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><span class="sh-l"></span><h2>Dates found</h2><button class="sh-r" data-close>Done</button></div>
+    <div class="sheet-body" id="dsgBody"></div>
+  </div>
+</div>
+<div class="sheet" id="shAppLock">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2>Face ID to open</h2><span class="sh-r"></span></div>
+    <div class="sheet-body">
+      <p class="hint" style="margin:0 4px 10px">After the decoy screen (three taps on "Register"), Face ID is asked before the app shows. If Face ID fails twice, a backup PIN is asked instead — choose it now (4 or more digits).</p>
+      <div class="field"><input id="alPin1" type="password" inputmode="numeric" autocomplete="off" placeholder="Backup PIN"></div>
+      <div class="field"><input id="alPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Backup PIN again"></div>
+      <button class="btn block brass" id="alOn">Turn on with Face ID</button><div class="msg" id="alMsg"></div>
+    </div>
   </div>
 </div>
 
@@ -1332,6 +1413,9 @@ html.decoy-on #searchFab{display:none}
           <option value="0">Immediately</option><option value="30">After 30 sec</option><option value="60">After 1 min</option>
           <option value="300">After 5 min</option><option value="-1">Never</option></select></div>
         <button class="set-row" id="setHideNow">Hide now<span class="v">◐</span></button>
+        <button class="set-row" id="setAppLock">Face ID to open Register<span class="v" id="setAppLockV">Off</span></button>
+        <div class="set-row">Lock when idle in the app<select id="setAppIdle"><option value="0">Never</option><option value="1">After 1 min</option><option value="2">After 2 min</option><option value="5">After 5 min</option><option value="10">After 10 min</option><option value="15">After 15 min</option></select></div>
+        <div class="set-row hidden" id="setMoneyIdleRow">Lock private section when idle<select id="setMoneyIdle"><option value="1">After 1 min</option><option value="2">After 2 min</option><option value="5">After 5 min</option><option value="10">After 10 min</option><option value="15">After 15 min</option><option value="30">After 30 min</option></select></div>
         <button class="set-row hidden" id="setVaultCode">Change private-section code<span class="v">›</span></button>
         <button class="set-row hidden" id="setVaultLock">Lock private section now<span class="v">›</span></button>
         <button class="set-row hidden" id="setBio">Unlock with Face ID<span class="v" id="setBioV">Off</span></button>
@@ -1415,7 +1499,7 @@ html.decoy-on #searchFab{display:none}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.16.0';
+const APP_VERSION = '2.17.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -1770,7 +1854,7 @@ const DB = (() => {
 const PREF_DEFAULTS = {
   theme: 'auto', text: 'default', contrast: false, left: false,
   startTab: 'tasks', stepsOpen: true, noteEdit: false,
-  decoyLaunch: true, decoyReturn: 60,
+  decoyLaunch: true, decoyReturn: 60, appIdle: 0, moneyIdle: 5,
   cloudUrl: '', cloudToken: '', driveFolder: '',
   lastTab: 'tasks', dateSeg: 'bills', moneySeg: 'ledger', noteSort: 'pinned', taskMode: 'due'
 };
@@ -2275,7 +2359,7 @@ let activeCat = 'All';
 const openSteps = new Set();         // view state only — which tasks show their steps
 
 /* ---------- quick-add syntax: #cat !prio @date ---------- */
-function parseQuickAdd(text) {
+function parseQuickAddOld(text) {
   const out = { title: text, category: null, priority: null, dueDate: null };
   out.title = text
     .replace(/#(\w+)/g, (m, w) => {
@@ -2405,7 +2489,7 @@ function taskRow(t, showCat) {
       <div class="row-title">${esc(t.title)}</div>
       <div class="row-sub">
         ${showCat ? `<span><i class="cat-dot" style="background:${catColor(t.category)}"></i> ${t.category}</span>` : ''}
-        ${t.dueDate ? `<span class="${od || dueToday ? 'warn' : ''}">📅 ${relDay(t.dueDate)}${od ? ' · overdue' : ''}</span>` : ''}
+        ${t.dueDate ? `<span class="${od || dueToday ? 'warn' : ''}">📅 ${relDay(t.dueDate)}${t.dueTime ? ' ' + fmtTime12(t.dueTime) : ''}${od ? ' · overdue' : ''}</span>` : ''}
         ${t.status === 'inprogress' ? '<span>◐ in progress</span>' : ''}
         ${t.status === 'done' && t.completedOn ? `<span>✓ ${fmtDate(t.completedOn)}</span>` : ''}
         ${t.repeat && t.repeat !== 'none' ? `<span>🔁 ${t.repeat}</span>` : ''}
@@ -2519,7 +2603,7 @@ function previewTask(id) {
     <div class="wrapchips" style="margin-bottom:14px">
       <span class="stamp" style="background:${catColor(t.category)}">${t.category}</span>
       <span class="pill" style="color:${PRIO_COLOR[t.priority]}">${t.priority}</span>
-      ${t.dueDate ? `<span class="pill ${isOverdue(t) ? 'neg' : ''}">📅 ${relDay(t.dueDate)}${isOverdue(t) ? ' · overdue' : ''}</span>` : ''}
+      ${t.dueDate ? `<span class="pill ${isOverdue(t) ? 'neg' : ''}">📅 ${relDay(t.dueDate)}${t.dueTime ? ' ' + fmtTime12(t.dueTime) : ''}${isOverdue(t) ? ' · overdue' : ''}</span>` : ''}
       ${t.status === 'inprogress' ? '<span class="pill">◐ in progress</span>' : ''}${t.status === 'done' ? `<span class="pill pos">✓ done ${fmtDate(t.completedOn)}</span>` : ''}
       ${t.repeat && t.repeat !== 'none' ? `<span class="pill">🔁 ${t.repeat}</span>` : ''}
     </div>
@@ -2552,7 +2636,7 @@ function openTaskEditor(id) {
   chipGroup($('teCat'), CATS, t.category, v => { t.category = v; put(t, { render: false }); }, catColor);
   chipGroup($('tePrio'), PRIOS, t.priority, v => { t.priority = v; put(t, { render: false }); }, p => PRIO_COLOR[p]);
   chipGroup($('teStatus'), [{ v: 'active', l: 'To do' }, { v: 'inprogress', l: 'In progress' }, { v: 'done', l: 'Done' }], t.status, v => setStatus(t, v));
-  $('teDue').value = t.dueDate || '';
+  $('teDue').value = t.dueDate || ''; $('teTime').value = t.dueTime || '';
   $('teRepeat').value = t.repeat || 'none';
   $('teNotes').value = t.notes || '';
   $('teDueQuick').innerHTML = [['Today', 0], ['Tomorrow', 1], ['In 3 days', 3], ['Next week', 7], ['No date', null]]
@@ -2567,13 +2651,14 @@ function teSave() {
   const t = records[editTaskId]; if (!t) return;
   t.title = $('teTitle').value.trim() || t.title;
   { const nd = $('teDue').value || null; if (nd !== t.dueDate) delete t.repeatDay; t.dueDate = nd; }   // a moved date sets the new repeat day
+  t.dueTime = $('teTime').value || undefined; if (!t.dueTime) delete t.dueTime;
   t.repeat = $('teRepeat').value;
   t.notes = $('teNotes').value;
   put(t, { render: false });
 }
 const teQueue = () => { clearTimeout(teTimer); teTimer = setTimeout(teSave, 400); };
 ['teTitle', 'teNotes'].forEach(i => $(i).addEventListener('input', teQueue));
-['teDue', 'teRepeat'].forEach(i => $(i).addEventListener('change', teSave));
+['teDue', 'teTime', 'teRepeat'].forEach(i => $(i).addEventListener('change', teSave));
 $('teTitle').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('teTitle').blur(); } });
 Sheets.onClose.shTask = () => { clearTimeout(teTimer); teSave(); scheduleRender(); };
 
@@ -3388,10 +3473,10 @@ function orderPeople(list) {
     if (ia >= 0 || ib >= 0) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     if (a === 'Family') return 1; if (b === 'Family') return -1; return a.localeCompare(b); });
 }
-const DOC_GROUPS = [['Academic', ['Education', 'Exam'], '🎓'], ['IDs', ['Identity'], '🪪'], ['Certificates', ['Certificate'], '📜'], ['Office', ['Official'], '🏛'], ['Case files', ['Case'], '🗂'],
+let DOC_GROUPS = [['Academic', ['Education', 'Exam'], '🎓'], ['IDs', ['Identity'], '🪪'], ['Certificates', ['Certificate'], '📜'], ['Office', ['Official'], '🏛'], ['Case files', ['Case'], '🗂'],
   ['Financial', ['Financial', 'Tax', 'Insurance'], '💰'], ['Medical', ['Medical'], '🩺'], ['Property & vehicle', ['Property', 'Vehicle', 'Warranty'], '🏠'],
   ['Photos & signature', ['Photo & Signature'], '🖼'], ['Other', ['Membership', 'Other'], '📄']];
-const docGroup = d => (DOC_GROUPS.find(g => g[1].includes(d.docType)) || DOC_GROUPS[DOC_GROUPS.length - 1])[0];
+const docGroup = d => (syncDocCfg(), DOC_GROUPS.find(g => g[1].includes(d.docType)) || DOC_GROUPS[DOC_GROUPS.length - 1])[0];
 const groupIcon = n => (DOC_GROUPS.find(g => g[0] === n) || [0, 0, '📁'])[2];
 let docPath = { who: null, grp: null };
 const docNewType = () => { const g = DOC_GROUPS.find(x => x[0] === docPath.grp); return g ? g[1][0] : 'Identity'; };
@@ -3411,13 +3496,13 @@ function migrateCaseDocs() {
 let docWho = 'All';
 const docYears = d => [...new Set([d.fy, ...(d.byYear ? docFilesOf(d.id).map(f => f.fy) : [])].filter(Boolean))].sort().reverse();
 let docYear = 'All';
-const DOC_TYPES = ['Identity', 'Education', 'Exam', 'Tax', 'Financial', 'Insurance', 'Medical', 'Official', 'Case', 'Property', 'Vehicle', 'Certificate', 'Photo & Signature', 'Warranty', 'Membership', 'Other'];
+let DOC_TYPES = ['Identity', 'Education', 'Exam', 'Tax', 'Financial', 'Insurance', 'Medical', 'Official', 'Case', 'Property', 'Vehicle', 'Certificate', 'Photo & Signature', 'Warranty', 'Membership', 'Other'];
 const DOC_COLORS = { Case: '#5a3a3a', Tax: '#8a4b12', Medical: '#2E7D50', Official: '#2d4a6b', Exam: '#7a5c1e', Certificate: '#5b6e2f', 'Photo & Signature': '#6d5a8a', Insurance: '#1B4B8F', Vehicle: '#B45309', Identity: '#9C2963', Education: '#4F6B2F', Warranty: '#3F4F8C', Membership: '#2c6e6a', Property: '#6b3f5c', Financial: '#B8860B', Other: '#77818E' };
 let docFilter = 'All', activeDocFolder = '__all__';
 const docFolder = d => (d.folder || '').trim();
 const docFolderList = () => [...new Set(all('doc').map(docFolder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const docFolderForNew = () => activeDocFolder !== '__all__' ? activeDocFolder : '';
-function renderDocs() {
+function renderDocsBase() {
   migrateCaseDocs(); renderDriveChkNote(); if (typeof renderAttn === 'function') setTimeout(renderAttn, 0);
   const docs = all('doc');
   { const c = ImpCheck.get(), n = c && !c.off ? c.n : 0;
@@ -3430,7 +3515,7 @@ function renderDocs() {
   $('docYearBar').innerHTML = allYears.length ? `<div class="doc-yearbar"><span class="muted">Year</span><select id="docYearSel" aria-label="Financial year"><option value="All">All years</option>${allYears.map(y => `<option value="${y}"${y === docYear ? ' selected' : ''}>FY ${y}</option>`).join('')}</select></div>` : '';
   if ($('docYearSel')) $('docYearSel').addEventListener('change', e => { docYear = e.target.value; renderDocs(); });
   const shown = docs.filter(d => docYear === 'All' || docYears(d).includes(docYear));
-  const people = orderPeople(shown.flatMap(docOwners));
+  const people = orderPeople([...shown.flatMap(docOwners), ...(docYear === 'All' ? docCfgPeople() : [])]);
   if (docPath.who && !people.includes(docPath.who)) docPath = { who: null, grp: null };
   const mine = docPath.who ? shown.filter(d => docOwners(d).includes(docPath.who)) : [];
   if (docPath.grp && !mine.some(d => docGroup(d) === docPath.grp)) docPath.grp = null;
@@ -3440,8 +3525,8 @@ function renderDocs() {
     fbox.innerHTML = (people.length ? `<div class="folders">${people.map(p => { const own = shown.filter(d => docOwners(d).includes(p));
       const gs = DOC_GROUPS.filter(g => own.some(d => docGroup(d) === g[0])).map(g => g[0]);
       return `<button class="folder" data-dwho="${esc(p)}"><b>👤 ${esc(p)}</b><span>${cnt(own.length)}</span><small>${esc(gs.slice(0, 4).join(' · ') + (gs.length > 4 ? ' …' : ''))}</small></button>`; }).join('')}</div>` : '');
-    list = shown.filter(d => d.expiry && daysUntilISO(d.expiry) <= 60).sort((a, b) => a.expiry.localeCompare(b.expiry));
-    if (list.length) fbox.innerHTML += '<div class="group-title">Expiring within 60 days</div>';
+    list = shown.filter(d => d.expiry && daysUntilISO(d.expiry) <= 30 && daysUntilISO(d.expiry) >= -10).sort((a, b) => a.expiry.localeCompare(b.expiry));   // due in 30 days, or expired in the last 10
+    if (list.length) fbox.innerHTML += '<div class="group-title">Expiring in 30 days · expired in the last 10 days</div>';
     showWho = true;
   } else if (!docPath.grp) {
     const gs = DOC_GROUPS.filter(g => mine.some(d => docGroup(d) === g[0]));
@@ -3470,7 +3555,7 @@ function renderDocs() {
 }
 
 let editDocId = null;
-function openDoc(id) {
+function openDocBase(id) {
   const d = records[id]; if (!d) return;
   editDocId = id;
   $('doTitle').value = d.title; $('doWho').value = d.who || ''; $('docWhoDl').innerHTML = docPeople().map(p => `<option value="${esc(p)}">`).join(''); $('doNumber').value = d.number || ''; $('doExpiry').value = d.expiry || '';
@@ -6011,13 +6096,14 @@ function enterGhost() {
 
 /* ---------- Recently deleted ---------- */
 const BIN_TYPES = { inbox: 'Inbox item', task: 'Task', note: 'Note', date: 'Date', doc: 'Document', docfile: 'File', snote: 'Private note', fin: 'Money entry' };
-function binItems() {
+function binItemsBase() {
   if (window.GHOST) return [];
   const cutoff = nowMs() - 30 * 86400000;
   return Object.values(records).filter(r => r.deleted && r.deletedAt && r.deletedAt > cutoff && BIN_TYPES[r.type] && (!SEALED_TYPES.has(r.type) || finUnlocked())
     && !(r.type === 'docfile' && (!records[r.docId] || records[r.docId].deleted))).sort((a, b) => b.deletedAt - a.deletedAt);
 }
 function binLabel(r) {
+  if (r.type === 'catbin') return catbinLabel(r);
   if (r.type === 'docfile') { const d = records[r.docId]; return `${esc(r.name || 'file')}<small class="muted"> · from ${esc(d ? d.title : 'a document')}</small>`; }
   if (r.type === 'doc') { const n = docFilesOf(r.id).length; return `${esc(r.title)}<small class="muted"> · ${esc(docOwners(r).join(' & '))}${n ? ` · 📎 ${n}` : ''}</small>`; }
   if (r.type === 'fin') return esc((r.desc || 'Entry') + ' · ' + rs(r.amount));
@@ -6057,7 +6143,7 @@ $('trashOpen').addEventListener('click', openBin);
 /* ---------- share several documents ---------- */
 let docSel = null, shareTitle = null;
 function toggleDocSel(id) { if (!docSel) return; docSel.has(id) ? docSel.delete(id) : docSel.add(id); renderDocs(); }
-function renderSelBar() {
+function renderSelBarBase() {
   const bar = $('docSelBar'); bar.classList.toggle('hidden', !docSel);
   $('docSelBtn').textContent = docSel ? '✕ Stop selecting' : '☑ Select';
   if (!docSel) return;
@@ -6379,7 +6465,7 @@ function dateRowHtml({ d, w, days }, showCat) {
         ${d.repeat && d.repeat !== 'once' ? `<span class="pill">${d.repeat}</span>` : ''}${showCat && cat ? `<span>${cat[2]} ${esc(cat[1])}</span>` : ''}</div></div>
       <span class="chev">›</span></div>`, '', 'Delete 🗑', `data-date="${d.id}"`);
 }
-function renderDates() {
+function renderDatesBase() {
   if (!window.GHOST && (!Sync.on() || window.__synced)) { seedDates(); tidySeededExpiry(); syncAllDocDates(); dedupeSeedDates(); }   // a new device waits for its first sync
   const dates = all('date'), cats = dateCats(), home = $('dateHome');
   if (datePath && !cats.some(c => c[0] === datePath)) datePath = null;
@@ -6389,7 +6475,7 @@ function renderDates() {
     home.innerHTML = `<div class="date-top">${soon.length ? `<div class="group-title">Coming up · next 30 days</div><div class="group" id="dateSoon">${soon.map(x => dateRowHtml(x, true)).join('')}</div>` : '<p class="hint" style="margin:0 4px 8px">Nothing in the next 30 days.</p>'}</div>`;
     home.innerHTML += `<div class="group-title" id="dateCatTitle" style="margin-top:4px">Categories</div><div class="folders">${cats.map(([k, n, i]) => { const own = dates.filter(d => dateCat(d) === k), set = own.filter(d => d.when).length, near = dateRows(own.filter(d => d.when)).filter(x => x.days >= 0 && x.days <= days).length;
       return `<button class="folder" data-dcat="${k}"><b>${i} ${esc(n)}</b><span>${own.length} · ${set} dated</span>${near ? `<small class="warn">${near} within ${days} days</small>` : ''}</button>`; }).join('')}</div>
-      <div class="date-cat-actions"><button class="btn ghost small" id="dateNewCat">＋ New category</button>${(dateCfg().hidden || []).length ? `<button class="btn ghost small" id="dateUnhide">Show ${(dateCfg().hidden || []).length} hidden</button>` : ''}<button class="btn ghost small" id="dateIcsAll">📅 All to iPhone Calendar</button><button class="btn ghost small" id="dateImp">⤓ Import / export (Excel)</button></div>`;
+      <div class="date-cat-actions"><button class="btn ghost small" id="dateNewCat">＋ New category</button><button class="btn ghost small" id="dateIcsAll">📅 All to iPhone Calendar</button><button class="btn ghost small" id="dateImp">⤓ Import / export (Excel)</button></div>`;
   } else {
     const c = cats.find(x => x[0] === datePath);
     list = dateRows(dates.filter(d => dateCat(d) === datePath));
@@ -6403,9 +6489,10 @@ function renderDates() {
   $$('[data-dback]', home).forEach(b => b.addEventListener('click', () => { datePath = null; renderDates(); }));
   const on = (id, f) => { if ($(id)) $(id).addEventListener('click', f); };
   on('dateAddHere', () => openAdd('date'));
-  on('dateNewCat', () => { const n = (prompt('Name of the new category') || '').trim(); if (!n) return; const c = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false }; c.custom = [...(c.custom || []), { k: 'c' + Date.now().toString(36), n, i: '📁' }]; put(c); });
+  on('dateNewCat', newDateCat);
   on('dateUnhide', () => { const c = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false }; c.hidden = []; put(c); toast('Hidden categories are back.'); });
-  on('dateDelCat', () => {
+  on('dateDelCat', () => deleteDateCat(datePath));
+  on('dateDelCatOld', () => {
     const own = dates.filter(d => dateCat(d) === datePath), c = cats.find(x => x[0] === datePath);
     if (!confirm(`Delete the category "${c[1]}"${own.length ? ` and its ${own.length} entr${own.length === 1 ? 'y' : 'ies'}` : ''}?\n\nEntries can be brought back from Settings → Recently deleted for 30 days.`)) return;
     own.forEach(d => softDelete(d.id, { render: false }));
@@ -6906,16 +6993,19 @@ function openCapture(text) {
   CAP.files = []; $('capText').value = text || ''; $('capImgs').innerHTML = ''; Sheets.open('shCapture');
   setTimeout(() => $('capText').focus(), 320);
 }
-function capShow() { $('capImgs').innerHTML = CAP.files.map((f, i) => `<img src="${URL.createObjectURL(f)}" alt="photo ${i + 1}">`).join(''); }
+function capShowOld() { $('capImgs').innerHTML = CAP.files.map((f, i) => `<img src="${URL.createObjectURL(f)}" alt="photo ${i + 1}">`).join(''); }
 $('capCam').addEventListener('click', () => $('capFileCam').click());
 $('capLib').addEventListener('click', () => $('capFileLib').click());
-['capFileCam', 'capFileLib'].forEach(id => $(id).addEventListener('change', e => { CAP.files.push(...e.target.files); e.target.value = ''; capShow(); }));
+$('capPdf').addEventListener('click', () => $('capFilePdf').click());
+['capFileCam', 'capFileLib', 'capFilePdf'].forEach(id => $(id).addEventListener('change', e => { CAP.files.push(...e.target.files); e.target.value = ''; capShow(); }));
 $('capSave').addEventListener('click', async () => {
   const text = $('capText').value.trim();
   if (!text && !CAP.files.length) { toast('Write a line or add a photo.'); return; }
   const b = $('capSave'); b.disabled = true;
   try {
-    const imgs = CAP.files.length ? await storeImages(CAP.files, 0) : [];
+    const pdfF = CAP.files.filter(f => /pdf/i.test(f.type) || /\.pdf$/i.test(f.name || '')), picF = CAP.files.filter(f => !pdfF.includes(f));
+    const imgs = [...(picF.length ? await storeImages(picF, 0) : []), ...(pdfF.length ? await storePdfs(pdfF) : [])];
+    if (!imgs.length && !text) return;
     put({ id: uid('ib'), type: 'inbox', text, imgs, deleted: false });
     CAP.files = []; Sheets.close('shCapture', true); toast('Saved to Inbox.', 'Open', openInbox);
   } finally { b.disabled = false; }
@@ -6931,44 +7021,46 @@ function renderInboxCard() {
 function openInbox() {
   const L = inboxItems(), fin = finUnlocked();
   $('ibList').innerHTML = L.length ? L.map(i => { const sg = suggestInbox(i); return `<div class="ib-item" data-ib="${i.id}" data-sug="${sg.k}">
-      ${i.text ? `<div class="ib-t">${esc(i.text)}</div>` : ''}${(i.imgs || []).length ? `<div class="ib-imgs">${i.imgs.map(b => `<img data-blob="${b}" alt="photo">`).join('')}</div>` : ''}
+      ${i.text ? `<div class="ib-t">${esc(i.text)}</div>` : ''}${(i.imgs || []).length ? `<div class="ib-imgs">${i.imgs.map(ibThumb).join('')}</div>` : ''}
       <div class="ib-m">${timeAgo(i.createdAt)}${i.via ? ' · shared from another app' : ''}</div>${sg.k !== 'money' || fin ? `<div class="ib-sug">Suggested: ${esc(sg.why)}</div>` : ''}
       <div class="ib-acts"><button data-ibto="note">🗒 Note</button><button data-ibto="task">☑︎ Task</button><button data-ibto="doc">📁 Document</button><button data-ibto="date">📅 Date</button>${fin ? '<button data-ibto="money">₹ Spend</button>' : ''}<button data-ibto="del" class="danger">🗑</button></div></div>`; }).join('')
     : '<div class="empty"><b>Inbox is empty</b>Press and hold + → Capture, or tap ＋ Capture above.</div>';
   $$('#ibList [data-ib]').forEach(el => { const b = el.querySelector(`[data-ibto="${el.dataset.sug}"]`); if (b) { b.classList.add('sug'); b.parentElement.prepend(b); } });
   hydrateImgs($('ibList'));
   $$('#ibList img[data-blob]').forEach(im => im.addEventListener('click', () => im.src && openLightbox(im.src)));
+  $$('#ibList [data-ibpdf]').forEach(b => b.addEventListener('click', () => openBlobPdf(b.dataset.ibpdf)));
   $$('[data-ibto]').forEach(b => b.addEventListener('click', () => inboxTo(b.closest('[data-ib]').dataset.ib, b.dataset.ibto)));
   if (!Sheets.isOpen('shInbox')) Sheets.open('shInbox');
 }
 $('ibNew').addEventListener('click', () => openCapture());
-function inboxDone(i, keepImgs) {
+function inboxDoneBase(i, keepImgs) {
   if (keepImgs && (i.imgs || []).length) { i.text = ''; put(i, { render: false }); toast('Photos stay in the Inbox — sort them next.'); }
   else softDelete(i.id, { render: false });
   renderInboxCard();
 }
 async function inboxTo(id, to) {
   const i = records[id]; if (!i) return;
-  const text = i.text || '', first = text.split('\n')[0].trim(), imgs = (i.imgs || []).filter(b => records[b] && !records[b].deleted);
+  const text = i.text || '', first = text.split('\n')[0].trim(), all_ = (i.imgs || []).filter(b => records[b] && !records[b].deleted);
+  const pdfs = all_.filter(b => isPdfBlob(records[b])), imgs = to === 'doc' ? all_ : all_.filter(b => !pdfs.includes(b));
   if (to === 'del') { softDelete(id); toast('Deleted — in Recently deleted for 30 days.', 'Undo', () => { restore(id); openInbox(); }); openInbox(); renderInboxCard(); return; }
   Sheets.close('shInbox', true);
   if (to === 'note') {
     const n = newNote(text, first.slice(0, 60) || (imgs.length ? 'Photo' : ''), false, '');
     if (imgs.length) { n.imgs = imgs.slice(0, IMG_PER_NOTE); put(n, { render: false }); }
-    inboxDone(i, false); showTab('notes'); openNoteEditor(n.id); return;
+    inboxDone(i, false, pdfs); showTab('notes'); openNoteEditor(n.id); return;
   }
   if (to === 'task') {
     let noteTxt = text.split('\n').slice(1).join('\n').trim();
     if (imgs.length) { const n = newNote(text, 'Photos — ' + (first || 'task'), false, ''); n.imgs = imgs.slice(0, IMG_PER_NOTE); put(n, { render: false }); noteTxt = (noteTxt ? noteTxt + '\n' : '') + `Photos are in the note "${n.title}".`; }
     const t = newTask({ title: first || 'Task from Inbox', notes: noteTxt });
-    inboxDone(i, false); showTab('tasks'); openTaskEditor(t.id); return;
+    inboxDone(i, false, pdfs); showTab('tasks'); openTaskEditor(t.id); return;
   }
   if (to === 'doc') {
-    const d = put({ id: uid('doc'), type: 'doc', title: first.slice(0, 60) || 'Document from Inbox', who: '', docType: 'Other', number: '', expiry: null, issuer: '', notes: text.split('\n').slice(1).join('\n'), folder: '', fy: null, deleted: false });
+    const d = put({ id: uid('doc'), type: 'doc', title: first.slice(0, 60) || ((records[pdfs[0]] || {}).name || '').replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.pdf$/i, '').slice(0, 60) || 'Document from Inbox', who: '', docType: 'Other', number: '', expiry: null, issuer: '', notes: text.split('\n').slice(1).join('\n'), folder: '', fy: null, deleted: false });
     showTab('docs'); openDoc(d.id);
     if (imgs.length) {
       const files = [], okIds = [];
-      for (const b of imgs) { try { const src = await imgSrc(records[b]); const blob = await (await fetch(src)).blob(); files.push(new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' })); okIds.push(b); } catch (e) { RLOG.warn('inbox photo', e.message); } }
+      for (const b of imgs) { try { const src = await imgSrc(records[b]); const blob = await (await fetch(src)).blob(); files.push(new File([blob], (records[b] && records[b].name) || (isPdfBlob(records[b]) ? 'file.pdf' : 'photo.jpg'), { type: isPdfBlob(records[b]) ? 'application/pdf' : blob.type || 'image/jpeg' })); okIds.push(b); } catch (e) { RLOG.warn('inbox photo', e.message); } }
       const before = docFilesOf(d.id).length;
       if (files.length) await addDocFiles(d.id, files);
       const attached = files.length > 0 && docFilesOf(d.id).length - before >= files.length;
@@ -7178,7 +7270,7 @@ function attnLists() {
   const c = attnCfg();
   return attnListsAll().filter(([k]) => !c.off[k]).map(([k, h, L]) => [h, k === 'inbox' ? L : L.filter(x => !c.ok[k + ':' + x.id]), k]).filter(x => x[1].length);
 }
-function renderAttn() {
+function renderAttnBase() {
   const box = $('docAttn'); if (!box) return;
   if (docPath.who || window.GHOST) { box.innerHTML = ''; return; }
   const L = attnLists(), c = attnCfg(), n = L.reduce((s, x) => s + x[1].length, 0);
@@ -7223,6 +7315,8 @@ function openShareIn() {
       <li><b>End If</b> → add <b>Show Notification</b> <code>Saved to Register Inbox</code>.</li>
       <li>Try it: in Photos or WhatsApp tap <b>Share</b> → <b>Save to Register</b>.</li>
     </ol>
+    <div class="group-title">PDFs too — a second Shortcut (2 minutes, needs Code.gs v23)</div>
+    <ol class="share-steps"><li>New Shortcut <code>Save PDF to Register</code> → ⓘ → <b>Show in Share Sheet</b> → accept <b>PDFs</b> and <b>Files</b>.</li><li>Add <b>Base64 Encode</b> (Shortcut Input), Line Breaks <b>None</b>.</li><li>Add <b>Get Contents of URL</b> as above, with 5 fields: <code>token</code>, <code>action</code> = <code>inboxAdd</code>, <code>data</code> = <i>Base64 Encoded</i>, <code>mime</code> = <code>application/pdf</code>, <code>name</code> = <i>Shortcut Input</i> → <b>Name</b>.</li></ol>
     <p class="hint">The photo goes into your Register Drive folder; nothing else in your Drive is touched. The token stays inside the Shortcut on your phone — do not share the Shortcut with anyone.</p>
     <button class="btn ghost block" id="siTest">Send a test item now</button><div class="msg" id="siMsg"></div>`;
   const cp = async (id, what) => { try { await navigator.clipboard.writeText($(id).value); toast(what + ' copied.'); } catch (e) { $(id).type = 'text'; $(id).select(); toast('Select and copy it.'); } };
@@ -7492,7 +7586,7 @@ function renderAddForm0(focus) {
   if (focus && first) setTimeout(() => first.focus(), 320);
 }
 
-function taskGuess() {
+function taskGuessOld() {
   const el = $('afTitle'); if (!el) return;
   const q = parseQuickAdd(el.value), g = classify(q.title);
   const cat = AF.cat !== 'auto' ? AF.cat : q.category || g.category;
@@ -7507,7 +7601,7 @@ function saveAdd(another) {
     const q = parseQuickAdd(v('afTitle')); if (!q.title) { $('afTitle').focus(); return; }
     const g = classify(q.title);
     newTask({ title: q.title, category: fixCat(AF.cat !== 'auto' ? AF.cat : q.category || g.category), priority: AF.prio !== 'auto' ? AF.prio : q.priority || g.priority,
-              dueDate: q.dueDate || AF.due || null, autoFiled: AF.cat === 'auto' && !q.category && g.matched });
+              dueDate: q.dueDate || AF.due || null, dueTime: q.dueTime || undefined, autoFiled: AF.cat === 'auto' && !q.category && g.matched });
     toast('Task added.');
   } else if (k === 'note') {
     const ti = v('afTitle'), body = $('afBody').value;
@@ -7564,6 +7658,7 @@ $$('.tab').forEach(t => t.addEventListener('click', () => {
   showTab(t.dataset.tab);
 }));
 function renderAll() {
+  if (typeof updateTodayBadge === 'function') setTimeout(updateTodayBadge, 0);
   const n = new Date();
   $('todayLbl').textContent = n.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
   updateDateBadge();
@@ -7581,7 +7676,7 @@ function hl(text, q) {
   const from = Math.max(0, i - 25);
   return (from ? '…' : '') + esc(s.slice(from, i)) + '<mark>' + esc(s.slice(i, i + q.length)) + '</mark>' + esc(s.slice(i + q.length, i + q.length + 50));
 }
-function runSearch() {
+function runSearchBase() {
   const q = $('searchIn').value.trim().toLowerCase(), box = $('searchRes');
   if (!q) { box.innerHTML = '<div class="empty">Type to search tasks, steps, notes, dates and documents (try “aadhar ruchi”), or ask: “when does Ruchi\'s passport expire?”, “birthdays this month”, “spent on food in August”' + (finUnlocked() ? ' — and Money' : '') + '.</div>'; return; }
   const hits = [], has = s => String(s || '').toLowerCase().includes(q);
@@ -7638,6 +7733,7 @@ function offerLegacy() {
   setTimeout(() => { if (confirm('Found your data from the previous Register on this iPhone. Bring it into the new version?')) importLegacyLocal(); else { try { localStorage.setItem('r2_legacyDone', '1'); } catch (e) {} } }, 500);
 }
 function hideDecoy() {
+  if ($('alPin')) $('alPin').classList.add('hidden');
   document.documentElement.classList.remove('decoy-on');
   $('decoy').classList.add('hidden'); $('decoy').setAttribute('aria-hidden', 'true');
   $('app').removeAttribute('aria-hidden');
@@ -7647,7 +7743,7 @@ function hideDecoy() {
 let decoyTaps = 0, decoyT = null;
 $('decoyKey').addEventListener('click', () => {
   decoyTaps++; clearTimeout(decoyT); decoyT = setTimeout(() => { decoyTaps = 0; }, 2000);
-  if (decoyTaps >= 3) { decoyTaps = 0; hideDecoy(); }
+  if (decoyTaps >= 3) { decoyTaps = 0; decoyUnlock(); }
 });
 $('decoyRetry').addEventListener('click', () => { const b = $('decoyRetry'); b.disabled = true; b.textContent = 'Retrying…'; setTimeout(() => { b.disabled = false; b.textContent = 'Retry'; }, 1500); });
 function hideNow() { lockFinance(true); showDecoy(); }
@@ -7662,7 +7758,7 @@ function flushEdits() {
 }
 window.addEventListener('pagehide', flushEdits);
 ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true, capture: true }));
-setInterval(() => { if (finUnlocked() && document.visibilityState === 'visible' && Date.now() - Math.max(lastTouch, Fin.unlockedAt || 0) > 5 * 60000) { lockFinance(); } }, 30000);   // idle 5 min → lock Money
+setInterval(() => { if (finUnlocked() && document.visibilityState === 'visible' && Date.now() - Math.max(lastTouch, Fin.unlockedAt || 0) > (+prefs.moneyIdle || 5) * 60000) { lockFinance(); } }, 30000);   // idle 5 min → lock Money
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     hiddenAt = nowMs();
@@ -7852,6 +7948,7 @@ $('settingsBtn').addEventListener('click', openSettings);
 function openSettings() {
   if (window.GHOST) { ghostCrash(true); return; }
   $('setDecoy').checked = !!prefs.decoyLaunch; $('setDecoyReturn').value = String(prefs.decoyReturn);
+  $('setAppLockV').textContent = AppLock.on() ? 'On' : 'Off'; $('setAppIdle').value = String(+prefs.appIdle || 0); $('setMoneyIdle').value = String(+prefs.moneyIdle || 5); $('setMoneyIdleRow').classList.toggle('hidden', !finUnlocked());
   $('setVaultCode').classList.toggle('hidden', !finUnlocked()); $('setVaultLock').classList.toggle('hidden', !finUnlocked());
   $('setBio').classList.toggle('hidden', !finUnlocked() || !Bio.supported()); $('setBioV').textContent = Bio.on() ? 'On' : 'Off';
   ['setAutoBkRow', 'setAutoBkNow', 'setAutoBkTest'].forEach(i => $(i).classList.toggle('hidden', !finUnlocked()));
@@ -8212,7 +8309,7 @@ function spawnRepeat(t) {
 }
 
 /* ---------- Recently deleted: restore / delete for good ---------- */
-function binRestore(id) {
+function binRestoreV216(id) {
   const r = records[id]; if (!r) return;
   if (r.type === 'docfile' && r.locked && !Fin.key) { toast('This file is locked. Open Money with your private code first, then restore it.'); return; }
   restore(id);
@@ -8221,6 +8318,7 @@ function binRestore(id) {
   toast('Restored.'); openBin();
 }
 async function purgeNow(ids, again) {
+  ids = [...ids, ...ids.flatMap(id => (records[id] && records[id].type === 'catbin' && records[id].dateIds) || []).filter(x => records[x] && records[x].deleted)];   // a category's dates go with it
   const gone = [], wait = [];
   ids.forEach(id => { const r = records[id]; if (!r) return;
     if (!again && r.type === 'docfile' && r.fileId) driveDelete(r.fileId);
@@ -8348,6 +8446,561 @@ Scan.save = (function (inner) {
     try { return await inner.call(this); } finally { this.busy = false; if ($('scSave')) $('scSave').disabled = !this.pages.length; }
   };
 })(Scan.save);
+
+
+/* ==========================================================================
+   v2.17
+   ======================================================================== */
+const V17_PAL = ['#9C2963', '#1B4B8F', '#2E7D50', '#B45309', '#6d5a8a', '#2c6e6a', '#8a4b12', '#3F4F8C', '#5b6e2f', '#6b3f5c'];
+const ownHtml = s => esc(s);
+
+/* ---------- 1. Today ---------- */
+function todayData() {
+  const t = todayISO(), nowM = isoMonth(new Date());
+  const tasks = all('task').filter(x => x.status !== 'done' && x.dueDate && x.dueDate <= t).sort((a, b) => (a.dueDate + (a.dueTime || '99')).localeCompare(b.dueDate + (b.dueTime || '99')));
+  const steps = []; all('task').filter(x => x.status !== 'done').forEach(x => (x.subs || []).map(normSub).forEach(s => { if (!s.done && s.dueDate && s.dueDate <= t) steps.push({ s, t: x }); }));
+  const dates = dateRows(all('date').filter(d => d.when)).filter(x => x.days >= 0 && x.days <= 7);
+  const bills = all('bill').map(b => ({ b, late: overduePeriods(b, nowM).length, now: billDueIn(b, nowM) && !payFor(b.id, nowM) })).filter(x => x.late || x.now);
+  const docs = all('doc').filter(d => d.expiry && daysUntilISO(d.expiry) <= 30 && daysUntilISO(d.expiry) >= -10).sort((a, b) => a.expiry.localeCompare(b.expiry));
+  const inbox = all('inbox').length, sug = dateSuggestions().length;
+  return { tasks, steps, dates, bills, docs, inbox, sug };
+}
+function updateTodayBadge() {
+  const b = $('todayBadge'); if (!b) return;
+  if (window.GHOST) { b.classList.add('hidden'); return; }
+  const t = todayISO(), n = all('task').filter(x => x.status !== 'done' && x.dueDate && x.dueDate <= t).length + all('date').filter(d => d.when && isoLocal(nextOccurrence(d)) === t).length;
+  b.textContent = n; b.classList.toggle('hidden', !n);
+}
+function openToday() {
+  const D = window.GHOST ? { tasks: [], steps: [], dates: [], bills: [], docs: [], inbox: 0, sug: 0 } : todayData(), t = todayISO();
+  const row = (k, id, title, sub, when, neg) => `<button class="td-row" data-tdk="${k}" data-tdid="${esc(id)}"><span class="t">${title}${sub ? `<small>${sub}</small>` : ''}</span>${when ? `<span class="w${neg ? ' neg' : ''}">${when}</span>` : ''}</button>`;
+  const sec = (h, rows) => rows.length ? `<div class="group-title">${h}</div><div class="group">${rows.join('')}</div>` : '';
+  let html = `<div class="td-h">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>`;
+  html += sec(`☑︎ Tasks due (${D.tasks.length})`, D.tasks.map(x => row('task', x.id, esc(x.title), esc(x.category) + (x.priority === 'High' ? ' · High' : ''), (x.dueDate < t ? 'overdue · ' : '') + (x.dueTime ? fmtTime12(x.dueTime) : relDay(x.dueDate)), x.dueDate < t)));
+  html += sec(`↳ Steps due (${D.steps.length})`, D.steps.slice(0, 20).map(x => row('task', x.t.id, esc(x.s.text), 'in ' + esc(x.t.title), x.s.dueDate < t ? 'overdue' : 'today', x.s.dueDate < t)));
+  html += sec(`📅 Dates · next 7 days (${D.dates.length})`, D.dates.map(x => row('date', x.d.id, esc(x.d.label), '', x.days === 0 ? 'today' : inDays(x.days), false)));
+  html += sec(`🧾 Bills to pay (${D.bills.length})`, D.bills.map(x => row('bill', x.b.id, esc(x.b.label), x.late ? `${x.late} month${x.late > 1 ? 's' : ''} missed` : '', x.b.dueDay ? 'due on ' + x.b.dueDay : 'this month', !!x.late)));
+  html += sec(`📁 Documents expiring · 30 days (${D.docs.length})`, D.docs.map(d => { const n = daysUntilISO(d.expiry); return row('doc', d.id, esc(d.title), esc(docOwners(d).join(' & ')), n < 0 ? 'expired' : inDays(n), n < 0); }));
+  const more = [];
+  if (D.inbox) more.push(row('inbox', 'x', `📥 ${D.inbox} item${D.inbox > 1 ? 's' : ''} in the Inbox to sort`, '', 'Sort ›'));
+  if (D.sug) more.push(row('sug', 'x', `📅 ${D.sug} date${D.sug > 1 ? 's' : ''} found in your notes & tasks`, 'Add them to Dates, or say no', 'Review ›'));
+  html += sec('To sort', more);
+  if (!D.tasks.length && !D.steps.length && !D.dates.length && !D.bills.length && !D.docs.length && !more.length) html += '<div class="td-clear">☀︎<br><b>All clear for today.</b><br>Nothing due, nothing waiting.</div>';
+  html += `<div class="btn-row" style="margin-top:14px"><button class="btn ghost small" id="tdAdd">＋ Task for today</button><button class="btn ghost small" id="tdCap">📥 Capture</button></div>`;
+  $('tdBody').innerHTML = html;
+  $$('[data-tdk]', $('tdBody')).forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.tdk, id = b.dataset.tdid; Sheets.close('shToday', true);
+    if (k === 'task') { showTab('tasks'); previewTask(id); }
+    else if (k === 'date') { setPref('dateSeg', 'dates'); datePath = null; showTab('dates'); openDate(id); }
+    else if (k === 'bill') { setPref('dateSeg', 'bills'); showTab('dates'); openBill(id); }
+    else if (k === 'doc') { showTab('docs'); showDoc(id); }
+    else if (k === 'inbox') openInbox();
+    else if (k === 'sug') openDateSug();
+  }));
+  $('tdAdd').addEventListener('click', () => { Sheets.close('shToday', true); showTab('tasks'); openAdd('task'); setTimeout(() => { if ($('afTitle')) { $('afTitle').value = ' today'; $('afTitle').setSelectionRange(0, 0); taskGuess(); } }, 60); });
+  $('tdCap').addEventListener('click', () => { Sheets.close('shToday', true); openCapture(); });
+  if (!Sheets.isOpen('shToday')) Sheets.open('shToday');
+}
+$('todayFab').addEventListener('click', openToday);
+
+/* ---------- 2. "Call CA tomorrow 5pm high" ---------- */
+const fmtTime12 = hm => { const [h, m] = String(hm).split(':').map(Number); if (isNaN(h)) return ''; return `${h % 12 || 12}:${String(m || 0).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+function parseQuickAdd(text) {
+  const out = parseQuickAddOld(text); let s = ' ' + out.title + ' ';
+  // time: 5pm, 5 pm, 5:30pm, 17:30, at 5
+  let m = s.match(/\s(?:at\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)(?=[\s,.]|$)/i);
+  if (m && +m[1] >= 1 && +m[1] <= 12 && (!m[2] || +m[2] < 60)) { const h = (+m[1] % 12) + (/pm/i.test(m[3]) ? 12 : 0); out.dueTime = String(h).padStart(2, '0') + ':' + (m[2] || '00'); s = s.replace(m[0], ' '); }
+  else if ((m = s.match(/\s(?:at\s+)?([01]?\d|2[0-3]):([0-5]\d)(?=[\s,.]|$)/))) { out.dueTime = String(+m[1]).padStart(2, '0') + ':' + m[2]; s = s.replace(m[0], ' '); }
+  else if ((m = s.match(/\sat\s+(\d{1,2})(?=[\s,.]|$)/i)) && +m[1] >= 1 && +m[1] <= 12) { const h = +m[1]; out.dueTime = String(h <= 7 ? h + 12 : h).padStart(2, '0') + ':00'; s = s.replace(m[0], ' '); }
+  // priority: only as the last word(s), or "priority high" anywhere ("high court" stays in the title)
+  if (!out.priority) {
+    if ((m = s.match(/\s(?:priority\s+(high|low|medium)|(high|low|medium)\s+priority)(?=[\s,.]|$)/i))) { const w = (m[1] || m[2]).toLowerCase(); out.priority = w === 'high' ? 'High' : w === 'low' ? 'Low' : 'Medium'; s = s.replace(m[0], ' '); }
+    else if ((m = s.match(/\s(high|urgent|asap|important|low)\s*$/i))) { out.priority = /low/i.test(m[1]) ? 'Low' : 'High'; s = s.replace(new RegExp('\\s' + m[1] + '\\s*$', 'i'), ' '); }
+  }
+  // date: today, tomorrow, day after tomorrow, next week, weekdays, in 3 days, 15 Oct, 15/10
+  if (!out.dueDate) {
+    if ((m = s.match(/\s(?:on\s+|by\s+)?day after tomorrow(?=[\s,.]|$)/i))) { out.dueDate = addDays(2); s = s.replace(m[0], ' '); }
+    else if ((m = s.match(/\s(?:by\s+)?next week(?=[\s,.]|$)/i))) { out.dueDate = addDays(7); s = s.replace(m[0], ' '); }
+    else { const f = findDateIn(s); if (f && f.hit) { const i = s.toLowerCase().indexOf(f.hit.trim()); if (i >= 0) { out.dueDate = f.iso; s = (s.slice(0, i) + ' ' + s.slice(i + f.hit.trim().length)).replace(/\s(?:on|by|due)\s*$/i, ' ').replace(/\s(?:on|by|due)\s+(?=\s)/i, ' '); } } }
+  }
+  if (out.dueTime && !out.dueDate) { const now = new Date(), [h, mi] = out.dueTime.split(':').map(Number); out.dueDate = h * 60 + mi > now.getHours() * 60 + now.getMinutes() ? todayISO() : addDays(1); }
+  out.title = s.replace(/\s(?:on|by|at|due)\s*$/i, ' ').replace(/\s{2,}/g, ' ').trim();
+  return out;
+}
+function taskGuess() {
+  const el = $('afTitle'); if (!el) return;
+  const q = parseQuickAdd(el.value), g = classify(q.title);
+  const cat = AF.cat !== 'auto' ? AF.cat : q.category || g.category;
+  const prio = AF.prio !== 'auto' ? AF.prio : q.priority || g.priority;
+  const due = q.dueDate || AF.due;
+  $('afGuess').innerHTML = q.title ? `<b>${esc(q.title)}</b><br>Files as <b style="color:${catColor(cat)}">${cat}</b> · ${prio}${due ? ' · 📅 ' + relDay(due) : ''}${q.dueTime ? ' · ⏰ ' + fmtTime12(q.dueTime) : ''}` : 'Type it the way you say it: “Call CA tomorrow 5pm high”, “Pay LIC on 15 Oct”, “Submit report Friday”.';
+}
+
+/* ---------- 3. Face ID for the whole app, and auto-lock times ---------- */
+async function pinHash(pin, salt) {
+  const k = await crypto.subtle.importKey('raw', te.encode(String(pin)), 'PBKDF2', false, ['deriveBits']);
+  return b64(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: unb64(salt), iterations: 200000, hash: 'SHA-256' }, k, 256)));
+}
+const AppLock = {
+  KEY: 'r2_applock', fails: 0,
+  get() { try { return JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch (e) { return null; } },
+  set(v) { try { if (v) localStorage.setItem(this.KEY, JSON.stringify(v)); else localStorage.removeItem(this.KEY); } catch (e) {} },
+  on() { return !!this.get(); },
+  async enable(pin) {
+    const cred = await navigator.credentials.create({ publicKey: { challenge: Bio.rnd(32), rp: { name: 'Register' }, user: { id: Bio.rnd(16), name: 'register-app', displayName: 'Register app lock' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], timeout: 60000,
+      authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'preferred', userVerification: 'required' } } });
+    const salt = b64(Bio.rnd(16));
+    this.set({ id: b64(cred.rawId), salt, hash: await pinHash(pin, salt), at: Date.now() });
+  },
+  check() {                                              // called inside the tap, so Face ID can start at once
+    const a = this.get();
+    return navigator.credentials.get({ publicKey: { challenge: Bio.rnd(32), allowCredentials: [{ type: 'public-key', id: unb64(a.id) }], userVerification: 'required', timeout: 60000 } });
+  },
+  async pinOk(pin) { const a = this.get(); return !!a && (await pinHash(pin, a.salt)) === a.hash; }
+};
+function decoyUnlock() {
+  if (!AppLock.on()) { hideDecoy(); return; }
+  if (AppLock.fails >= 2 || !Bio.supported()) { $('alPin').classList.remove('hidden'); setTimeout(() => $('alPinIn').focus(), 50); return; }
+  AppLock.check().then(() => { AppLock.fails = 0; hideDecoy(); }, e => { AppLock.fails++; RLOG.warn('app lock', e.name || e.message); });
+}
+{ let wrong = 0;
+  const go = async () => {
+    const v = $('alPinIn').value; $('alPinIn').value = '';
+    if (wrong >= 5) return;
+    if (await AppLock.pinOk(v)) { wrong = 0; AppLock.fails = 0; $('alPin').classList.add('hidden'); hideDecoy(); }
+    else if (++wrong >= 5) { $('alPin').classList.add('hidden'); setTimeout(() => { wrong = 0; }, 5 * 60000); }
+  };
+  $('alPinGo').addEventListener('click', go);
+  $('alPinIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } }); }
+$('setAppLock').addEventListener('click', () => {
+  if (AppLock.on()) { if (confirm('Turn off Face ID for opening Register on this device?')) { AppLock.set(null); $('setAppLockV').textContent = 'Off'; toast('Face ID to open is off.'); } return; }
+  if (!Bio.supported()) { toast('Face ID needs the app installed on the Home Screen (iOS 16 or later).'); return; }
+  $('alPin1').value = ''; $('alPin2').value = ''; $('alMsg').textContent = ''; Sheets.open('shAppLock');
+});
+$('alOn').addEventListener('click', async () => {
+  const p1 = $('alPin1').value, p2 = $('alPin2').value, m = $('alMsg');
+  if (!/^\d{4,}$/.test(p1)) { m.className = 'msg err'; m.textContent = 'Use 4 or more digits.'; return; }
+  if (p1 !== p2) { m.className = 'msg err'; m.textContent = 'The two PINs do not match.'; return; }
+  try {
+    await AppLock.enable(p1);
+    setPref('decoyLaunch', true); if ($('setDecoy')) $('setDecoy').checked = true;
+    Sheets.close('shAppLock', true); $('setAppLockV').textContent = 'On'; toast('Face ID to open is on. The decoy screen comes first, then Face ID.');
+  } catch (e) { m.className = 'msg err'; m.textContent = e.name === 'NotAllowedError' ? 'Face ID was cancelled — try again.' : (e.message || 'Could not turn on Face ID.'); }
+});
+$('setAppIdle').addEventListener('change', () => setPref('appIdle', +$('setAppIdle').value));
+$('setMoneyIdle').addEventListener('change', () => setPref('moneyIdle', +$('setMoneyIdle').value));
+setInterval(() => { const m = +prefs.appIdle; if (m > 0 && document.visibilityState === 'visible' && !document.documentElement.classList.contains('decoy-on') && Date.now() - lastTouch > m * 60000) hideNow(); }, 15000);
+
+/* ---------- 4. merge documents · 6. people & categories · 7. new types · 8. move many ---------- */
+const DOC_CFG = 'doc-cfg';
+const DOC_GROUPS0 = DOC_GROUPS.map(g => [g[0], g[1].slice(), g[2]]), DOC_TYPES0 = DOC_TYPES.slice();
+let docCfgStamp = null;
+const docCfg = () => !window.GHOST && records[DOC_CFG] && !records[DOC_CFG].deleted ? records[DOC_CFG] : null;
+function syncDocCfg() {
+  const c = docCfg(), stamp = c ? c.updatedAt + ':' + (c.groups || []).length : 'none';
+  if (stamp === docCfgStamp) return; docCfgStamp = stamp;
+  DOC_GROUPS = c && c.groups && c.groups.length ? c.groups.map(g => [g.n, (g.t || []).slice(), g.i || '📁']) : DOC_GROUPS0.map(g => [g[0], g[1].slice(), g[2]]);
+  DOC_TYPES = [...new Set([...DOC_TYPES0, ...((c && c.types) || [])])];
+  const last = DOC_GROUPS[DOC_GROUPS.length - 1];
+  DOC_TYPES.forEach(t => { if (!DOC_GROUPS.some(g => g[1].includes(t))) last[1].push(t); });
+  DOC_TYPES.forEach((t, i) => { if (!DOC_COLORS[t]) DOC_COLORS[t] = V17_PAL[i % V17_PAL.length]; });
+}
+function docCfgEdit(fn) {
+  syncDocCfg();
+  const c0 = docCfg() || {};
+  const c = { id: DOC_CFG, type: 'doccfg', people: [], ...JSON.parse(JSON.stringify(c0)), deleted: false };
+  c.groups = DOC_GROUPS.map(g => ({ n: g[0], t: g[1].slice(), i: g[2] })); c.types = DOC_TYPES.filter(t => !DOC_TYPES0.includes(t));
+  fn(c); put(c, { render: false }); docCfgStamp = null; syncDocCfg(); scheduleRender();
+}
+const docCfgPeople = () => ((docCfg() || {}).people || []);
+function allDocPeople() { return orderPeople([...all('doc').flatMap(docOwners), ...docCfgPeople()]); }
+function addDocType(name, grp) {
+  name = String(name || '').trim(); if (!name) return null;
+  const hit = DOC_TYPES.find(t => t.toLowerCase() === name.toLowerCase()); if (hit) return hit;
+  docCfgEdit(c => { c.types.push(name); const g = c.groups.find(x => x.n === grp) || c.groups[c.groups.length - 1]; g.t.push(name); });
+  return name;
+}
+function addDocGroup(name, icon) {
+  name = String(name || '').trim(); if (!name) return;
+  if (DOC_GROUPS.some(g => g[0].toLowerCase() === name.toLowerCase())) { toast('That category already exists.'); return; }
+  docCfgEdit(c => { const t = DOC_TYPES.some(x => x.toLowerCase() === name.toLowerCase()) ? null : name;
+    if (t) c.types.push(t); c.groups.splice(c.groups.length - 1, 0, { n: name, i: icon || '📁', t: t ? [t] : [] }); });
+}
+function renameDocGroup(old, nu) {
+  nu = String(nu || '').trim(); if (!nu || nu === old) return;
+  const into = DOC_GROUPS.find(g => g[0].toLowerCase() === nu.toLowerCase() && g[0] !== old);
+  if (into && !confirm(`"${into[0]}" already exists. Put everything from "${old}" into "${into[0]}"?`)) return;
+  docCfgEdit(c => { const g = c.groups.find(x => x.n === old); if (!g) return;
+    if (into) { const t = c.groups.find(x => x.n === into[0]); t.t.push(...g.t); c.groups = c.groups.filter(x => x !== g); } else g.n = nu; });
+  if (docPath.grp === old) docPath.grp = into ? into[0] : nu;
+}
+function deleteDocGroup(name) {
+  const gi = DOC_GROUPS.findIndex(g => g[0] === name); if (gi < 0) return;
+  if (gi === DOC_GROUPS.length - 1) { toast(`"${name}" is where everything else goes — it cannot be deleted. Rename it instead.`); return; }
+  const g = DOC_GROUPS[gi], n = all('doc').filter(d => g[1].includes(d.docType)).length, other = DOC_GROUPS[DOC_GROUPS.length - 1][0];
+  if (!confirm(`Delete the category "${name}"?${n ? `\n\nIts ${n} document${n > 1 ? 's' : ''} stay safe and show under "${other}".` : ''}\nRecently deleted keeps it for 30 days — restoring it puts everything back.`)) return;
+  put({ id: uid('cb'), type: 'catbin', what: 'docgrp', grp: { n: g[0], t: g[1].slice(), i: g[2] }, deleted: true, deletedAt: nowMs() }, { render: false });
+  docCfgEdit(c => { const x = c.groups.find(y => y.n === name); c.groups[c.groups.length - 1].t.push(...x.t); c.groups = c.groups.filter(y => y !== x); });
+  if (docPath.grp === name) docPath.grp = null;
+  toast(`Deleted "${name}" — in Recently deleted for 30 days.`);
+}
+function setTypeGroup(type, grp) { docCfgEdit(c => { c.groups.forEach(g => { g.t = g.t.filter(t => t !== type); }); (c.groups.find(g => g.n === grp) || c.groups[c.groups.length - 1]).t.push(type); }); }
+function renamePerson(old, nu) {
+  nu = normWho(nu); if (!nu || nu === old) return;
+  if (/&/.test(nu)) { toast('One name only.'); return; }
+  const merging = allDocPeople().includes(nu);
+  if (merging && !confirm(`"${nu}" already exists. Move all of ${old}'s documents to ${nu}?`)) return;
+  all('doc').forEach(d => { const o = docOwners(d); if (!o.includes(old)) return; d.who = normWho([...new Set(o.map(p => p === old ? nu : p))].join(' & ')); put(d, { render: false }); if (d.expiry && typeof syncDocDate === 'function') syncDocDate(d); });
+  docCfgEdit(c => { c.people = [...new Set((c.people || []).map(p => p === old ? nu : p))]; });
+  if (docPath.who === old) docPath.who = nu;
+}
+function movePersonAll(from) { openDocMove(all('doc').filter(d => docOwners(d).includes(from)).map(d => d.id), `All of ${from}'s documents`); }
+function moveDocs(ids, who, grp) {
+  syncDocCfg(); let n = 0;
+  const g = grp ? DOC_GROUPS.find(x => x[0] === grp) : null;
+  let gType = g ? g[1][0] : null;
+  if (g && !gType) { gType = addDocType(g[0], g[0]); }
+  ids.forEach(id => { const d = records[id]; if (!d || d.deleted) return;
+    if (who) d.who = normWho(who);
+    if (g && !g[1].includes(d.docType)) d.docType = gType;
+    put(d, { render: false }); n++; if (d.expiry && typeof syncDocDate === 'function') syncDocDate(d); });
+  if (who && !allDocPeople().includes(normWho(who))) docCfgEdit(c => { c.people = [...new Set([...(c.people || []), normWho(who)])]; });
+  docSel = null; scheduleRender(); toast(`Moved ${n} document${n === 1 ? '' : 's'}.`);
+}
+function openDocMove(ids, what) {
+  syncDocCfg(); if (!ids.length) { toast('Nothing to move.'); return; }
+  const people = allDocPeople();
+  $('daTitle').textContent = 'Move';
+  $('daBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">${esc(what || `${ids.length} document${ids.length > 1 ? 's' : ''}`)} → choose where they go. Files stay attached.</p>
+    <div class="field"><label>Person (main folder)</label><select id="daWho"><option value="">— keep as it is —</option>${people.map(p => `<option value="${esc(p)}">👤 ${esc(p)}</option>`).join('')}<option value="__new">＋ New person…</option></select>
+      <input id="daWhoNew" class="hidden" placeholder="Name" autocomplete="off" style="margin-top:8px"></div>
+    <div class="field"><label>Category (sub-folder)</label><select id="daGrp"><option value="">— keep as it is —</option>${DOC_GROUPS.map(g => `<option value="${esc(g[0])}">${g[2]} ${esc(g[0])}</option>`).join('')}</select></div>
+    <p class="hint">A document shared by two people (“Rahul &amp; Ruchi”) gets only the person you pick.</p>
+    <button class="btn block brass" id="daGo">Move ${ids.length}</button>`;
+  $('daWho').addEventListener('change', () => $('daWhoNew').classList.toggle('hidden', $('daWho').value !== '__new'));
+  $('daGo').addEventListener('click', () => {
+    const w = $('daWho').value === '__new' ? $('daWhoNew').value.trim() : $('daWho').value, gp = $('daGrp').value;
+    if (!w && !gp) { toast('Pick a person or a category.'); return; }
+    Sheets.close('shDocAct', true); moveDocs(ids, w, gp);
+  });
+  Sheets.open('shDocAct');
+}
+async function mergeDocs(keepId, ids) {
+  const k = records[keepId]; if (!k) return;
+  const others = ids.filter(id => id !== keepId).map(id => records[id]).filter(Boolean);
+  let files = 0;
+  others.forEach(o => {
+    docFilesOf(o.id).forEach(f => { f.docId = keepId; if (f.fy && !k.byYear) k.byYear = true; put(f, { render: false }); files++; });
+    ['expiry', 'issuer', 'fy', 'folder', 'dueKind'].forEach(p => { if (!k[p] && o[p]) k[p] = o[p]; });
+    if (!k.number && !k.numEnc) { if (o.number) k.number = o.number; else if (o.numEnc) { k.numEnc = o.numEnc; k.numTail = o.numTail; } }
+    if (o.notes && o.notes.trim() && !(k.notes || '').includes(o.notes.trim())) k.notes = [k.notes, o.notes].filter(x => x && x.trim()).join('\n\n');
+    if (o.lockFiles) k.lockFiles = true;
+    all('date').filter(x => x.docRef === o.id).forEach(x => softDelete(x.id, { render: false }));
+    o.mergedInto = keepId; softDelete(o.id, { render: false });
+  });
+  put(k, { render: false }); if (k.expiry && typeof syncDocDate === 'function') syncDocDate(k);
+  docSel = null; scheduleRender();
+  const loose = k.lockFiles && docFilesOf(k.id).some(f => !f.locked);
+  if (loose && Fin.key) { try { await convertDocFiles(k); } catch (e) { RLOG.warn('merge lock', e.message); } }
+  toast(`Merged into "${k.title}" — ${docFilesOf(k.id).length} file${docFilesOf(k.id).length === 1 ? '' : 's'}.${loose && !Fin.key ? ' Some files are not locked yet: open Money, then “Finish locking” in the document.' : ''}`, 'Open', () => { showTab('docs'); showDoc(k.id); }, 7000);
+}
+function openDocMerge(ids) {
+  const docs = ids.map(id => records[id]).filter(d => d && !d.deleted);
+  if (docs.length < 2) { toast('Pick two or more documents to merge.'); return; }
+  $('daTitle').textContent = 'Merge';
+  $('daBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">All files come under one entry. Pick the entry to keep — its name, person and type stay; empty details (number, expiry, issuer) are filled from the others. The other entries go to Recently deleted.</p>
+    <div class="group">${docs.map((d, i) => `<label class="dm-opt"><input type="radio" name="dmKeep" value="${d.id}"${i === 0 ? ' checked' : ''}><span><b>${esc(d.title)}</b><br><small class="muted">${esc(docOwners(d).join(' & '))} · ${esc(d.docType)} · ${docFilesOf(d.id).length} file${docFilesOf(d.id).length === 1 ? '' : 's'}${d.lockFiles ? ' · 🔒' : ''}</small></span></label>`).join('')}</div>
+    <button class="btn block brass" id="dmGo">Merge ${docs.length} into one</button>`;
+  $('dmGo').addEventListener('click', () => { const keep = (document.querySelector('[name="dmKeep"]:checked') || {}).value; Sheets.close('shDocAct', true); mergeDocs(keep, docs.map(d => d.id)); });
+  Sheets.open('shDocAct');
+}
+const GROUP_ICONS = ['📁', '🎓', '🪪', '📜', '🏛', '🗂', '💰', '🩺', '🏠', '🚗', '🖼', '📄', '✈️', '⚖️', '🧾', '🏦', '👪', '🛡'];
+function openDocFolders() {
+  syncDocCfg();
+  const docs = all('doc'), people = allDocPeople();
+  $('dfBody').innerHTML = `<div class="group-title">People — main folders</div><div class="group">${people.map(p => { const n = docs.filter(d => docOwners(d).includes(p)).length;
+      return `<div class="df-row"><b>👤 ${esc(p)}</b><span class="muted">${n}</span><button data-dfren="${esc(p)}">Rename</button>${n ? `<button data-dfmv="${esc(p)}">Move all…</button>` : `<button data-dfrm="${esc(p)}">Remove</button>`}</div>`; }).join('')}
+      <div class="df-row"><input id="dfNewP" placeholder="New person" autocomplete="off" style="flex:1;min-width:0"><button id="dfAddP">＋ Add</button></div></div>
+    <p class="hint" style="margin:4px 4px 12px">Renaming to a name that already exists merges the two people.</p>
+    <div class="group-title">Categories — sub-folders</div><div class="group">${DOC_GROUPS.map((g, gi) => { const n = docs.filter(d => g[1].includes(d.docType)).length;
+      return `<div class="df-row"><b>${g[2]} ${esc(g[0])}</b><span class="muted">${n}</span><button data-dgren="${esc(g[0])}">Rename</button>${gi < DOC_GROUPS.length - 1 ? `<button data-dgdel="${esc(g[0])}">Delete</button>` : ''}
+        <div class="df-types">${g[1].map(t => `<button data-dtype="${esc(t)}" title="Move this type to another category">${esc(t)}</button>`).join('') || '<small>no types</small>'}</div></div>`; }).join('')}
+      <div class="df-row"><select id="dfIcon" style="width:auto">${GROUP_ICONS.map(i => `<option>${i}</option>`).join('')}</select><input id="dfNewG" placeholder="New category" autocomplete="off" style="flex:1;min-width:0"><button id="dfAddG">＋ Add</button></div></div>
+    <p class="hint" style="margin:4px 4px 12px">A category holds document types. Tap a type to move it to another category. The last category takes everything that belongs nowhere else.</p>
+    <div class="group-title">Move a type</div><div class="group" style="padding:10px 14px"><div class="new-type" style="margin:0"><select id="dfT">${DOC_TYPES.map(t => `<option>${esc(t)}</option>`).join('')}</select><span>→</span><select id="dfG">${DOC_GROUPS.map(g => `<option value="${esc(g[0])}">${g[2]} ${esc(g[0])}</option>`).join('')}</select><button class="btn small" id="dfTGo">Move</button></div></div>`;
+  const re = () => openDocFolders();
+  $$('[data-dfren]', $('dfBody')).forEach(b => b.addEventListener('click', () => { const nu = prompt(`New name for ${b.dataset.dfren}`, b.dataset.dfren); if (nu) { renamePerson(b.dataset.dfren, nu); setTimeout(re, 50); } }));
+  $$('[data-dfmv]', $('dfBody')).forEach(b => b.addEventListener('click', () => { Sheets.close('shDocFolders', true); movePersonAll(b.dataset.dfmv); }));
+  $$('[data-dfrm]', $('dfBody')).forEach(b => b.addEventListener('click', () => { docCfgEdit(c => { c.people = (c.people || []).filter(p => p !== b.dataset.dfrm); }); setTimeout(re, 50); }));
+  $('dfAddP').addEventListener('click', () => { const v = normWho($('dfNewP').value); if (!v || /&/.test(v)) return; docCfgEdit(c => { c.people = [...new Set([...(c.people || []), v])]; }); toast(`Added ${v}.`); setTimeout(re, 50); });
+  $$('[data-dgren]', $('dfBody')).forEach(b => b.addEventListener('click', () => { const nu = prompt(`New name for "${b.dataset.dgren}"`, b.dataset.dgren); if (nu) { renameDocGroup(b.dataset.dgren, nu); setTimeout(re, 50); } }));
+  $$('[data-dgdel]', $('dfBody')).forEach(b => b.addEventListener('click', () => { deleteDocGroup(b.dataset.dgdel); setTimeout(re, 50); }));
+  $$('[data-dtype]', $('dfBody')).forEach(b => b.addEventListener('click', () => { $('dfT').value = b.dataset.dtype; $('dfG').focus(); $('dfT').scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
+  $('dfAddG').addEventListener('click', () => { addDocGroup($('dfNewG').value, $('dfIcon').value); setTimeout(re, 50); });
+  $('dfTGo').addEventListener('click', () => { setTypeGroup($('dfT').value, $('dfG').value); toast(`"${$('dfT').value}" is now in ${$('dfG').value}.`); setTimeout(re, 50); });
+  if (!Sheets.isOpen('shDocFolders')) Sheets.open('shDocFolders');
+}
+function renderDocs() {
+  syncDocCfg(); renderDocsBase();
+  const fbox = $('docFolders'); if (!fbox || window.GHOST) return;
+  const crumb = fbox.querySelector('.doc-crumb'); if (!crumb) return;
+  const acts = document.createElement('div'); acts.className = 'crumb-acts';
+  if (docPath.who && !docPath.grp) {
+    acts.innerHTML = `<button data-ca="ren">✎ Rename</button><button data-ca="mv">⇢ Move all…</button><button data-ca="new">＋ Document here</button>`;
+    if (!all('doc').some(d => docOwners(d).includes(docPath.who))) fbox.insertAdjacentHTML('beforeend', '<div class="empty">No documents for this person yet.</div>');
+  } else if (docPath.grp) {
+    acts.innerHTML = `<button data-ca="gren">✎ Rename category</button><button data-ca="gmv">⇢ Move these…</button><button data-ca="gdel">🗑 Delete category</button>`;
+  }
+  crumb.after(acts);
+  const who = docPath.who, grp = docPath.grp, here = () => all('doc').filter(d => docOwners(d).includes(who) && (!grp || docGroup(d) === grp)).map(d => d.id);
+  $$('[data-ca]', acts).forEach(b => b.addEventListener('click', () => {
+    const a = b.dataset.ca;
+    if (a === 'ren') { const nu = prompt(`New name for ${who}`, who); if (nu) renamePerson(who, nu); }
+    else if (a === 'mv') movePersonAll(who);
+    else if (a === 'new') { const d = put({ id: uid('doc'), type: 'doc', title: '', who: who === DOC_ME ? '' : who, docType: docNewType(), number: '', expiry: null, issuer: '', notes: '', folder: '', fy: null, deleted: false }); openDoc(d.id); }
+    else if (a === 'gren') { const nu = prompt(`New name for "${grp}"`, grp); if (nu) renameDocGroup(grp, nu); }
+    else if (a === 'gmv') openDocMove(here(), `${who}'s ${grp}`);
+    else if (a === 'gdel') deleteDocGroup(grp);
+  }));
+}
+function renderSelBar() {
+  renderSelBarBase();
+  if (!docSel) return;
+  const n = docSel.size; $('docSelMove').disabled = !n; $('docSelMerge').disabled = n < 2;
+}
+$('docSelMove').addEventListener('click', () => docSel && openDocMove([...docSel]));
+$('docSelMerge').addEventListener('click', () => docSel && openDocMerge([...docSel]));
+$('docFoldersBtn').addEventListener('click', openDocFolders);
+function openDoc(id) {
+  syncDocCfg(); openDocBase(id);
+  const d = records[id]; if (!d) return;
+  const draw = sel => {
+    chipGroup($('doType'), DOC_TYPES, sel, () => {}, t => DOC_COLORS[t]);
+    $('doType').insertAdjacentHTML('beforeend', '<button class="chip" id="doTypeNew" type="button">＋ New type</button>');
+    $('doTypeNew').addEventListener('click', () => { $('doNewTypeW').classList.toggle('hidden'); $('doNewType').focus(); });
+  };
+  draw(d.docType);
+  $('doNewTypeW').classList.add('hidden'); $('doNewType').value = '';
+  const cur = DOC_GROUPS.find(g => g[1].includes(d.docType));
+  $('doNewTypeGrp').innerHTML = DOC_GROUPS.map(g => `<option value="${esc(g[0])}"${(docPath.grp || (cur && cur[0])) === g[0] ? ' selected' : ''}>${g[2]} ${esc(g[0])}</option>`).join('');
+  $('doNewTypeAdd').onclick = () => { const t = addDocType($('doNewType').value, $('doNewTypeGrp').value); if (!t) return; draw(t); $('doNewTypeW').classList.add('hidden'); $('doNewType').value = ''; toast(`Type "${t}" added in ${(DOC_GROUPS.find(g => g[1].includes(t)) || [''])[0]}.`); };
+}
+
+/* ---------- 5. PDFs in the Inbox ---------- */
+const isPdfBlob = b => !!(b && (/pdf/i.test(b.mime || '') || /\.pdf$/i.test(b.name || '')));
+function capShow() { $('capImgs').innerHTML = CAP.files.map((f, i) => /pdf/i.test(f.type) || /\.pdf$/i.test(f.name || '') ? `<span class="cap-pdf">📄 ${esc(f.name || 'file.pdf')}</span>` : `<img src="${URL.createObjectURL(f)}" alt="photo ${i + 1}">`).join(''); }
+const fileToDataUrl = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error || new Error('could not read the file')); r.readAsDataURL(f); });
+async function storePdfs(files) {
+  const ids = [], bad = [];
+  for (const f of files) {
+    try {
+      if (!driveOn()) throw new Error('PDFs need the Drive folder (Settings → Sync)');
+      if (f.size > DOCFILE_MAX) throw new Error('larger than 15 MB');
+      let url = await fileToDataUrl(f); if (!/^data:application\/pdf/.test(url)) url = 'data:application/pdf;base64,' + url.slice(url.indexOf(',') + 1);
+      const name = (f.name || 'file.pdf').replace(/[^\w.\- ()]/g, '_'), fileId = await driveUpload(url, todayISO() + '-' + name);
+      memImg.set(fileId, url); DB.imgSet(fileId, url).catch(() => {});
+      ids.push(put({ id: uid('img'), type: 'blob', drive: true, fileId, name, mime: 'application/pdf', bytes: f.size, deleted: false }, { render: false }).id);
+    } catch (e) { RLOG.warn('inbox pdf', e.message); bad.push(`${f.name || 'PDF'}: ${e.message}`); }
+  }
+  if (bad.length) toast('Not saved: ' + bad.join('; '), null, null, 7000);
+  return ids;
+}
+function ibThumb(b) { const r = records[b]; return isPdfBlob(r) ? `<button class="ib-pdf" data-ibpdf="${b}">📄 ${esc(r.name || 'PDF')}</button>` : `<img data-blob="${b}" alt="photo">`; }
+async function openBlobPdf(id) {
+  try { const src = await imgSrc(records[id]); const blob = await (await fetch(src)).blob(); const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' })); window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
+  catch (e) { toast('Could not open the PDF: ' + e.message); }
+}
+function inboxDone(i, keepImgs, keep) {
+  if (keep && keep.length) { i.imgs = keep; i.text = ''; put(i, { render: false }); toast('PDFs stay in the Inbox — send them to a Document.'); renderInboxCard(); return; }
+  inboxDoneBase(i, keepImgs);
+}
+
+/* ---------- 9. dates found in notes and tasks (you accept or decline) ---------- */
+const DSUG_ID = 'date-sug';
+const dsugCfg = () => records[DSUG_ID] && !records[DSUG_ID].deleted ? records[DSUG_ID] : { dec: {} };
+function datesInText(text) {
+  const s = String(text || ''), low = s.toLowerCase(), t = todayISO(), out = [], taken = [];
+  const ok = (y, mo, d) => { const dt = new Date(y, mo - 1, d); return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d ? isoLocal(dt) : null; };
+  const next = (mo, d) => { const y = +t.slice(0, 4); for (let k = 0; k < 5; k++) { const r = ok(y + k, mo, d); if (r && r >= t) return r; } return null; };
+  const add = (m, iso, noYear) => {
+    const a = m.index, b = a + m[0].length; if (!iso || taken.some(([x, y]) => a < y && b > x)) return; taken.push([a, b]);
+    if (!noYear && iso < t) return;
+    const ls = s.lastIndexOf('\n', a) + 1, le = s.indexOf('\n', b);
+    out.push({ iso, noYear, hit: s.slice(a, b), line: s.slice(ls, le < 0 ? s.length : le).trim() });
+  };
+  let m;
+  const R1 = /\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})(?![\d.])/g, R2 = /\b(\d{4})-(\d{2})-(\d{2})\b/g, R3 = new RegExp(DRX1.source, 'g'), R4 = new RegExp(DRX2.source, 'g');
+  while ((m = R2.exec(low))) add(m, ok(+m[1], +m[2], +m[3]));
+  while ((m = R1.exec(low))) add(m, ok(+m[3] < 100 ? 2000 + +m[3] : +m[3], +m[2], +m[1]));
+  while ((m = R3.exec(low))) add(m, m[3] ? ok(+m[3], MON3[m[2].slice(0, 3)], +m[1]) : next(MON3[m[2].slice(0, 3)], +m[1]), !m[3]);
+  while ((m = R4.exec(low))) add(m, m[3] ? ok(+m[3], MON3[m[1].slice(0, 3)], +m[2]) : next(MON3[m[1].slice(0, 3)], +m[2]), !m[3]);
+  return out;
+}
+function dateSuggestions() {
+  if (window.GHOST) return [];
+  const dec = dsugCfg().dec || {}, seen = new Set(), out = [], dates = all('date');
+  const scan = (src, kind, title, text) => datesInText(text).forEach(h => {
+    const key = src.id + '|' + (h.noYear ? h.iso.slice(5) : h.iso) + '|' + h.hit.toLowerCase().replace(/\s+/g, ' ');
+    if (dec[key] || seen.has(key)) return; seen.add(key);
+    let label = h.line.replace(new RegExp('(?:\\b(?:on|by|due|dated?|till|until|from|before|dt\\.?)\\s+)?' + h.hit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), ' ');
+    label = label.replace(/\s(?:on|by|due|dated?|till|until|from|before)\s*$/i, ' ').replace(/^[\s\-–—•*:;,.]+|[\s\-–—•*:;,.]+$/g, '').replace(/\s{2,}/g, ' ').trim().slice(0, 70) || title || 'Date';
+    if (dates.some(d => (d.when === h.iso || (h.noYear && (d.when || '').slice(5) === h.iso.slice(5))) && d.label.toLowerCase() === label.toLowerCase())) return;
+    out.push({ key, iso: h.iso, noYear: h.noYear, label, src: src.id, kind, title: title || '' });
+  });
+  all('note').forEach(n => scan(n, 'note', n.title || 'Note', (n.title || '') + '\n' + (n.text || '')));
+  all('task').filter(x => x.status !== 'done').forEach(x => scan(x, 'task', x.title, [x.title, x.notes || '', ...(x.subs || []).map(s => (s.text || '') + ' ' + (s.notes || ''))].join('\n')));
+  return out.sort((a, b) => a.iso.localeCompare(b.iso));
+}
+function dsugDecide(keys, how) {
+  const c = { id: DSUG_ID, type: 'datesug', dec: {}, ...JSON.parse(JSON.stringify(dsugCfg())), deleted: false };
+  keys.forEach(k => { c.dec[k] = how; }); put(c, { render: false });
+}
+function dsugAdd(list) {
+  const made = [];
+  list.forEach(x => { const cat = guessDateCat({ label: x.label });
+    made.push(put({ id: uid('d'), type: 'date', label: x.label, when: x.iso, repeat: YEARLY_CATS.includes(cat) || (x.noYear && /birthday|anniversar|bday/i.test(x.label)) ? 'yearly' : 'once', cat, srcRef: x.src, deleted: false }, { render: false })); });
+  dsugDecide(list.map(x => x.key), 'ok'); scheduleRender();
+  return made;
+}
+function dsugRowsHtml(list) {
+  return list.map(x => `<div class="attn-row" data-dsk="${esc(x.key)}"><button class="attn-go" data-dsopen="${esc(x.src)}" data-dskind="${x.kind}">📅 ${esc(x.label)} · <b>${fmtDate(x.iso, true)}</b>${x.noYear ? ' (every year?)' : ''}<small class="ds-from">from ${x.kind} “${esc(x.title.slice(0, 50))}”</small></button><button class="attn-ok" data-dsadd="1">＋ Add</button><button class="attn-ok" data-dsno="1" aria-label="Not a date to keep">✕</button></div>`).join('');
+}
+function bindDsug(root, list, after) {
+  const byKey = new Map(list.map(x => [x.key, x]));
+  $$('[data-dsk]', root).forEach(r => {
+    const x = byKey.get(r.dataset.dsk); if (!x) return;
+    r.querySelector('[data-dsadd]').addEventListener('click', () => { const [d] = dsugAdd([x]); toast(`Added to Dates: ${x.label}.`, 'Edit', () => { showTab('dates'); openDate(d.id); }); after(); });
+    r.querySelector('[data-dsno]').addEventListener('click', () => { dsugDecide([x.key], 'no'); after(); });
+    r.querySelector('[data-dsopen]').addEventListener('click', () => { Sheets.closeAll(); if (x.kind === 'note') { showTab('notes'); previewNote(x.src); } else { showTab('tasks'); previewTask(x.src); } });
+  });
+}
+function openDateSug() {
+  const L = dateSuggestions();
+  $('dsgBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">Dates written inside your notes and tasks (not task due dates). Nothing goes into Dates until you tap ＋ Add. ✕ means "not needed" — it will not be suggested again.</p>`
+    + (L.length ? `<div class="btn-row" style="margin:0 0 10px"><button class="btn ghost small" id="dsgAll">＋ Add all ${L.length}</button><button class="btn ghost small" id="dsgNone">✕ Decline all</button></div><div class="group attn">${dsugRowsHtml(L)}</div>` : '<div class="empty">No new dates found in your notes and tasks.</div>');
+  bindDsug($('dsgBody'), L, openDateSug);
+  if ($('dsgAll')) $('dsgAll').addEventListener('click', () => { if (confirm(`Add all ${L.length} to Dates?`)) { dsugAdd(L); openDateSug(); } });
+  if ($('dsgNone')) $('dsgNone').addEventListener('click', () => { if (confirm(`Decline all ${L.length}? They will not be suggested again.`)) { dsugDecide(L.map(x => x.key), 'no'); openDateSug(); } });
+  if (!Sheets.isOpen('shDateSug')) Sheets.open('shDateSug');
+}
+/* Needs attention, with the new "Dates found" section */
+function renderAttn() {
+  renderAttnBase();
+  const box = $('docAttn'); if (!box || docPath.who || window.GHOST) return;
+  const L = dateSuggestions(); if (!L.length) return;
+  let det = box.querySelector('details.attn');
+  if (!det) { box.innerHTML = '<details class="attn"><summary>⚠︎ Needs attention</summary></details>'; det = box.querySelector('details.attn'); }
+  const sum = det.querySelector('summary'); const n0 = +(((sum.textContent.match(/\((\d+)\)/) || [])[1]) || 0);
+  sum.firstChild.textContent = `⚠︎ Needs attention (${n0 + L.length})`;
+  const sm = sum.querySelector('small'); if (sm) sm.textContent = (sm.textContent && !/Everything is marked OK/.test(sm.textContent) ? sm.textContent + ' · ' : '') + `${L.length} date${L.length > 1 ? 's' : ''} found in notes & tasks`;
+  const sec = document.createElement('div'); sec.className = 'attn-sec';
+  sec.innerHTML = `<div class="attn-head"><b>Dates found in notes &amp; tasks (${L.length})</b><button data-dsgall="1">Review all ›</button></div>${dsugRowsHtml(L.slice(0, 15))}${L.length > 15 ? `<small class="muted">…and ${L.length - 15} more</small>` : ''}`;
+  const foot = det.querySelector('.attn-foot'); foot ? det.insertBefore(sec, foot) : det.appendChild(sec);
+  bindDsug(sec, L, renderAttn);
+  sec.querySelector('[data-dsgall]').addEventListener('click', openDateSug);
+}
+
+/* ---------- 10. search suggestions ---------- */
+const RECENT_Q = 'r2_recentQ';
+const recentQ = () => { try { return JSON.parse(localStorage.getItem(RECENT_Q) || '[]'); } catch (e) { return []; } };
+function rememberQ(q) { q = String(q || '').trim(); if (q.length < 2 || window.GHOST) return; try { localStorage.setItem(RECENT_Q, JSON.stringify([q, ...recentQ().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 8))); } catch (e) {} }
+function searchPool() {
+  if (window.GHOST) return [];
+  syncDocCfg();
+  const P = new Set();
+  allDocPeople().forEach(p => P.add(p)); DOC_GROUPS.forEach(g => P.add(g[0])); DOC_TYPES.forEach(t => P.add(t));
+  all('doc').forEach(d => P.add(d.title)); all('task').filter(t => t.status !== 'done').forEach(t => P.add(t.title)); all('note').forEach(n => n.title && P.add(n.title)); all('date').forEach(d => P.add(d.label));
+  (dateCats() || []).forEach(c => P.add(c[1]));
+  return [...P].filter(x => x && x.length < 60);
+}
+function searchSuggest(q) {
+  q = q.trim().toLowerCase(); if (!q) return [];
+  const words = q.split(/\s+/), last = words[words.length - 1], head = words.slice(0, -1).join(' ');
+  const hits = searchPool().filter(x => { const l = x.toLowerCase(); return l !== q && (l.startsWith(q) || l.split(/[^a-z0-9]+/).some(w => w.startsWith(last))); })
+    .sort((a, b) => (a.toLowerCase().startsWith(q) ? 0 : 1) - (b.toLowerCase().startsWith(q) ? 0 : 1) || a.length - b.length).slice(0, 8);
+  return hits.map(h => h.toLowerCase().startsWith(q) || !head ? h : head + ' ' + h);
+}
+function runSearch() {
+  runSearchBase();
+  const q = $('searchIn').value, box = $('searchRes'); if (window.GHOST) return;
+  const pick = s => { $('searchIn').value = s; rememberQ(s); runSearch(); $('searchIn').focus(); };
+  if (!q.trim()) {
+    const rec = recentQ(), fin = finUnlocked();
+    const tries = ['expiring soon', 'birthdays this month', 'what is due this week', 'documents of ' + (allDocPeople()[1] || DOC_ME).toLowerCase(), ...(fin ? ['spent this month', 'balance this month', 'who owes me'] : [])];
+    const people = allDocPeople().slice(0, 6), cats = DOC_GROUPS.slice(0, 8).map(g => g[0]);
+    box.insertAdjacentHTML('afterbegin', `<div class="sug-panel">${rec.length ? `<div class="sug-t"><span>Recent</span><button class="linkbtn" id="sugClr" style="font-size:.75rem;padding:0">Clear</button></div><div class="sug-chips">${rec.map(s => `<button data-sug="${esc(s)}">🕘 ${esc(s)}</button>`).join('')}</div>` : ''}
+      <div class="sug-t"><span>Try</span></div><div class="sug-chips">${tries.map(s => `<button data-sug="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+      <div class="sug-t"><span>People</span></div><div class="sug-chips">${people.map(s => `<button data-sug="${esc(s)}">👤 ${esc(s)}</button>`).join('')}</div>
+      <div class="sug-t"><span>Document categories</span></div><div class="sug-chips">${cats.map(s => `<button data-sug="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`);
+    if ($('sugClr')) $('sugClr').addEventListener('click', () => { try { localStorage.removeItem(RECENT_Q); } catch (e) {} runSearch(); });
+  } else {
+    const L = searchSuggest(q);
+    if (L.length) box.insertAdjacentHTML('afterbegin', `<div class="sug-row">${L.map(s => `<button data-sug="${esc(s)}">${esc(s)}</button>`).join('')}</div>`);
+    $$('.sr', box).forEach(b => b.addEventListener('click', () => rememberQ(q), { capture: true }));
+  }
+  $$('[data-sug]', box).forEach(b => b.addEventListener('click', () => pick(b.dataset.sug)));
+}
+$('searchIn').addEventListener('keydown', e => { if (e.key === 'Enter') rememberQ($('searchIn').value); });
+
+/* ---------- 11. Date categories: deleting goes to Recently deleted (restore brings its dates back) ---------- */
+BIN_TYPES.catbin = 'Category';
+function catbinLabel(r) {
+  if (r.what === 'datecat') return `${r.cat.i || '📁'} ${esc(r.cat.n)}<small class="muted"> · Dates category${(r.dateIds || []).length ? ` · ${r.dateIds.length} date${r.dateIds.length > 1 ? 's' : ''}` : ''}</small>`;
+  return `${r.grp.i || '📁'} ${esc(r.grp.n)}<small class="muted"> · Documents category</small>`;
+}
+function binItems() { return binItemsBase().filter(r => !(r.catBin && records[r.catBin] && records[r.catBin].deleted && records[r.catBin].deletedAt > 1)); }
+function restoreCatbin(r) {
+  if (r.what === 'datecat') {
+    const c = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false };
+    if (r.cat.custom) { if (!(c.custom || []).some(x => x.k === r.cat.k)) c.custom = [...(c.custom || []), { k: r.cat.k, n: r.cat.n, i: r.cat.i || '📁' }]; }
+    else c.hidden = (c.hidden || []).filter(h => h !== r.cat.k);
+    put(c, { render: false });
+    (r.dateIds || []).forEach(id => { const d = records[id]; if (d && d.deleted) { delete d.catBin; d.deleted = false; delete d.deletedAt; put(d, { render: false }); } });
+  } else {
+    docCfgEdit(c => { const back = r.grp.t.filter(t => DOC_TYPES.includes(t)); c.groups.forEach(g => { g.t = g.t.filter(t => !back.includes(t)); });
+      let n = r.grp.n; while (c.groups.some(g => g.n === n)) n += ' (2)';
+      c.groups.splice(c.groups.length - 1, 0, { n, i: r.grp.i, t: back }); });
+  }
+  r.deleted = true; r.deletedAt = 1; put(r, { render: false });                  // done with it
+  scheduleRender(); toast('Category restored.'); if (Sheets.isOpen('shBin')) openBin();
+}
+function binRestore(id) { const r = records[id]; if (r && r.type === 'catbin') { restoreCatbin(r); return; } binRestoreV216(id); }
+function deleteDateCat(key) {
+  const cats = dateCats(), c = cats.find(x => x[0] === key); if (!c) return;
+  const own = all('date').filter(d => dateCat(d) === key), custom = (dateCfg().custom || []).some(x => x.k === key);
+  if (!confirm(`Delete the category "${c[1]}"${own.length ? ` and its ${own.length} date${own.length === 1 ? '' : 's'}` : ''}?\n\nIt goes to Settings → Recently deleted for 30 days. Restoring the category brings its dates back too.`)) return;
+  const bin = put({ id: uid('cb'), type: 'catbin', what: 'datecat', cat: { k: key, n: c[1], i: c[2], custom }, dateIds: own.map(d => d.id), deleted: true, deletedAt: nowMs() }, { render: false });
+  own.forEach(d => { d.catBin = bin.id; softDelete(d.id, { render: false }); });
+  const cfg = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false };
+  if (custom) cfg.custom = cfg.custom.filter(x => x.k !== key); else cfg.hidden = [...new Set([...(cfg.hidden || []), key])];
+  datePath = null; put(cfg); toast(`Deleted "${c[1]}".`, 'Undo', () => restoreCatbin(records[bin.id]));
+}
+function newDateCat() {
+  const n = (prompt('Name of the new category (or a deleted built-in one, to bring it back)') || '').trim(); if (!n) return;
+  const cfg = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false };
+  const builtin = DATE_CATS.find(x => x[1].toLowerCase() === n.toLowerCase());
+  if (builtin && (cfg.hidden || []).includes(builtin[0])) { cfg.hidden = cfg.hidden.filter(h => h !== builtin[0]); put(cfg); toast(`"${builtin[1]}" is back.`); return; }
+  if (dateCats().some(x => x[1].toLowerCase() === n.toLowerCase())) { toast('That category already exists.'); return; }
+  cfg.custom = [...(cfg.custom || []), { k: 'c' + Date.now().toString(36), n, i: '📁' }]; put(cfg);
+}
+/* categories hidden by older versions show up in Recently deleted once, so they can be restored */
+function migrateHiddenCats() {
+  const cfg = records[DATE_CFG]; if (!cfg || cfg.deleted || cfg.hidMig || window.GHOST || !(cfg.hidden || []).length) return;
+  cfg.hidden.forEach(k => { const b = DATE_CATS.find(x => x[0] === k); if (!b) return;
+    const ds = Object.values(records).filter(d => d.type === 'date' && d.deleted && d.deletedAt > nowMs() - 30 * 86400000 && d.cat === k);
+    const bin = put({ id: uid('cb'), type: 'catbin', what: 'datecat', cat: { k, n: b[1], i: b[2], custom: false }, dateIds: ds.map(d => d.id), deleted: true, deletedAt: nowMs() }, { render: false });
+    ds.forEach(d => { d.catBin = bin.id; put(d, { render: false }); }); });
+  put({ ...cfg, hidMig: true }, { render: false, keepTime: true });
+}
+function renderDates() {
+  if (!window.GHOST && (!Sync.on() || window.__synced)) migrateHiddenCats();
+  renderDatesBase();
+  const home = $('dateHome'); if (!home || datePath || window.GHOST) return;
+  const n = dateSuggestions().length;
+  if (n) { home.insertAdjacentHTML('afterbegin', `<button class="ds-banner" id="dsBanner"><span>📅 <b>${n} date${n > 1 ? 's' : ''}</b> found in your notes &amp; tasks</span><b>Review ›</b></button>`); $('dsBanner').addEventListener('click', openDateSug); }
+}
+setTimeout(updateTodayBadge, 1500);
 
 (async function boot() {
   try {
