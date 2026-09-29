@@ -1415,7 +1415,7 @@ html.decoy-on #searchFab{display:none}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.15.0';
+const APP_VERSION = '2.16.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -1864,11 +1864,13 @@ async function unlockFinance(code) {
     try {
       const k = s.salt === fk.salt ? key : await deriveFinKey(code, s.salt, s.it);
       const plain = await unsealWith(k, s);
+      if (Fin.key !== key) break;                                   // locked again while this ran: keep nothing in the clear
       plain._dirty = s._dirty || 0;
       records[id] = plain;
       if (s.salt !== fk.salt) reseal.push(plain);          // written under an older code → bring it forward
     } catch (e) { Fin.lockedOut.push(id); }
   }
+  if (Fin.key !== key) { for (const id in records) if (SEALED_TYPES.has(records[id].type)) delete records[id]; return false; }
   reseal.forEach(r => { r.updatedAt = Math.max(r.updatedAt, nowMs()); put(r, { render: false, keepTime: true }); });
   if (Fin.lockedOut.length) RLOG.warn('private records under another code:', Fin.lockedOut.length);
   RLOG.info('private section unlocked; records', Object.keys(sealed).length);
@@ -1889,7 +1891,9 @@ async function changeFinanceCode(newCode) {
   if (!Fin.key) return false;
   const plains = Object.values(records).filter(r => SEALED_TYPES.has(r.type));
   const nums = [];                                       // document numbers kept encrypted (locked documents)
-  for (const d of all('doc')) if (d.numEnc) { try { nums.push([d, await aesDec(Fin.key, d.numEnc)]); } catch (e) { RLOG.warn('doc number not readable', d.id); } }
+  for (const d of Object.values(records).filter(r => r.type === 'doc' && r.numEnc)) { try { nums.push([d, await aesDec(Fin.key, d.numEnc)]); } catch (e) { RLOG.warn('doc number not readable', d.id); } }
+  const ax = records[ARCH_ID];
+  if (ax && !ax.deleted && (ax.list || []).some(a => a.enc && !a.salt)) put({ ...ax, list: ax.list.map(a => a.enc && !a.salt ? { ...a, salt: Fin.salt, iters: Fin.iters } : a) }, { render: false });
   const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
   const key = await deriveFinKey(newCode, salt, FIN_ITERS_NEW);
   Fin.key = key; Fin.salt = salt; Fin.kid = uid('k'); Fin.iters = FIN_ITERS_NEW; Fin.codeLen = newCode.length;
@@ -1964,8 +1968,9 @@ function restore(id) {
 }
 async function purgeOldTrash() {
   const cutoff = nowMs() - 30 * 86400000, ids = [];
-  for (const id in records) { const r = records[id]; if (r.deleted && !r._dirty && r.deletedAt && r.deletedAt < cutoff) ids.push(id); }
-  for (const id in sealed) { const s = sealed[id]; if (s.deleted && !s._dirty && s.deletedAt && s.deletedAt < cutoff && !ids.includes(id)) ids.push(id); }
+  const liveKeys = new Set(Object.values(records).filter(r => (r.type === 'docfile' || r.type === 'blob') && !r.deleted && r.keyId).map(r => r.keyId));
+  for (const id in records) { const r = records[id]; if (r.deleted && !r._dirty && r.deletedAt && r.deletedAt < cutoff && !liveKeys.has(id)) ids.push(id); }
+  for (const id in sealed) { const s = sealed[id]; if (s.deleted && !s._dirty && s.deletedAt && s.deletedAt < cutoff && !ids.includes(id) && !liveKeys.has(id)) ids.push(id); }
   if (!ids.length) return;
   const goneDocs = new Set(ids.filter(id => records[id] && records[id].type === 'doc'));
   ids.forEach(id => { const r = records[id]; if (r && r.type === 'docfile' && r.fileId) driveDelete(r.fileId); });
@@ -2024,10 +2029,12 @@ const Sync = {
     if (this.busy) { this.again = true; return false; }
     this.busy = true; this.status('busy', 'Syncing…');
     try {
+      this.fresh = !(await DB.get('firstSync'));
+      if (this.fresh) await this.pull();                   // first sync of this device: take the Sheet's copies first
       await this.push();
       const got = await this.pull();
       await this.push();                                   // anything re-sealed during the pull
-      this.lastOk = nowMs(); DB.set('lastSync', this.lastOk);
+      this.lastOk = nowMs(); DB.set('lastSync', this.lastOk); window.__synced = true;
       if (!(await DB.get('firstSync'))) await DB.set('firstSync', this.lastOk);   // first time this device synced with this Sheet
       this.status('ok', 'Synced ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
       if (manual) toast(got ? `Synced — ${got} update${got === 1 ? '' : 's'} received.` : 'Synced — all up to date.');
@@ -2038,17 +2045,18 @@ const Sync = {
       if (manual) toast('Sync failed: ' + (e.message || 'network error') + '. Your changes are safe here.');
       return false;
     } finally {
-      this.busy = false;
+      this.busy = false; this.fresh = false;
       if (this.again) { this.again = false; this.soon(800); }
     }
   },
 
   rowFor(id) {
     const s = sealed[id];
-    if (s) return { id, type: s.type, updatedAt: s.updatedAt, deleted: !!s.deleted, summary: '', payload: JSON.stringify(stripLocal(s)) };
+    const noBig = x => { const p = stripLocal(x); delete p._tooBig; return p; };
+    if (s) return { id, type: s.type, updatedAt: s.updatedAt, deleted: !!s.deleted, summary: '', payload: JSON.stringify(noBig(s)) };
     const r = records[id];
     const summary = r.type === 'blob' ? (r.name || 'image') : (r.title || r.label || '');
-    return { id, type: r.type, updatedAt: r.updatedAt, deleted: !!r.deleted, summary, payload: JSON.stringify(stripLocal(r)) };
+    return { id, type: r.type, updatedAt: r.updatedAt, deleted: !!r.deleted, summary, payload: JSON.stringify(noBig(r)) };
   },
 
   async push() {
@@ -2088,8 +2096,9 @@ const Sync = {
   },
 
   async pull() {
-    const since = this.refetch ? 0 : ((await DB.get('cursor')) || 0); this.refetch = false;
+    const rf = !!this.refetch, since = rf ? 0 : ((await DB.get('cursor')) || 0);
     const d = await this.call('pull', { since });
+    if (rf) this.refetch = false;                          // only once the full read really happened
     const n = await mergeRemote(d.records || []);
     await DB.set('cursor', d.serverTime || nowMs());
     if (n) RLOG.info('pulled', n, 'of', (d.records || []).length);
@@ -2099,21 +2108,28 @@ const Sync = {
 
 /* Merge rows from the server (or an import). Returns how many changed locally. */
 async function mergeRemote(rows, fromImport) {
-  const writes = []; let n = 0, finkeyChanged = false, erasedAt = 0; const erasedIds = new Map();
+  const writes = [], gone = []; let n = 0, finkeyChanged = false, erasedAt = 0; const erasedIds = new Map();
   for (const row of rows) {
     let rec;
     try { rec = typeof row.payload === 'string' ? JSON.parse(row.payload) : row; } catch (e) { RLOG.warn('bad payload', row.id); continue; }
     if (!rec || !rec.id || !rec.type) continue;
+    if (rec.purged) {                                          // Code.gs v22 keeps a small marker for rows deleted long ago
+      const l = sealed[rec.id] || records[rec.id];
+      if (l && !l._dirty && (l.updatedAt || 0) <= (rec.updatedAt || 0)) { delete sealed[rec.id]; delete records[rec.id]; gone.push(rec.id); n++; }
+      continue;
+    }
     if (rec.type === 'erased') { if (!fromImport) { erasedAt = Math.max(erasedAt, +rec.at || 1); erasedIds.set(rec.id, +rec.updatedAt || 0); } continue; }
     const isSealed = SEALED_TYPES.has(rec.type);
     const local = isSealed ? sealed[rec.id] : records[rec.id];
-    if (local && (local.updatedAt || 0) >= (rec.updatedAt || 0)) continue;
+    const takeKey = !fromImport && rec.id === FINKEY_ID && Sync.fresh && local && local.kid !== rec.kid && !rec.deleted;   // this device's own new code never replaces the one in use
+    if (local && !takeKey && (local.updatedAt || 0) >= (rec.updatedAt || 0)) continue;
+    if (takeKey) RLOG.warn('this device had its own private code; using the one from the Sheet');
     rec._dirty = fromImport ? 1 : 0;
     if (isSealed) {
       if (!rec.enc) continue;                                  // a plaintext money row is never accepted from outside
       sealed[rec.id] = rec;
       if (Fin.key) {
-        try { const k = rec.salt === Fin.salt ? Fin.key : null; if (k) { const p = await unsealWith(k, rec); p._dirty = rec._dirty; records[rec.id] = p; } else { Fin.lockedOut.push(rec.id); delete records[rec.id]; } }
+        try { const k = rec.salt === Fin.salt ? Fin.key : null; if (k) { const p = await unsealWith(k, rec); if (Fin.key === k) { p._dirty = rec._dirty; records[rec.id] = p; } } else { Fin.lockedOut.push(rec.id); delete records[rec.id]; } }
         catch (e) { Fin.lockedOut.push(rec.id); }
       }
     } else {
@@ -2123,12 +2139,16 @@ async function mergeRemote(rows, fromImport) {
     writes.push(rec); n++;
   }
   if (writes.length) { storeVer++; await DB.putMany(writes); }
+  if (gone.length) { storeVer++; await DB.delMany(gone); }
   if (erasedAt && !fromImport && !window.__erasing) {
     const first = await DB.get('firstSync');
     if (first && first < erasedAt) { window.__erasing = true; RLOG.warn('emergency erase from another device'); await wipeDevice(); return 0; }
     // set up after the erase (or restored from a backup): our copies must win over the erase markers
-    const bumps = []; for (const [id, ts] of erasedIds) { const l = SEALED_TYPES.has((records[id] || {}).type) ? sealed[id] : records[id]; if (l && !l.deleted && (l.updatedAt || 0) <= ts) bumps.push(id); }
-    bumps.forEach(id => { const r = records[id]; if (r) { r.updatedAt = erasedIds.get(id); put(r, { render: false }); } });
+    for (const [id, ts] of erasedIds) {
+      const l = sealed[id] || records[id]; if (!l || l.deleted || (l.updatedAt || 0) > ts) continue;
+      if (records[id]) { records[id].updatedAt = ts; put(records[id], { render: false }); }
+      else { l.updatedAt = ts + 1; l._dirty = 1; await DB.put(l); }          // Money still locked: send the sealed copy as it is
+    }
   }
   if (finkeyChanged) { lockFinance(true); toast('The private-section code was changed on another device. Unlock again with the new code.'); }
   if (n) scheduleRender();
@@ -2285,7 +2305,7 @@ const STRONG = {
   Errands: ['grocery', 'groceries', 'shopping', 'courier', 'petrol', 'laundry', 'haircut'],
   Work: ['scn', 'panchanama', 'summons', 'audit', 'inspection', 'noting', 'assessee', 'commissionerate']
 };
-function classify(title) {
+function classifyOld(title) {
   const t = ' ' + String(title || '').toLowerCase() + ' ';
   const hit = w => t.includes(' ' + w) || t.includes(w + ' ');
   let best = 'Work', bestScore = 0;
@@ -2301,7 +2321,7 @@ function classify(title) {
 }
 
 /* ---------- task helpers ---------- */
-function normSub(s) { return { text: s.text || '', done: !!s.done, dueDate: s.dueDate || null, priority: PRIOS.includes(s.priority) ? s.priority : 'Medium', notes: s.notes || '' }; }
+function normSub(s) { return { text: s.text || '', done: !!s.done, dueDate: s.dueDate || null, priority: PRIOS.includes(s.priority) ? s.priority : 'Medium', notes: s.notes || '', ...(+s.day ? { day: +s.day } : {}) }; }
 const subOverdue = s => s.dueDate && !s.done && s.dueDate < todayISO();
 const isOverdue = t => t.dueDate && t.status !== 'done' && t.dueDate < todayISO();
 function newTask(fields) {
@@ -2319,7 +2339,7 @@ function shiftISO(iso, repeat, day) {
   if (repeat === 'daily') d.setDate(d.getDate() + 1); else if (repeat === 'weekly') d.setDate(d.getDate() + 7); else if (repeat === 'monthly') return isoLocal(addMonthsKeep(d, 1, day));
   return isoLocal(d);
 }
-function spawnRepeat(t) {
+function spawnRepeatOld(t) {
   const clone = { ...t, id: uid('t'), status: 'active', createdAt: nowMs(),
     subs: (t.subs || []).map(s => { const n = normSub(s); return { ...n, done: false, dueDate: shiftISO(n.dueDate, t.repeat) }; }) };
   delete clone.completedOn; delete clone.completedAt; delete clone._dirty; delete clone.spawnedId;
@@ -2488,7 +2508,7 @@ function renderTasks() {
 let viewTaskId = null;
 function linkify(escaped) {
   return escaped.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
-                .replace(/(^|[\s(])(\+?\d[\d\s-]{8,}\d)/g, (m, p, n) => `${p}<a href="tel:${n.replace(/[\s-]/g, '')}">${n}</a>`);
+                .replace(/(^|[\s(])(\+?\d[\d\s-]{8,}\d)/g, (m, p, n) => n.replace(/\D/g, '').length < 10 ? m : `${p}<a href="tel:${n.replace(/[\s-]/g, '')}">${n}</a>`);   // dates are not phone numbers
 }
 function previewTask(id) {
   const t = records[id]; if (!t) return;
@@ -2516,7 +2536,7 @@ function previewTask(id) {
     const tt = records[id], a = b.dataset.a;
     if (a === 'done') { tt.status === 'done' ? setStatus(tt, 'active') : completeWithUndo(id); Sheets.close('shTaskView'); }
     else if (a === 'prog') { setStatus(tt, tt.status === 'inprogress' ? 'active' : 'inprogress'); previewTask(id); }
-    else if (a === 'dup') { const c = { ...tt, id: uid('t'), status: 'active', title: tt.title + ' (copy)', createdAt: nowMs(), subs: (tt.subs || []).map(s => ({ ...normSub(s), done: false })) }; delete c.completedOn; delete c.completedAt; delete c._dirty; put(c); Sheets.close('shTaskView'); openTaskEditor(c.id); }
+    else if (a === 'dup') { const c = { ...tt, id: uid('t'), status: 'active', title: tt.title + ' (copy)', createdAt: nowMs(), subs: (tt.subs || []).map(s => ({ ...normSub(s), done: false })) }; delete c.completedOn; delete c.completedAt; delete c._dirty; delete c.spawnedId; delete c.repeatDay; put(c); Sheets.close('shTaskView'); openTaskEditor(c.id); }
     else if (a === 'del') { Sheets.close('shTaskView'); deleteWithUndo(id); }
   }));
   Sheets.open('shTaskView');
@@ -2538,7 +2558,7 @@ function openTaskEditor(id) {
   $('teDueQuick').innerHTML = [['Today', 0], ['Tomorrow', 1], ['In 3 days', 3], ['Next week', 7], ['No date', null]]
     .map(([l, n]) => `<button class="chip" data-d="${n}">${l}</button>`).join('');
   $$('#teDueQuick .chip').forEach(b => b.addEventListener('click', () => {
-    t.dueDate = b.dataset.d === 'null' ? null : addDays(+b.dataset.d); $('teDue').value = t.dueDate || ''; put(t, { render: false });
+    t.dueDate = b.dataset.d === 'null' ? null : addDays(+b.dataset.d); delete t.repeatDay; $('teDue').value = t.dueDate || ''; put(t, { render: false });
   }));
   renderSteps();
   Sheets.open('shTask');
@@ -2599,6 +2619,7 @@ $('teStepAdd').addEventListener('click', addStep);
 $('teStepIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addStep(); } });
 $('teDelete').addEventListener('click', () => { const id = editTaskId; Sheets.close('shTask', true); deleteWithUndo(id); });
 $('teRefile').addEventListener('click', () => {
+  clearTimeout(teTimer); teSave();                                         // keep what was typed in the last moment
   const t = records[editTaskId]; const g = classify(t.title);
   t.category = g.category; t.priority = g.priority; put(t, { render: false }); openTaskEditor(t.id);
   toast(g.matched ? `Re-filed under ${g.category}.` : 'No strong match — left as Work.');
@@ -2644,7 +2665,7 @@ function mdInline(s) {
   s = s.replace(/`([^`]+)`/g, (m, c) => hold(`<code>${c}</code>`));
   s = s.replace(/\[([^\]]+)\]\((https?:[^)\s]+|mailto:[^)\s]+|tel:[^)\s]+)\)/g, (m, t, u) => hold(`<a href="${u}" target="_blank" rel="noopener">${t}</a>`));
   s = s.replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)\]])/g, u => hold(`<a href="${u}" target="_blank" rel="noopener">${u}</a>`));
-  s = s.replace(/(^|[\s(])(\+?\d[\d -]{8,}\d)(?=$|[\s),.])/g, (m, p, n) => p + hold(`<a href="tel:${n.replace(/[ -]/g, '')}">${n}</a>`));
+  s = s.replace(/(^|[\s(])(\+?\d[\d -]{8,}\d)(?=$|[\s),.])/g, (m, p, n) => n.replace(/\D/g, '').length < 10 ? m : p + hold(`<a href="tel:${n.replace(/[ -]/g, '')}">${n}</a>`));
   s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>')
        .replace(/(^|\s)_([^_\n]+)_(?=\s|$|[.,;:!?])/g, '$1<i>$2</i>')
        .replace(/~~([^~]+)~~/g, '<del>$1</del>').replace(/==([^=]+)==/g, '<mark>$1</mark>');
@@ -3343,11 +3364,11 @@ $$('#dateSeg button').forEach(b => b.addEventListener('click', () => { setPref('
 /* Financial years (Apr–Mar) as "2024-25"; newest first. */
 const fyOf = iso => { const y = +iso.slice(0, 4), m = +iso.slice(5, 7); const s = m >= 4 ? y : y - 1; return s + '-' + String((s + 1) % 100).padStart(2, '0'); };
 function fyList() { const cur = +fyOf(todayISO()).slice(0, 4), out = []; for (let s = cur + 1; s >= 2000; s--) out.push(s + '-' + String((s + 1) % 100).padStart(2, '0')); return out; }
-const fyOptions = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + fyList().map(f => `<option value="${f}"${f === sel ? ' selected' : ''}>FY ${f}</option>`).join('');
+const fyOptions = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + (sel && !fyList().includes(sel) ? [...fyList(), sel].sort().reverse() : fyList()).map(f => `<option value="${f}"${f === sel ? ' selected' : ''}>FY ${f}</option>`).join('');
 const docPeople = () => orderPeople([...PERSON_ORDER, ...all('doc').flatMap(docOwners)]);
 /* ---------- v2.11: people (aliases, surnames ignored) and broad groups for the Docs tab ---------- */
 const DOC_ME = 'Rahul';
-const PERSON_ALIAS = { rk: 'Rahul', rahul: 'Rahul', moni: 'Ruchi', ruchi: 'Ruchi', papa: 'Papa', naresh: 'Papa', mummy: 'Mummy', mom: 'Mummy', maa: 'Mummy', kavita: 'Mummy' };
+const PERSON_ALIAS = Object.assign(Object.create(null), { rk: 'Rahul', rahul: 'Rahul', moni: 'Ruchi', ruchi: 'Ruchi', papa: 'Papa', naresh: 'Papa', mummy: 'Mummy', mom: 'Mummy', maa: 'Mummy', kavita: 'Mummy' });   // no "constructor" / "__proto__" look-ups
 const PERSON_ORDER = ['Rahul', 'Ruchi', 'Papa', 'Mummy'];
 function personOne(s) {
   const w = String(s || '').trim().split(/\s+/)[0]; if (!w) return '';
@@ -3379,10 +3400,10 @@ let docsMigrated = false;
 function migrateCaseDocs() {
   if (docsMigrated) return; docsMigrated = true;
   all('doc').forEach(d => {
-    const fs = docFilesOf(d.id); if (!fs.length || d.docType === 'Case') return;
+    const fs = docFilesOf(d.id); if (!fs.length || d.docType !== 'Other' || d.caseMig) return;     // once per document; your own edits stay
     if (!fs.every(f => /^(CASE|EVIDENCE)_/i.test(f.name || ''))) return;
     const p = parseDocName(fs[0].name || '');
-    d.docType = 'Case'; d.who = ''; if (p && p.title) d.title = p.title;
+    d.docType = 'Case'; d.who = ''; d.caseMig = true; if (p && p.title) d.title = p.title;
     put(d, { render: false });
   });
 }
@@ -3468,7 +3489,8 @@ function openDoc(id) {
 }
 $('doSave').addEventListener('click', async () => {
   const d = records[editDocId]; if (!d) return;
-  const numLocked = $('doNumber').disabled;
+  const numLocked = $('doNumber').disabled || (d.lockFiles && !Fin.key);            // never store a locked document's number in the clear
+  if (numLocked && !$('doNumber').disabled && $('doNumber').value.trim() !== (d.number || '')) toast('The number was not changed — open Money first to edit a locked document\'s number.');
   d.title = $('doTitle').value.trim() || d.title; d.docType = chipValue($('doType')) || d.docType;
   if (!numLocked) { d.number = $('doNumber').value.trim(); if (!d.number) { delete d.numEnc; delete d.numTail; } } d.expiry = $('doExpiry').value || null; d.issuer = $('doIssuer').value.trim(); d.notes = $('doNotes').value;
   d.folder = $('doFolder').value.trim();
@@ -3557,8 +3579,8 @@ async function rawDocBytes(f) {
   return unb64(url.slice(url.indexOf(',') + 1));
 }
 async function docFileBlob(f) {
-  if (docPlain.has(f.id)) return docPlain.get(f.id);
-  if (f.locked && !Fin.key) throw lockedErr();
+  if (f.locked && !Fin.key) throw lockedErr();                            // before the cache: a file locked on another device stays locked here
+  if (docPlain.has(f.id)) { const v = docPlain.get(f.id); docPlain.delete(f.id); docPlain.set(f.id, v); return v; }
   let bytes = await rawDocBytes(f);
   if (f.locked) {
     try { bytes = await aesDecBytes(await fileKeyOf(f), bytes); }
@@ -3567,6 +3589,7 @@ async function docFileBlob(f) {
   const blob = new Blob([bytes], { type: f.mime || 'application/octet-stream' });
   const v = { blob, url: URL.createObjectURL(blob) };
   docPlain.set(f.id, v);
+  while (docPlain.size > 12) { const [k, o] = docPlain.entries().next().value; docPlain.delete(k); setTimeout(() => URL.revokeObjectURL(o.url), 60000); }   // keep memory small on the iPhone
   return v;
 }
 function forgetLockedPlain() {
@@ -3624,7 +3647,7 @@ async function addDocFiles(docId, files) {
   const msg = $('doFileMsg');
   if (!driveOn()) { msg.className = 'msg err'; msg.textContent = 'Files are kept in your Google Drive folder. Set it in Settings (Drive folder), tap Test, then try again.'; return; }
   if (d.lockFiles && !Fin.key) { msg.className = 'msg err'; msg.textContent = 'This document locks its files. Enter your private code first (tap "Register" three times).'; return; }
-  let ok = 0; const bad = [];
+  let ok = 0; const bad = [], fyPick = d.byYear ? $('doFileFy').value : null;   // read once: the editor may show another document before the uploads finish
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     msg.className = 'msg'; msg.textContent = `Uploading ${i + 1} of ${files.length}…`;
@@ -3635,7 +3658,7 @@ async function addDocFiles(docId, files) {
       const { bytes, mime } = await fileToBytes(file);
       if (bytes.length > DOCFILE_MAX) throw new Error('larger than 15 MB');
       const ext = /jpeg/.test(mime) ? '.jpg' : /png/.test(mime) ? '.png' : /pdf/.test(mime) ? '.pdf' : '';
-      const fy = d.byYear ? $('doFileFy').value : null;
+      const fy = fyPick;
       const base = ((d.title || 'Document') + (fy ? ' FY ' + fy : '')).replace(/[\\/:*?"<>|]/g, '-').trim().slice(0, 60) || 'Document';
       const taken = new Set(docFilesOf(docId).map(x => (x.name || '').toLowerCase()));
       let name = base + ext, k = 2;
@@ -3764,6 +3787,7 @@ function pdfjs() {
     await loadScript(PDFJS_URL);
     const src = await (await fetch(PDFJS_WORKER)).text();       // a worker must be same-origin, so run it from a blob
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    try { window.__pdfWorker = new window.pdfjsLib.PDFWorker({ name: 'register' }); } catch (e) { RLOG.warn('pdf worker', e.message); }   // one worker, reused by every PDF
     return window.pdfjsLib;
   })().catch(e => { pdfjsReady = null; throw e; });
   return pdfjsReady;
@@ -3773,7 +3797,7 @@ async function renderPdfInto(box, blob, password) {
   let lib, doc;
   try { lib = await pdfjs(); }
   catch (e) { box.innerHTML = `<div class="dv-wait">The PDF viewer could not load (${esc(e.message)}). Use Share, then "Save to Files", to open it.</div>`; return; }
-  try { doc = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), password: password || undefined, isEvalSupported: false }).promise; }
+  try { doc = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), password: password || undefined, isEvalSupported: false, ...pdfWorkerOpt() }).promise; pdfOpenDocs.add(doc); }
   catch (e) {
     if (e && e.name === 'PasswordException') {
       box.innerHTML = `<div class="dv-pass"><div class="hint" style="margin:0 0 8px">${password ? 'That password did not work. ' : ''}This PDF has its own password (e-Aadhaar PDFs do). It is not saved.</div>
@@ -3920,6 +3944,7 @@ $('dsGo').addEventListener('click', async () => {
   }
   $('dsGo').disabled = false; shareReady = files;
   msg.className = notes.length ? 'msg err' : 'msg'; msg.textContent = notes.join(' ');
+  if (wm && notes.some(n => /without a watermark/.test(n))) { $('dsGo').textContent = 'Share anyway'; return; }   // you asked for a watermark: confirm first
   await doShare(files, true);
 });
 
@@ -4257,7 +4282,7 @@ const acctById = id => { const a = records[id]; return a && a.type === 'acct' &&
 const acctName = id => { const a = acctById(id); return a ? a.name : '—'; };
 const defAcct = c => { const a = acctById(c && c.defAcct); if (a && !a.archived) return a.id; const l = accts().find(x => isLiquid(x.kind)) || accts()[0]; return l ? l.id : null; };
 function acctOptions(sel, filter) {
-  return accts().filter(a => !filter || filter(a)).map(a => `<option value="${a.id}"${a.id === sel ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
+  return accts(true).filter(a => a.id === sel || (!a.archived && (!filter || filter(a)))).map(a => `<option value="${a.id}"${a.id === sel ? ' selected' : ''}>${esc(a.name)}${a.archived ? ' (archived)' : ''}</option>`).join('');   // the entry's own account is always listed
 }
 const RK_ORDER = ['income', 'udhback', 'transfer', 'expense'];
 const recurs = () => all('recur').sort((a, b) => RK_ORDER.indexOf(a.kind) - RK_ORDER.indexOf(b.kind) || (a.createdAt || 0) - (b.createdAt || 0));
@@ -4270,7 +4295,7 @@ function recurDue(r, ym) {
 function loanInfo(l, atYm) {
   const cur = atYm || isoMonth(new Date());
   const n = l.start && l.end ? monthsBetween(l.start, l.end) + 1 : 0;
-  const paidAt = ym => !l.start || ym <= l.start ? 0 : Math.min(n || Infinity, monthsBetween(l.start, ym));
+  const paidAt = ym => !l.start || ym < l.start ? 0 : Math.min(n || Infinity, monthsBetween(l.start, ym) + 1);   // counts this month's EMI, like loanOwed
   const paid = paidAt(cur);
   const emi = +l.emi || 0, P = +l.amount || 0;
   const out = { n, paid, left: n ? Math.max(0, n - paid) : null, emi, total: n * emi, paidAmt: paid * emi, leftAmt: n ? Math.max(0, n - paid) * emi : null, rate: null, interest: null, outstanding: null, r: null };
@@ -4313,7 +4338,9 @@ function ledgerFlows(c) {
     else if (e.kind === 'lent' || e.kind === 'borrowed') {
       const s = e.kind === 'lent' ? -1 : 1;
       push(d, acct, s * a, 'udh', e);
-      (e.pays || []).forEach(p => push(p.date, p.acct, -s * (+p.amt || 0), 'udh', e));
+      (e.pays || []).forEach(p => push(p.date, p.acct || acct, -s * (+p.amt || 0), 'udh', e));
+      const pp = (e.pays || []).reduce((t, p) => t + (+p.amt || 0), 0), rest = Math.max(0, (+e.paidAmount || 0) - pp);
+      if (rest > 0.005) push(d, acct, -s * rest, 'udh', e);                   // paid back before instalments were recorded
     }
   });
   return out;
@@ -4347,7 +4374,7 @@ function balancesOn(c, dateISO) {
   const out = { bank: 0, cash: 0, invest: 0, card: 0, loan: 0, mode, label, accts: bal };
   list.forEach(a => { const v = bal[a.id] || 0, b = bucketOf(a.kind);
     if (b === 'card') { if (v > 0) out.bank += v; else out.card += -v; } else if (b === 'loan') out.loan += Math.max(0, -v); else out[b] += v; });
-  const U = udhaarSplit(); out.owed = Math.max(0, U.owed - udhBack); out.owe = U.owe;
+  const U = mode === 'plan' ? udhaarSplit() : udhaarAsOf(dateISO); out.owed = Math.max(0, U.owed - udhBack); out.owe = U.owe;   // a past day uses that day's udhaar
   out.money = out.bank + out.cash + out.invest + out.owed - out.owe - out.card;
   out.hand = out.bank + out.cash - out.card;
   return out;
@@ -4359,7 +4386,7 @@ function incomeSummary(c, months) {
   months.forEach(ym => {
     if (ym < c.startMonth) return;
     planItems(c, ym).filter(it => it.kind === 'income' || it.kind === 'udhback').forEach(it => {
-      const x = get(it.extra ? 'One-off income' : it.kind === 'udhback' ? it.label + ' (udhaar back)' : it.label);
+      const x = get(it.extra ? 'One-off income' : it.kind === 'udhback' ? it.label + ' (udhaar back)' : it.label); if (it.kind === 'udhback') x.udh = true;
       x.expected += it.a;
       if (it.done) { x.received += it.a; if (it.matched) matched.add(it.matched); if (it.ledgerId) linked.add(it.ledgerId); }
       else if (ym < cur) x.overdue += it.a; else x.upcoming += it.a;
@@ -4454,17 +4481,19 @@ function planItems(c, ym) {
     else { it.done = false; it.ledgerId = null; it.lost = true; }   // its Ledger entry was deleted: planned again
   });
   // an entry you typed into the Ledger yourself (same month, type, account and amount) counts as done
-  const today = todayISO(), used = new Set(), mine = all('fin').filter(e => !e.planRef && (e.date || '').slice(0, 7) === ym && e.acct && (e.date || '') <= today);
+  const used = new Set(), dflt = (acctById(c.defAcct) || {}).id || defAcct(c), ac = e => e.acct || (e.kind !== 'transfer' ? dflt : null);   // untagged entries sit on the default account
+  const mine = all('fin').filter(e => !e.planRef && (e.date || '').slice(0, 7) === ym && ac(e));                     // later dates this month count too — they are already in the balances
   items.forEach(it => {
     if (it.done || it.kind !== 'udhback' || !it.a) return;
     const hit = all('fin').some(e => e.kind === 'lent' && (e.who || '').trim().toLowerCase() === it.who.trim().toLowerCase() &&
-      (e.pays || []).some(p => !p.planRef && (p.date || '').slice(0, 7) === ym && (p.date || '') <= today && Math.abs((+p.amt || 0) - it.a) < 1));
+      (e.pays || []).some(p => !p.planRef && (p.date || '').slice(0, 7) === ym && Math.abs((+p.amt || 0) - it.a) < 1));
     if (hit) { it.done = true; it.matched = 'udh'; }
   });
   items.forEach(it => {
     if (it.done || it.budget || !it.a || it.kind === 'udhback') return;
-    const m = mine.find(e => !used.has(e.id) && e.kind === it.kind && Math.abs((+e.amount || 0) - it.a) < 1 &&
-      (it.kind === 'income' ? e.acct === it.to : it.kind === 'expense' ? e.acct === it.from : e.acct === it.from && e.to === it.to));
+    const m = mine.find(e => !used.has(e.id) && Math.abs((+e.amount || 0) - it.a) < 1 && (e.kind === it.kind &&
+      (it.kind === 'income' ? ac(e) === it.to : it.kind === 'expense' ? ac(e) === it.from : e.acct === it.from && e.to === it.to)
+      || it.kind === 'transfer' && e.kind === 'expense' && e.category === 'Investment' && ac(e) === it.from && isInvest((acctById(it.to) || {}).kind)));   // a SIP typed in as "Investment" spending
     if (m) { used.add(m.id); it.done = true; it.matched = m.id; }
   });
   return items;
@@ -4490,17 +4519,18 @@ function planCompute(c, toMonth, mode) {
       if (a.kind === 'loan' && loanSched(a)) return;                        // a scheduled loan follows its schedule
       bal[f.acct] += f.amt;
       if (f.cat === 'inc') inc += f.amt;
-      else if (f.cat === 'exp') exp -= f.amt;
+      else if (f.cat === 'exp') { if (f.e && f.e.category === 'Investment') invIn -= f.amt; else exp -= f.amt; }   // same split as the PDF report
       else if (f.cat === 'in' && isInvest(a.kind)) invIn += f.amt;
       else if (f.cat === 'out' && isInvest(a.kind)) invIn += f.amt;          // negative: money taken out
     });
     // planned movements not yet ticked
     const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
-    const ledgerSpend = fl.filter(f => f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id)))).reduce((s, f) => s - f.amt, 0);
+    const ledgerSpend = fl.filter(f => f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id) || f.e.category === 'Investment'))).reduce((s, f) => s - f.amt, 0);
+    let spendLeft = Math.max(0, ledgerSpend);                                 // shared by all spending estimates, not taken off each one
     if (!actual) items.forEach(it => {
       if (it.done) return;
       let amt = it.a;
-      if (it.budget) { if (ym < cur) return; amt = Math.max(0, it.a - (ym === cur ? ledgerSpend : 0)); }
+      if (it.budget) { if (ym < cur) return; const use = ym === cur ? Math.min(spendLeft, it.a) : 0; spendLeft -= use; amt = it.a - use; }
       if (!amt) return;
       if (!it.budget && ym < cur) pending++;
       planned = true;
@@ -4569,7 +4599,7 @@ function planAutoEnd(c) {
   recurs().forEach(r => bump(r.end)); accts().forEach(a => { bump(a.end); if (a.sip) bump(a.sip.end); });
   all('goal').forEach(g => bump(g.by));
   Object.values(records).forEach(r => { if (r.type === 'planmonth' && !r.deleted && ((r.extra || []).length || Object.keys(r.items || {}).length)) bump(r.month); });
-  const mode = c.yearMode || 'cal', k = yearKey(end, mode);
+  const mode = c.yearMode || 'fy', k = yearKey(end, mode);
   bump(mode === 'fy' ? (k + 1) + '-03' : k + '-12');
   const cap = monthAdd(c.startMonth, PLAN_MAX_MONTHS - 1);
   return end > cap ? cap : end;
@@ -4792,6 +4822,7 @@ function openingSheet() {
       }).filter(x => x.name || x.open);
       if (edits.some(x => !x.name)) throw new Error('Every account needs a name.');
       edits.forEach((x, i) => { const a = acctById(x.id) || { id: x.id, type: 'acct', deleted: false, order: 100 + i }; Object.assign(a, { name: x.name, kind: x.kind, open: x.open }); put(a, { render: false }); });
+      if (c.startMonth && start < c.startMonth && archIndex().length && !confirm(ARCH_START_WARN)) return false;
       c.startMonth = start; if (!acctById(c.defAcct)) c.defAcct = defAcct(c); put(c, { render: false });
       toast('Opening balances saved.'); return true;
     } catch (e) { planMsg(e.message, true); return false; }
@@ -4963,7 +4994,7 @@ function autoRecord() {
       if (!it || it.done || it.matched || o.skip || it.lost || !it.a) { if (it && it.lost && !o.skip) { pm.items = { ...(pm.items || {}), [key]: { ...o, skip: true } }; delete pm.items[key].done; delete pm.items[key].ledgerId; put(pm, { render: false }); } continue; }
       if (it.kind === 'udhback' && udhOwedBy(it.who) < it.a - 0.005) continue;      // nothing (or not enough) left to pay back
       try { o.ledgerId = writeTick(c, ym, { ...it, ledgerId: null, date: d, fixedId: 'fa' + ym.replace('-', '') + '_' + key.replace(/[^\w]/g, '') }, it.a); o.done = true; o.auto = true; }
-      catch (e) { RLOG.warn('auto-record', r.name, ym, e.message); continue; }
+      catch (e) { RLOG.warn('auto-record', r.id, ym, e.message); continue; }
       pm.items = { ...(pm.items || {}), [key]: o }; put(pm, { render: false }); n++;
     }
   });
@@ -5293,6 +5324,7 @@ function planSettingsSheet() {
   planSheet('Plan settings', html, () => {
     setCheckupReminder($('ptRemind').checked);
     const start = $('ptStart').value; if (!ymOk(start)) { planMsg('Pick a start month.', true); return false; }
+    if (start < c.startMonth && archIndex().length && !confirm(ARCH_START_WARN)) return false;
     Object.assign(c, { startMonth: start, defAcct: $('ptDef').value, yearMode: $('ptMode').querySelector('.on').dataset.m }); put(c, { render: false }); Plan.year = null; toast('Saved.'); return true;
   });
   $$('#ptMode button').forEach(b => b.addEventListener('click', () => $$('#ptMode button').forEach(x => x.classList.toggle('on', x === b))));
@@ -5408,11 +5440,11 @@ function renderDash() {
       return `<div class="dash-card dash-accts"><div class="k">Each account · ${esc(B.mode === 'plan' ? 'plan' : 'actual')} · ${esc(monthLong(Dash.asOn))}</div>${L.map(a => { const v = B.accts[a.id] || 0, k = bucketOf(a.kind);
         return line(esc(a.name) + `<small>${k === 'card' ? 'card' : k === 'loan' ? 'loan' : k === 'invest' ? 'investment' : k === 'cash' ? 'cash' : 'bank'}</small>`, (k === 'card' || k === 'loan') && v < 0 ? (k === 'card' ? 'due ' : 'owed ') + rs(-v) : rs(v), v < 0 && k !== 'loan' && k !== 'card' ? 'neg' : ''); }).join('')}</div>`; })();
     const ms = (() => { if (Dash.kind === 'month') return [Dash.key]; const all = []; const end = Dash.kind === 'upto' && Dash.key > planHorizon(c) ? Dash.key : planHorizon(c); for (let ym = c.startMonth, i = 0; ym <= end && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) if (inP(ym)) all.push(ym); return all; })();
-    const inc = incomeSummary(c, ms), tot = k => inc.reduce((s, x) => s + x[k], 0);
+    const inc = incomeSummary(c, ms), tot = k => inc.filter(x => !x.udh).reduce((s, x) => s + x[k], 0);   // udhaar coming back is not income
     cInc = `<div class="dash-card"><div class="k">Income · ${esc(pLabel)}</div>
       ${inc.length ? `<div class="tw" style="box-shadow:none;margin-top:6px"><table class="pt"><thead><tr><th>Source</th><th>Expected</th><th>Received</th><th>Not received</th><th>Still to come</th></tr></thead><tbody>
         ${inc.map(x => `<tr><td>${esc(x.name)}</td><td>${x.expected ? rs(x.expected) : '–'}</td><td class="pos">${x.received ? rs(x.received) : '–'}</td><td class="${x.overdue ? 'neg' : ''}">${x.overdue ? rs(x.overdue) : '–'}</td><td>${x.upcoming ? rs(x.upcoming) : '–'}</td></tr>`).join('')}
-        <tr class="hl"><td>Total</td><td>${rs(tot('expected'))}</td><td>${rs(tot('received'))}</td><td>${rs(tot('overdue'))}</td><td>${rs(tot('upcoming'))}</td></tr></tbody></table></div>
+        <tr class="hl"><td>Total income</td><td>${rs(tot('expected'))}</td><td>${rs(tot('received'))}</td><td>${rs(tot('overdue'))}</td><td>${rs(tot('upcoming'))}</td></tr></tbody></table></div>
         <div class="s muted" style="margin-top:6px">Expected = from your recurring items (udhaar instalments are money coming back, not income). Received = ticked in the check-up or found in the Ledger. Not received = months already over but not ticked. Still to come = this month and later.</div>`
       : '<div class="s muted">No income planned or recorded in this period.</div>'}</div>`;
   } else {
@@ -5541,13 +5573,16 @@ async function wipeCloud(say) {
   const files = new Set();
   (d.records || []).forEach(r => { if (r.type === 'docfile' || r.type === 'blob') { try { const p = JSON.parse(r.payload); if (p.fileId) files.add(p.fileId); } catch (e) {} } });
   Object.values(records).forEach(r => { if (r.fileId) files.add(r.fileId); });
+  (d.records || []).forEach(r => { if (r.type === 'archidx') { try { (JSON.parse(r.payload).list || []).forEach(a => { if (a.fileId) files.add(a.fileId); }); } catch (e) {} } });
+  archIndex().forEach(a => { if (a.fileId) files.add(a.fileId); });
+  AutoBackup.list().forEach(b => { if (b.fileId) files.add(b.fileId); });
   let n = 0;
   for (const f of files) { say(`Removing Drive files… ${++n} of ${files.size}`); try { await Sync.call('driveDelete', { fileId: f }, 60000); } catch (e) { RLOG.warn('erase: drive file', e.message); } }
   const list = [...ids], now = Date.now() + 86400000, at = Date.now();
   for (let i = 0; i < list.length; i += 200) {
     const batch = list.slice(i, i + 200).map(id => ({ id, type: 'erased', updatedAt: now, deleted: false, summary: '', payload: JSON.stringify({ id, type: 'erased', updatedAt: now, at, deleted: false }) }));
     const r = await Sync.call('push', { records: batch }, 180000);
-    if ((r.stale || []).length) RLOG.warn('erase: stale rows', r.stale.length);
+    if ((r.stale || []).length) { RLOG.warn('erase: stale rows', r.stale.length); window.__eraseStale = (window.__eraseStale || 0) + r.stale.length; }
     say(`Erasing the Sheet… ${Math.min(i + 200, list.length)} of ${list.length}`);
   }
 }
@@ -5581,14 +5616,14 @@ const IMPORT_MAP = { ID: 'Identity', EDU: 'Education', EXAM: 'Exam', TAX: 'Tax',
 const IMPORT_SKIP = { VIDEO: 'not a PDF or photo' };
 const IMPORT_OK_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'webp'];
 const splitCamel = s => String(s).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/(\d)([A-Z])/g, '$1 $2').replace(/-/g, ' - ').replace(/\s+/g, ' ').trim();
-const isDateTok = t => /^(AY|FY)?\d{4}(-\d{2}){0,2}$/i.test(t) || /^(YYYY|Undated)$/i.test(t);
+const isDateTok = t => /^(AY|FY)?(19|20)\d{2}(-\d{2}){0,2}$/i.test(t) || /^(YYYY|Undated)$/i.test(t);   // "1234" (last digits of an account) is not a year
 function fyFromToken(t) {
   let m;
   const fy = s => s + '-' + String((s + 1) % 100).padStart(2, '0');
   if ((m = t.match(/^AY(\d{4})-\d{2}$/i))) return fy(+m[1] - 1);           // assessment year → the financial year before it
   if ((m = t.match(/^FY(\d{4})-\d{2}$/i))) return fy(+m[1]);
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return fyOf(t);
-  if ((m = t.match(/^(\d{4})-\d{2}$/))) return fy(+m[1]);
+  if ((m = t.match(/^(\d{4})-(\d{2})$/))) { const Y = +m[1], N = +m[2]; return N === (Y + 1) % 100 ? fy(Y) : N >= 1 && N <= 12 ? fyOf(`${Y}-${m[2]}-01`) : fy(Y); }   // 2024-25 is an FY, 2024-03 is March 2024
   if ((m = t.match(/^(\d{4})$/))) return fy(+m[1]);                           // a plain year: the FY that starts in it
   return null;
 }
@@ -5686,10 +5721,13 @@ async function runImport() {
   impDecline(no.flatMap(g => g.files.map(f => f.id)));                 // unticked: do not offer again
   if (!pick.length) { ImpCheck.set({ at: Date.now(), n: 0 }); scheduleRender(); $('impMsg').className = 'msg ok'; $('impMsg').textContent = `${no.length} document${no.length > 1 ? 's' : ''} will not be offered again.`; return; }
   const m = $('impMsg'), go = $('impGo'); go.disabled = true;
-  const total = pick.reduce((s, g) => s + g.files.length, 0); let n = 0, ok = 0; const bad = [];
+  const have = new Set(Object.values(records).filter(r => r.type === 'docfile' && !r.deleted).flatMap(r => [r.srcId, r.fileId]).filter(Boolean));
+  pick.forEach(g => { g.files = g.files.filter(f => !have.has(f.id)); });                  // already in Register (a second tap, or an earlier run)
+  const total = pick.reduce((s, g) => s + g.files.length, 0); let n = 0, ok = 0; const bad = [], toLock = new Set();
   for (const g of pick) {
+    if (!g.files.length) continue;
     let d = g.into && records[g.into.id] && !records[g.into.id].deleted ? records[g.into.id] : null;
-    if (!d) d = put({ id: uid('doc'), type: 'doc', title: g.title, who: normWho(g.who), docType: g.type, number: '', expiry: null, issuer: '', notes: '', folder: '', fy: g.fy || null, byYear: g.byYear, deleted: false }, { render: false });
+    if (!d) d = g.into = put({ id: uid('doc'), type: 'doc', title: g.title, who: normWho(g.who), docType: g.type, number: '', expiry: null, issuer: '', notes: '', folder: '', fy: g.fy || null, byYear: g.byYear, deleted: false }, { render: false });
     else if (g.byYear && !d.byYear) { d.byYear = true; put(d, { render: false }); }
     for (let i = 0; i < g.files.length; i += 5) {
       const batch = g.files.slice(i, i + 5);
@@ -5702,15 +5740,21 @@ async function runImport() {
         if (!r.fileId) { bad.push((f ? f.name : r.id) + ': ' + (r.error || 'failed')); return; }
         put({ id: uid('df'), type: 'docfile', docId: d.id, name: f.name, mime: r.mime || f.mime, bytes: r.bytes || f.size || 0, fileId: r.fileId, srcId: f.id, srcGone: r.fileId === f.id || undefined, locked: false,
               fy: d.byYear ? (f.fy || undefined) : undefined, deleted: false }, { render: false });
-        ok++;
+        ok++; if (d.lockFiles) toLock.add(d.id);
       });
     }
   }
+  for (const id of toLock) { const d = records[id]; if (d && Fin.key) { try { await convertDocFiles(d); } catch (e) { RLOG.warn('import lock', e.message); } } }
+  const unlockedIn = [...toLock].filter(id => docFilesOf(id).some(f => !f.locked)).length;
   scheduleRender(); go.disabled = false;
+  if (unlockedIn) bad.push(`${unlockedIn} locked document${unlockedIn > 1 ? 's' : ''} got files that are not locked yet — open Money, then "Finish locking" in that document`);
   m.className = bad.length ? 'msg err' : 'msg ok';
   m.textContent = `Imported ${ok} of ${total} files into ${pick.length} documents.` + (bad.length ? ' Not copied: ' + bad.slice(0, 8).join('; ') + (bad.length > 8 ? ` … and ${bad.length - 8} more.` : '') : ' Lock sensitive ones (Aadhaar, PAN…) from each document\'s editor.');
   toast(`Imported ${ok} files.`); renderTidyBtn();
   ImpCheck.set({ at: Date.now(), n: bad.length });
+  const keep = [m.className, m.textContent];
+  try { await readImport(); } catch (e) {}                                   // the list now shows only what is left
+  m.className = keep[0]; m.textContent = keep[1];
 }
 
 /* ---------- v2.10: declined files (synced) and the "new files" notice ---------- */
@@ -5955,7 +5999,8 @@ function ghostCrash(force) {
 $('ghostOk').addEventListener('click', () => $('ghostErr').classList.add('hidden'));
 function enterGhost() {
   window.GHOST = true;
-  Sheets.closeAll(); $('toast') && $('toast').classList.remove('show');
+  Sheets.closeAll(); addDraft = null;
+  if (!$('lightbox').classList.contains('hidden')) $('lbClose').click(); $('toast') && $('toast').classList.remove('show');
   document.documentElement.classList.remove('decoy-on');
   $('decoy').classList.add('hidden'); $('decoy').setAttribute('aria-hidden', 'true'); $('app').removeAttribute('aria-hidden');
   try { if (navigator.setAppBadge) navigator.clearAppBadge(); } catch (e) {}
@@ -5973,7 +6018,7 @@ function binItems() {
     && !(r.type === 'docfile' && (!records[r.docId] || records[r.docId].deleted))).sort((a, b) => b.deletedAt - a.deletedAt);
 }
 function binLabel(r) {
-  if (r.type === 'docfile') { const d = records[r.docId]; return `${r.name || 'file'}<small class="muted"> · from ${esc(d ? d.title : 'a document')}</small>`; }
+  if (r.type === 'docfile') { const d = records[r.docId]; return `${esc(r.name || 'file')}<small class="muted"> · from ${esc(d ? d.title : 'a document')}</small>`; }
   if (r.type === 'doc') { const n = docFilesOf(r.id).length; return `${esc(r.title)}<small class="muted"> · ${esc(docOwners(r).join(' & '))}${n ? ` · 📎 ${n}` : ''}</small>`; }
   if (r.type === 'fin') return esc((r.desc || 'Entry') + ' · ' + rs(r.amount));
   return esc(r.title || r.label || r.desc || '(untitled)');
@@ -5989,14 +6034,14 @@ function openBin() {
   $('binEmpty').classList.toggle('hidden', !L.length);
   Sheets.open('shBin');
 }
-function binRestore(id) {
+function binRestoreOld(id) {
   const r = records[id]; if (!r) return;
   restore(id);
   if (r.type === 'docfile') { if (r.keyId && records[r.keyId] && records[r.keyId].deleted) restore(r.keyId); if (Sync.on()) Sync.call('driveRestore', { fileId: r.fileId }).catch(() => {}); }
   if (r.type === 'fin' || r.type === 'snote') scheduleRender();
   toast('Restored.'); openBin();
 }
-async function purgeNow(ids) {
+async function purgeNowOld(ids) {
   ids.forEach(id => { const r = records[id]; if (!r) return;
     if (r.type === 'docfile' && r.fileId) driveDelete(r.fileId);
     if (r.type === 'doc') all('docfile').forEach(f => { if (f.docId === id) { driveDelete(f.fileId); softDelete(f.id, { render: false }); } });
@@ -6084,7 +6129,7 @@ const DriveChk = {
       }
     } catch (e) { err = e; }
     this.busy = false;
-    if (err) { const old = /unknown action/.test(err.message || ''); this.set({ at: Date.now(), bad: (this.get() || {}).bad || [], old });
+    if (err) { const old = /unknown action/.test(err.message || ''); this.set({ at: old ? Date.now() : Date.now() - 29 * 86400000, bad: (this.get() || {}).bad || [], old });
       if (manual) { const m = old ? 'Your Apps Script is older than v20. Paste Code.gs v20 and redeploy.' : 'Check failed: ' + err.message; if ($('dcMsg')) { $('dcMsg').className = 'msg err'; $('dcMsg').textContent = m; } else toast(m); } return; }
     this.set({ at: Date.now(), n: fs.length, bad });
     if (manual) { if (Sheets.isOpen('shDriveChk')) renderDriveChk(); else toast(bad.length ? `${bad.length} file${bad.length > 1 ? 's' : ''} need attention — see Docs.` : `All ${fs.length} files are in Drive.`); }
@@ -6126,7 +6171,7 @@ function askRange(q, future) {
   if (/\btoday\b|\baaj\b/.test(q)) return mk(t, t, 'today');
   if (/\btomorrow\b|\bkal\b/.test(q)) return mk(addDays(1), addDays(1), 'tomorrow');
   if ((m = q.match(/\b(?:next|coming|in)\s+(\d{1,3})\s+days?\b/))) return mk(t, addDays(+m[1]), `the next ${m[1]} days`);
-  if (/\bthis week\b/.test(q)) return mk(t, addDays(6), 'the next 7 days');
+  if (/\bthis week\b/.test(q)) return future === false ? mk(addDays(-6), t, 'the last 7 days') : mk(t, addDays(6), 'the next 7 days');
   if (/\bnext week\b/.test(q)) return mk(addDays(7), addDays(13), 'next week');
   if (/\bthis month\b/.test(q)) return mk(ym + '-01', mEnd(ym), monthLong(ym));
   if (/\bnext month\b/.test(q)) { const n = monthAdd(ym, 1); return mk(n + '-01', mEnd(n), monthLong(n)); }
@@ -6136,10 +6181,11 @@ function askRange(q, future) {
   if (/\b(last|previous) (fy|financial year)\b/.test(q)) { const s = +fyOf(t).slice(0, 4) - 1; return mk(s + '-04-01', (s + 1) + '-03-31', `FY ${s}-${String((s + 1) % 100).padStart(2, '0')}`); }
   if (/\bthis year\b/.test(q)) { const y = t.slice(0, 4); return mk(y + '-01-01', y + '-12-31', y); }
   for (let i = 0; i < 12; i++) {
+    if (i === 4 && !/\b(in|of|during|since|till|until|by|for)\s+may\b|\bmay\s+\d{4}\b/.test(q)) continue;      // "may" is usually not the month
     const re = new RegExp('\\b(' + ASK_MONTHS[i] + '|' + ASK_MONTHS[i].slice(0, 3) + ')\\b(?:\\s+(\\d{4}))?');
     if ((m = q.match(re))) {
       let y = m[2] ? +m[2] : +t.slice(0, 4); const mm = String(i + 1).padStart(2, '0');
-      if (!m[2]) { if (future && `${y}-${mm}` < ym) y++; if (!future && `${y}-${mm}` > ym) y--; }
+      if (!m[2]) { if (future === true && `${y}-${mm}` < ym) y++; if (future === false && `${y}-${mm}` > ym) y--; }   // null: this year's month
       const k = `${y}-${mm}`; return mk(k + '-01', mEnd(k), monthLong(k));
     }
   }
@@ -6169,14 +6215,22 @@ function askAnswer(raw) {
   if (has(/\b(spent|spend|spending|expenses?|income|earned|received|salary|owes?|owed|udhaar|balance|balances|savings?)\b/)) {
     if (!finUnlocked()) return ans('Open Money with your private code first — then ask again.');
     if (has(/\b(owes?|owed|udhaar)\b/)) {
-      const L = all('fin').filter(e => isUdhaar(e.kind) && !e.settled && outstanding(e) > 0 && (!who.length && !words.length || [...who, ...words].some(w => String(e.who || '').toLowerCase().includes(w.toLowerCase()))));
+      const names = [...who.flatMap(p => [p, ...Object.keys(PERSON_ALIAS).filter(k => PERSON_ALIAS[k] === p)]), ...words].map(w => w.toLowerCase());   // "Moni" finds entries saved as Ruchi, and the other way round
+      const hitWho = s => { s = String(s || '').toLowerCase(); return names.some(w => s.split(/[^a-z0-9]+/).includes(w) || (w.length > 3 && s.includes(w))); };
+      const L = all('fin').filter(e => isUdhaar(e.kind) && !e.settled && outstanding(e) > 0 && (!names.length || hitWho(e.who)));
       if (!L.length) return ans('No open udhaar' + (who.length || words.length ? ' for ' + [...who, ...words].join(', ') : '') + '.');
       const by = {}; L.forEach(e => { const k = e.who || '—'; by[k] = (by[k] || 0) + (e.kind === 'lent' ? 1 : -1) * outstanding(e); });
       return ans(Object.entries(by).map(([p, v]) => v >= 0 ? `${p} owes you ${rs(v)}` : `You owe ${p} ${rs(-v)}`).join('\n'), L.slice(0, 12).map(e => ({ k: '₹', id: e.id, t: esc(e.desc || 'Udhaar') + ' · ' + esc(e.who || ''), s: rs(outstanding(e)) })));
     }
+    if (has(/\bsavings?\b/) && !has(/\bbalances?\b/)) {
+      const R = askRange(q, false) || (() => { const ym = todayISO().slice(0, 7); return { from: ym + '-01', to: monthEnd(ym), label: monthLong(ym) }; })();
+      const F = all('fin').filter(e => inRange(e.date || '', R)), s = k => F.filter(e => e.kind === k && (k !== 'expense' || e.category !== 'Investment')).reduce((t, e) => t + (+e.amount || 0), 0);
+      const i = s('income'), x = s('expense');
+      return ans(`${R.label}: income ${rs(i)} − spending ${rs(x)} = ${i - x >= 0 ? 'saved' : 'overspent'} ${rs(Math.abs(i - x))} (Ledger entries only).`);
+    }
     if (has(/\bbalances?\b/)) {
       const c = planCfg(); if (!c || !accts().length) return ans('Set up Money → Accounts first.');
-      const R = askRange(q, true), B = balancesOn(c, R ? R.to : todayISO());
+      const R = askRange(q, null), B = balancesOn(c, R ? R.to : todayISO());
       const L = accts(true).filter(a => !words.length || words.some(w => a.name.toLowerCase().includes(w)));
       if (!L.length) return ans(`No account matches "${words.join(' ')}".`);
       return ans(L.map(a => `${a.name}: ${rs(B.accts[a.id] || 0)}`).join('\n') + `\n(${B.label})`);
@@ -6264,7 +6318,7 @@ const DATE_SEEDS = {
   member: [['Gym membership renewal', 'yearly']]
 };
 const DATE_CFG = 'date-cfg';
-const dateCfg = () => records[DATE_CFG] && !records[DATE_CFG].deleted ? records[DATE_CFG] : { hidden: [], custom: [] };
+const dateCfg = () => !window.GHOST && records[DATE_CFG] && !records[DATE_CFG].deleted ? records[DATE_CFG] : { hidden: [], custom: [] };
 const dateCats = () => { const c = dateCfg(); return [...DATE_CATS.slice(0, -1), ...(c.custom || []).map(x => [x.k, x.n, x.i || '📁']), DATE_CATS[DATE_CATS.length - 1]].filter(x => !(c.hidden || []).includes(x[0])); };
 const allDateCatKeys = () => [...DATE_CATS.map(x => x[0]), ...(dateCfg().custom || []).map(x => x.k)];
 function guessDateCat(d) {
@@ -6292,7 +6346,7 @@ function guessDateCat(d) {
 const dateCat = d => d.cat && allDateCatKeys().includes(d.cat) ? d.cat : guessDateCat(d);
 function dateAge(d, w) {
   if (d.repeat !== 'yearly' || !d.when || !/birthday|anniversar/i.test(d.label)) return '';
-  const y0 = +d.when.slice(0, 4), y1 = +w.slice(0, 4); if (y0 <= 1900 || y1 <= y0) return '';
+  const y0 = +d.when.slice(0, 4), y1 = +w.slice(0, 4); if (y0 <= 1904 || y1 <= y0) return '';
   return /anniversar/i.test(d.label) ? `${y1 - y0} years` : `turns ${y1 - y0}`;
 }
 const EXP_RX = /passport|licen[cs]e|\bdl\b|insurance|policy|\bpuc\b|\brc\b|registration|agreement|warranty|membership|visa|permit|cghs|card/i, EXP_NO = /pan|aadha|voter|ration|birth|debit|credit|atm/i;
@@ -6300,14 +6354,15 @@ function seedDates() {
   const cfg = records[DATE_CFG];
   if (cfg && cfg.seeded) return;
   const have = new Set(all('date').map(d => d.label.toLowerCase())), add = (label, cat, repeat, x) => { if (have.has(label.toLowerCase())) return; have.add(label.toLowerCase());
-    put(Object.assign({ id: uid('d'), type: 'date', label, when: '', repeat, cat, needsDetail: true, deleted: false }, x || {}), { render: false }); };
+    const sid = 'ds-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48);   // the same id on every device
+    put(Object.assign({ id: records[sid] ? uid('d') : sid, type: 'date', label, when: '', repeat, cat, needsDetail: true, deleted: false }, x || {}), { render: false }); };
   const people = orderPeople([...PERSON_ORDER, ...all('doc').flatMap(docOwners)]).filter(p => !/^(family|landlord|parents|dggi|presentation)$/i.test(p));
   people.forEach(p => add(`${p}'s birthday`, 'birthday', 'yearly'));
   const linked = new Set(all('date').map(d => d.docRef).filter(Boolean));
   all('doc').filter(d => !linked.has(d.id) && expiryKind(d)).forEach(d =>
     add(`${d.title} — ${docOwners(d).join(' & ')} — expiry`, d.docType === 'Warranty' ? 'warranty' : 'docexp', 'once', d.expiry ? { when: d.expiry, needsDetail: false, docRef: d.id } : { docRef: d.id }));
   Object.entries(DATE_SEEDS).forEach(([k, L]) => L.forEach(([l, r]) => add(l, k, r)));
-  put({ ...(cfg || { id: DATE_CFG, type: 'datecfg', hidden: [], custom: [] }), seeded: true, deleted: false }, { render: false });
+  put({ ...(cfg || { id: DATE_CFG, type: 'datecfg', hidden: [], custom: [], updatedAt: 1 }), seeded: true, deleted: false }, { render: false, keepTime: true });   // a flag never overwrites your categories on other devices
 }
 let datePath = null;
 function dateRows(list) {
@@ -6325,7 +6380,7 @@ function dateRowHtml({ d, w, days }, showCat) {
       <span class="chev">›</span></div>`, '', 'Delete 🗑', `data-date="${d.id}"`);
 }
 function renderDates() {
-  if (!window.GHOST) { seedDates(); tidySeededExpiry(); syncAllDocDates(); }
+  if (!window.GHOST && (!Sync.on() || window.__synced)) { seedDates(); tidySeededExpiry(); syncAllDocDates(); dedupeSeedDates(); }   // a new device waits for its first sync
   const dates = all('date'), cats = dateCats(), home = $('dateHome');
   if (datePath && !cats.some(c => c[0] === datePath)) datePath = null;
   let list = [];
@@ -6383,7 +6438,7 @@ function dateNudge() {
   try { localStorage.setItem(key, today); } catch (e) {}
   toast(`📅 ${L.slice(0, 2).map(x => `${x.d.label} (${inDays(x.days)})`).join(', ')}${L.length > 2 ? ` +${L.length - 2} more` : ''}`, 'See', () => { datePath = null; showTab('dates'); }, 8000);
 }
-function icsText(list) {
+function icsTextOld(list) {
   const e = s => String(s).replace(/[\\;,]/g, m => '\\' + m).replace(/\n/g, '\\n'), stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
   const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Register//Dates//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
   list.forEach(d => {
@@ -6487,7 +6542,7 @@ function expiryKind(d) {
 function tidySeededExpiry() {
   const cfg = records[DATE_CFG]; if (!cfg || cfg.tidy213) return;
   all('date').forEach(x => { if (x.docRef && !x.when && x.needsDetail) { const d = records[x.docRef]; if (!d || d.deleted || !expiryKind(d)) softDelete(x.id, { render: false }); } });
-  put({ ...cfg, tidy213: true }, { render: false });
+  put({ ...cfg, tidy213: true }, { render: false, keepTime: true });
 }
 
 /* ---------- Money report (PDF, made on the phone) ---------- */
@@ -6510,7 +6565,8 @@ function reportData(from, to, label) {
   let bal = null;
   if (c && accts().length && asOf >= monthEnd(monthAdd(c.startMonth, -1))) { const B = balancesOn(c, asOf); bal = { B, rows: accts(true).filter(a => !a.archived || Math.abs(B.accts[a.id] || 0) >= 1).map(a => [a.name, bucketOf(a.kind), B.accts[a.id] || 0]) }; }
   const udh = {}; all('fin').filter(e => isUdhaar(e.kind) && !e.settled && outstanding(e) > 0).forEach(e => { const k = e.who || '—'; udh[k] = (udh[k] || 0) + (e.kind === 'lent' ? 1 : -1) * outstanding(e); });
-  return { label, from, to, asOf, inc: sum(inc), exp: sum(exp), inv: sum(inv), incBy: grp(inc, e => e.category && e.category !== 'Other' ? e.category : e.desc), expBy: grp(exp, e => e.category), top: exp.slice().sort((a, b) => b.amount - a.amount).slice(0, 12), bal, udh: Object.entries(udh).filter(x => Math.abs(x[1]) >= 1), n: F.length };
+  const invT = F.filter(e => e.kind === 'transfer').reduce((s, e) => { const T = acctById(e.to), Fr = acctById(e.acct); return s + (T && isInvest(T.kind) ? +e.amount || 0 : 0) - (Fr && isInvest(Fr.kind) ? +e.amount || 0 : 0); }, 0);   // SIPs moved into funds, as on the dashboard
+  return { label, from, to, asOf, inc: sum(inc), exp: sum(exp), inv: sum(inv) + invT, incBy: grp(inc, e => e.category && e.category !== 'Other' ? e.category : e.desc), expBy: grp(exp, e => e.category), top: exp.slice().sort((a, b) => b.amount - a.amount).slice(0, 12), bal, udh: Object.entries(udh).filter(x => Math.abs(x[1]) >= 1), n: F.length };
 }
 async function makeReportPdf(R) {
   try { await loadScript(PDFLIB_URL); } catch (e) { throw new Error('the PDF tool ' + e.message); }
@@ -6587,7 +6643,7 @@ function archCandidates(fy) {
 }
 function openArchive() {
   const cur = fyOf(todayISO()), s = +cur.slice(0, 4), fys = [];
-  for (let y = s - 1; y >= s - 15; y--) fys.push(y + '-' + String((y + 1) % 100).padStart(2, '0'));
+  for (let y = s - 2; y >= s - 15; y--) fys.push(y + '-' + String((y + 1) % 100).padStart(2, '0'));
   const rows = fys.map(f => ({ f, ...archCandidates(f) })).filter(r => r.tasks.length || r.fins.length || r.blocked);
   const idx = archIndex();
   $('arBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">Moves finished tasks${finUnlocked() ? ' and old Ledger entries' : ''} of a whole financial year into one ${finUnlocked() ? 'encrypted ' : ''}file in your Drive folder, so the app stays fast. You can look at or bring back an archive any time. The current and the last FY stay in the app.${finUnlocked() ? ' Ledger entries from before your plan starts are archived; later ones stay, because your balances are worked out from them.' : ' Open Money first to archive old Ledger entries too.'}</p>
@@ -6618,7 +6674,7 @@ async function archiveFy(fy) {
     const back = await Sync.call('driveGet', { fileId: d.fileId }, 240000);           // read it back before removing anything
     if (!back.data || back.data !== data) throw new Error('the saved archive could not be read back');
     const idx = records[ARCH_ID] || { id: ARCH_ID, type: 'archidx', list: [] };
-    put({ ...idx, list: [...(idx.list || []), { fy, fileId: d.fileId, n: items.length, enc, at: Date.now() }], deleted: false }, { render: false });
+    put({ ...idx, list: [...(idx.list || []), { fy, fileId: d.fileId, n: items.length, enc, at: Date.now(), ...(enc ? { salt: Fin.salt, iters: Fin.iters } : {}) }], deleted: false }, { render: false });
     items.forEach(r => { r.deleted = true; r.deletedAt = 1; r.archived = fy; put(r, { render: false }); });
     Sync.run(); scheduleRender();
     openArchive(); $('arMsg').className = 'msg ok'; $('arMsg').textContent = `Archived ${items.length} items from FY ${fy}.`;
@@ -6630,7 +6686,16 @@ async function archView(i, restoreIt) {
   m.className = 'msg'; m.textContent = 'Reading the archive from Drive…';
   try {
     const d = await Sync.call('driveGet', { fileId: a.fileId }, 240000); if (!d.data) throw new Error('empty file');
-    let txt = td.decode(unb64(d.data)); if (a.enc) txt = await aesDec(Fin.key, txt);
+    let txt = td.decode(unb64(d.data));
+    if (a.enc) {
+      let key = Fin.key;
+      if (a.salt && a.salt !== Fin.salt) {
+        const old = prompt(`FY ${a.fy} was archived under your previous private code. Enter that code to open it:`);
+        if (!old) { m.textContent = ''; return; }
+        key = await deriveFinKey(old, a.salt, a.iters || FIN_ITERS);
+      }
+      try { txt = await aesDec(key, txt); } catch (e) { throw new Error(a.salt && a.salt !== Fin.salt ? 'that is not the code this archive was saved with' : 'it was saved under a different private code'); }
+    }
     const A = JSON.parse(txt), items = A.items || [];
     if (restoreIt) {
       if (!confirm(`Bring back ${items.length} items from FY ${a.fy}?`)) { m.textContent = ''; return; }
@@ -6655,7 +6720,7 @@ async function dateExport() {
   try { await loadScript(XLSX_URL); } catch (e) { toast('Excel needs internet the first time.'); return; }
   const order = dateCats().map(c => c[0]);
   const L = all('date').filter(d => !d.sys).sort((a, b) => order.indexOf(dateCat(a)) - order.indexOf(dateCat(b)) || a.label.localeCompare(b.label));
-  const fmt = w => { if (!w) return ''; const [y, m, d] = w.split('-'); return +y <= 1900 ? `${d}-${m}` : `${d}-${m}-${y}`; };
+  const fmt = w => { if (!w) return ''; const [y, m, d] = w.split('-'); return +y <= 1904 ? `${d}-${m}` : `${d}-${m}-${y}`; };
   const rows = [['Category', 'Name', 'Date (DD-MM-YYYY)', 'Repeats', 'ID (leave as it is)'], ...L.map(d => [catName(dateCat(d)), d.label, fmt(d.when), REP_W[d.repeat] || 'Once', d.id])];
   const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [{ wch: 26 }, { wch: 48 }, { wch: 18 }, { wch: 13 }, { wch: 24 }];
   const help = XLSX.utils.aoa_to_sheet([['How to fill'], ['Date: 25-12-2026. For a birthday or anniversary you can write only the day and month: 25-12.'], ['Repeats: Every year / Every month / Once. Blank = Every year for birthdays and anniversaries, Once for the rest.'], ['Delete a row you do not want: Register moves that entry to Recently deleted (you can choose this when importing).'], ['Add new rows at the bottom and leave the ID empty.'], ['Category: use a name from the list below, or a new name to make a new category.'], [''], ['Categories'], ...dateCats().map(c => [c[1]])]);
@@ -6664,7 +6729,7 @@ async function dateExport() {
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   dl(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Register dates ${todayISO()}.xlsx`);
 }
-function parseDateCell(v) {
+function parseDateCellOld(v) {
   if (v == null || v === '') return { v: '' };
   if (v instanceof Date && !isNaN(v)) return { v: isoLocal(new Date(v.getFullYear(), v.getMonth(), v.getDate())) };
   if (typeof v === 'number' && v > 20000 && v < 80000) { const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000); return { v: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}` }; }
@@ -6707,6 +6772,7 @@ function dateImportPlan(rows) {
   existing.forEach(d => { const k = norm(d.label); if (!byKey.has(k)) byKey.set(k, d); });
   const P = { add: [], upd: [], same: [], err: [], newCats: [], seen: new Set() };
   rows.forEach(r => {
+    const d0 = (r.id && byId.get(r.id)) || byKey.get(norm(r.name)); if (d0) P.seen.add(d0.id);   // a row with a bad date never removes its entry
     const pd = parseDateCell(r.date); if (pd.err) { P.err.push(`Row ${r.line} (${r.name}): ${pd.err}`); return; }
     let cat = findCat(r.cat), catKey = cat ? cat[0] : null;
     if (!cat && r.cat) { const nc = P.newCats.find(x => norm(x.n) === norm(r.cat)); catKey = nc ? nc.k : 'c' + Math.random().toString(36).slice(2, 8); if (!nc) P.newCats.push({ k: catKey, n: r.cat, i: '📁' }); }
@@ -6729,7 +6795,7 @@ function showDateImport(P) {
   DI.plan = P;
   $('diPrev').innerHTML = `<div class="imp-sum"><div><b>${P.add.length}</b>new</div><div><b>${P.upd.length}</b>changed</div><div><b>${P.same.length}</b>unchanged</div><div><b>${P.err.length}</b>with problems</div></div>
     ${P.newCats.length ? `<p class="hint">New categories: ${P.newCats.map(c => esc(c.n)).join(', ')}</p>` : ''}
-    ${P.gone.length + P.goneDoc.length ? `<div class="group"><label class="switch-row"><span>Remove ${P.gone.length + P.goneDoc.length} entr${P.gone.length + P.goneDoc.length === 1 ? 'y' : 'ies'} that are not in the file<small>They go to Recently deleted for 30 days. ${P.gone.slice(0, 6).concat(P.goneDoc.slice(0, 2)).map(d => esc(d.label)).join(', ')}${P.gone.length + P.goneDoc.length > 8 ? '…' : ''}</small></span><input type="checkbox" class="sw" id="diDel" checked></label></div>` : ''}
+    ${P.gone.length + P.goneDoc.length ? `<div class="group"><label class="switch-row"><span>Remove ${P.gone.length + P.goneDoc.length} entr${P.gone.length + P.goneDoc.length === 1 ? 'y' : 'ies'} that are not in the file<small>They go to Recently deleted for 30 days. ${P.gone.slice(0, 6).concat(P.goneDoc.slice(0, 2)).map(d => esc(d.label)).join(', ')}${P.gone.length + P.goneDoc.length > 8 ? '…' : ''}</small></span><input type="checkbox" class="sw" id="diDel"></label></div>` : ''}
     ${P.err.length ? `<details class="fold" open><summary>Rows with problems (${P.err.length}) — fix them in the file, or import the rest</summary>${P.err.map(e => `<div class="imp-skip">${esc(e)}</div>`).join('')}</details>` : ''}
     ${P.upd.length ? `<details class="fold"><summary>Changed (${P.upd.length})</summary>${P.upd.map(u => `<div class="imp-skip">${esc(u.label)}: ${esc(u.d.when ? fmtDate(u.d.when, true) : 'no date')} → <b>${esc(u.when ? fmtDate(u.when, true) : 'no date')}</b></div>`).join('')}</details>` : ''}
     ${P.add.length ? `<details class="fold"><summary>New (${P.add.length})</summary>${P.add.map(a => `<div class="imp-skip">${esc(catName(a.cat) || '')} · ${esc(a.label)} · ${esc(a.when ? fmtDate(a.when, true) : 'no date')}</div>`).join('')}</details>` : ''}`;
@@ -6779,7 +6845,7 @@ function syncDocDate(d) {
 function syncAllDocDates() {
   const cfg = records[DATE_CFG]; if (window.GHOST || (cfg && cfg.dues214)) return;
   all('doc').filter(d => d.expiry).forEach(syncDocDate);
-  put({ ...(cfg || { id: DATE_CFG, type: 'datecfg', hidden: [], custom: [] }), dues214: true, deleted: false }, { render: false });
+  put({ ...(cfg || { id: DATE_CFG, type: 'datecfg', hidden: [], custom: [], updatedAt: 1 }), dues214: true, deleted: false }, { render: false, keepTime: true });
 }
 
 /* ---------- 4. search button above + ---------- */
@@ -6901,16 +6967,21 @@ async function inboxTo(id, to) {
     const d = put({ id: uid('doc'), type: 'doc', title: first.slice(0, 60) || 'Document from Inbox', who: '', docType: 'Other', number: '', expiry: null, issuer: '', notes: text.split('\n').slice(1).join('\n'), folder: '', fy: null, deleted: false });
     showTab('docs'); openDoc(d.id);
     if (imgs.length) {
-      const files = [];
-      for (const b of imgs) { try { const src = await imgSrc(records[b]); const blob = await (await fetch(src)).blob(); files.push(new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' })); } catch (e) { RLOG.warn('inbox photo', e.message); } }
+      const files = [], okIds = [];
+      for (const b of imgs) { try { const src = await imgSrc(records[b]); const blob = await (await fetch(src)).blob(); files.push(new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' })); okIds.push(b); } catch (e) { RLOG.warn('inbox photo', e.message); } }
+      const before = docFilesOf(d.id).length;
       if (files.length) await addDocFiles(d.id, files);
-      if (docFilesOf(d.id).length >= files.length) imgs.forEach(b => softDelete(b, { render: false }));
+      const attached = files.length > 0 && docFilesOf(d.id).length - before >= files.length;
+      if (attached) okIds.forEach(b => softDelete(b, { render: false }));
+      const left = imgs.filter(b => !(attached && okIds.includes(b)));
+      if (left.length) { i.imgs = left; put(i, { render: false }); toast(`${left.length} photo${left.length > 1 ? 's' : ''} could not be attached — kept in the Inbox.`); return; }
     }
     inboxDone(i, false); toast('Set the type and person, then Save.'); return;
   }
   if (to === 'date') {
     const fd = findDateIn(text), lbl = dateLabelFrom(first, fd) || 'Date from Inbox';
-    const x = put({ id: uid('d'), type: 'date', label: lbl, when: fd ? fd.iso : '', repeat: 'once', cat: guessDateCat({ label: lbl }), needsDetail: fd ? undefined : true, deleted: false });
+    const dc = guessDateCat({ label: lbl });
+    const x = put({ id: uid('d'), type: 'date', label: lbl, when: fd ? fd.iso : '', repeat: YEARLY_CATS.includes(dc) ? 'yearly' : 'once', cat: dc, needsDetail: fd ? undefined : true, deleted: false });
     inboxDone(i, true); showTab('dates'); openDate(x.id); return;
   }
   if (to === 'money') {
@@ -6950,8 +7021,8 @@ function crSvg() {
   const end = () => { drag = null; }; svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end); }
 const CR_FULL = () => [[0, 0], [1, 0], [1, 1], [0, 1]];
 function openCrop(page, done) {
-  CR.page = page; CR.done = done; CR.base = page.orig || page.src; CR.rot = page.orig ? (page.crop ? page.crop.rot : 0) : (page.rot || 0);
-  CR.ang = page.crop ? page.crop.ang : 0; CR.q = page.crop ? page.crop.q.map(p => p.slice()) : CR_FULL();
+  CR.page = page; CR.done = done; CR.base = page.orig || page.src; CR.rot = page.orig ? (page.crop ? page.crop.rot : 0) + (page.rot || 0) : (page.rot || 0);
+  CR.ang = page.crop ? page.crop.ang : 0; CR.q = page.crop && !(page.orig && page.rot) ? page.crop.q.map(p => p.slice()) : CR_FULL();   // turned since: corners start from the full page
   $('crAng').value = CR.ang; $('crAngV').textContent = CR.ang + '°';
   Sheets.open('shCrop'); setTimeout(crDraw, 60);
 }
@@ -7011,11 +7082,12 @@ async function editDocFile(fid) {
   try {
     const { blob } = await docFileBlob(f), pages = [];
     if (isPdf(f)) {
-      const lib = await pdfjs(), doc = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false }).promise;
+      const lib = await pdfjs(), doc = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false, ...pdfWorkerOpt() }).promise;
       if (doc.numPages > 30) throw new Error('more than 30 pages — too many to edit here');
       for (let n = 1; n <= doc.numPages; n++) { const p = await doc.getPage(n), v1 = p.getViewport({ scale: 1 }), vp = p.getViewport({ scale: Math.min(3, 2000 / Math.max(v1.width, v1.height)) });
         const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
         await p.render({ canvasContext: x, viewport: vp }).promise; pages.push({ src: c, rot: 0 }); }
+      try { doc.destroy(); } catch (e) {}
     } else {
       const url = URL.createObjectURL(blob), img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('not a picture')); i.src = url; });
       const k = Math.min(1, 2400 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
@@ -7037,7 +7109,7 @@ Scan.openEdit = function (f, pages) {
 /* ---------- suggested action for an Inbox line ---------- */
 const MON3 = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const WDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-function findDateIn(text) {
+function findDateInOld(text) {
   const s = ' ' + String(text || '').toLowerCase() + ' ', t = todayISO(); let m;
   const ok = (y, mo, d) => { const dt = new Date(y, mo - 1, d); return dt.getMonth() === mo - 1 && dt.getDate() === d ? isoLocal(dt) : null; };
   const fut = (mo, d) => { const y = +t.slice(0, 4); let r = ok(y, mo, d); if (r && r < t) r = ok(y + 1, mo, d); return r; };
@@ -7182,11 +7254,12 @@ function acctPick(prefix, kind, acct, to) {
   const c = planCfg(), def = defAcct(c);
   const liquidish = a => a.kind !== 'loan';
   $(prefix + 'AcctLbl').textContent = acctLabelFor(kind);
-  $(prefix + 'Acct').innerHTML = acctOptions(acct || lastAcct(kind) || def, kind === 'transfer' ? liquidish : a => !isInvest(a.kind) && a.kind !== 'loan');
+  const fromF = kind === 'transfer' ? liquidish : a => !isInvest(a.kind) && a.kind !== 'loan', okAc = (id, f) => { const a = acctById(id); return a && !a.archived && f(a) ? id : null; };
+  $(prefix + 'Acct').innerHTML = acctOptions(acct || okAc(lastAcct(kind), fromF) || def, fromF);
   $(prefix + 'ToWrap').classList.toggle('hidden', kind !== 'transfer');
   if (kind === 'transfer') {
     const firstOther = (accts().find(a => a.id !== $(prefix + 'Acct').value && liquidish(a)) || {}).id;
-    $(prefix + 'To').innerHTML = acctOptions(to || lastAcct('transferTo') || firstOther, liquidish);
+    $(prefix + 'To').innerHTML = acctOptions(to || okAc(lastAcct('transferTo'), liquidish) || firstOther, liquidish);
   }
   const cat = $(prefix + 'CatWrap'); if (cat) cat.classList.toggle('hidden', kind === 'transfer');
 }
@@ -7253,7 +7326,7 @@ $('feDelete').addEventListener('click', () => { const id = editFinId; Sheets.clo
 wireCalc($('feAmt')); wireCalc($('stAmt')); wireCalc($('payAmt')); wireCalc($('bgAmt'));
 
 /* monthly entries roll into the current month when Money is opened */
-function rollRecurring() {
+function rollRecurringOld() {
   const thisM = isoMonth(new Date());
   const seen = new Set(Object.values(records).filter(e => e.type === 'fin').map(e => (e.recurSrc || e.id) + '|' + (e.date || '').slice(0, 7)));   // deleted copies count too
   let made = 0;
@@ -7306,7 +7379,7 @@ function openAdd(kind) {
     `<button data-k="${t.k}" class="${t.k === kind ? 'on' : ''}" aria-pressed="${t.k === kind}"><b>${t.i}</b>${t.l}</button>`).join('');
   $$('#addTypes button').forEach(b => b.addEventListener('click', () => { addKind = b.dataset.k; $$('#addTypes button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); renderAddForm(true); }));
   renderAddForm(true);
-  if (addDraft && addDraft.kind === addKind) {
+  if (addDraft && !window.GHOST && addDraft.kind === addKind) {
     const dr = addDraft; Object.entries(dr.vals).forEach(([id, v]) => { const el = $(id); if (el) { el.value = v; el.dispatchEvent(new Event('input')); } });
     setTimeout(() => toast('Unsaved text restored.', 'Clear', () => { addDraft = null; renderAddForm(true); }), 350);
   }
@@ -7367,8 +7440,8 @@ function renderAddForm0(focus) {
     f.innerHTML = `<div class="field"><input id="afTitle" placeholder="e.g. Car insurance renewal" autocomplete="off"></div>
       <div class="field"><label>Date</label><input type="date" id="afDate"></div>
       <div class="field"><label>Repeats</label><div class="wrapchips" id="afRep"></div></div>`;
-    AF.rep = datePath === 'birthday' || datePath === 'anniv' ? 'yearly' : 'once'; chipGroup($('afRep'), [{ v: 'once', l: 'Once' }, { v: 'yearly', l: 'Every year' }, { v: 'monthly', l: 'Every month' }], AF.rep, v => AF.rep = v);
-    f.insertAdjacentHTML('beforeend', `<div class="field"><label>Category</label><select id="afDateCat">${dateCats().map(c => `<option value="${c[0]}"${c[0] === (datePath || 'other') ? ' selected' : ''}>${c[2]} ${esc(c[1])}</option>`).join('')}</select></div><p class="hint">The date can be left empty and filled in later.</p>`);
+    AF.rep = YEARLY_CATS.includes(datePath) ? 'yearly' : 'once'; AF.repSet = false; chipGroup($('afRep'), [{ v: 'once', l: 'Once' }, { v: 'yearly', l: 'Every year' }, { v: 'monthly', l: 'Every month' }], AF.rep, v => { AF.rep = v; AF.repSet = true; });
+    f.insertAdjacentHTML('beforeend', `<div class="field"><label>Category</label><select id="afDateCat"><option value=""${datePath ? '' : ' selected'}>✨ Auto — from the name</option>${dateCats().map(c => `<option value="${c[0]}"${c[0] === datePath ? ' selected' : ''}>${c[2]} ${esc(c[1])}</option>`).join('')}</select></div><p class="hint">The date can be left empty and filled in later.</p>`);
   } else if (k === 'bill') {
     f.innerHTML = `<div class="field"><input id="afTitle" placeholder="e.g. Electricity, Home loan EMI" autocomplete="off"></div>
       <div class="grid2"><div class="field"><label>Expected ₹</label><input id="afAmt" inputmode="decimal" placeholder="blank if it varies"><div class="guess" id="afAmtHint"></div></div>
@@ -7443,7 +7516,8 @@ function saveAdd(another) {
   } else if (k === 'date') {
     const l = v('afTitle'), d = v('afDate');
     if (!l) { $('afTitle').focus(); return; }
-    put({ id: uid('d'), type: 'date', label: l, when: d || '', repeat: AF.rep, cat: $('afDateCat') ? $('afDateCat').value : undefined, needsDetail: !d || undefined, deleted: false }); toast(d ? 'Key date added.' : 'Added — set the date later.');
+    const dc = ($('afDateCat') && $('afDateCat').value) || guessDateCat({ label: l }), rp = AF.repSet ? AF.rep : YEARLY_CATS.includes(dc) ? 'yearly' : AF.rep;   // birthdays repeat every year
+    put({ id: uid('d'), type: 'date', label: l, when: d || '', repeat: rp, cat: dc, needsDetail: !d || undefined, deleted: false }); toast(d ? 'Key date added.' : 'Added — set the date later.');
   } else if (k === 'bill') {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
     put({ id: uid('bill'), type: 'bill', label: l, amount: calcAmount(v('afAmt')) || 0, freq: +AF.freq || 1, dueDay: Math.min(31, parseInt(v('afDay'), 10) || 0),
@@ -7552,7 +7626,8 @@ $('searchIn').addEventListener('input', runSearch);
 
 /* ---------- privacy: decoy screen ---------- */
 function showDecoy() {
-  Sheets.closeAll();
+  Sheets.closeAll(); addDraft = null;
+  if (!$('lightbox').classList.contains('hidden')) $('lbClose').click();
   document.documentElement.classList.add('decoy-on');
   $('decoy').classList.remove('hidden'); $('decoy').setAttribute('aria-hidden', 'false');
   $('app').setAttribute('aria-hidden', 'true');
@@ -7610,10 +7685,12 @@ $('wordmark').addEventListener('click', () => {
   wmTaps++; clearTimeout(wmT); wmT = setTimeout(() => { wmTaps = 0; }, 2000);
   if (wmTaps < 3) return;
   wmTaps = 0;
+  if (window.GHOST) { ghostCrash(true); return; }
   if (finUnlocked()) { showTab('money'); return; }
   openVault();
 });
 function openVault(mode) {
+  if (window.GHOST) { ghostCrash(true); return; }
   vaultMode = mode || (finConfigured() ? 'unlock' : 'setup');
   if (vaultMode === 'setup' && Sync.on() && !Sync.lastOk) {
     toast('Syncing first, so this iPhone picks up your existing code…'); Sync.run().then(ok => { if (ok) openVault(); }); return;
@@ -7622,6 +7699,7 @@ function openVault(mode) {
   const setup = vaultMode === 'setup', change = vaultMode === 'change';
   $('vaTitle').textContent = setup ? 'Private section' : change ? 'New code' : 'Restricted';
   $('vaSub').textContent = setup ? 'Choose an access code. Money entries are encrypted with it — if it is forgotten, they cannot be read.' : change ? 'Enter the new code twice. Everything is re-encrypted with it.' : 'Enter the access code.';
+  if (setup && !Sync.on()) $('vaSub').textContent += ' Already use Register on another device? Connect sync first (Settings → Sync), so this device uses the same code.';
   $('vaCode2').classList.toggle('hidden', !(setup || change));
   $('vaOk').textContent = setup ? 'Set code' : change ? 'Change code' : 'Unlock';
   const bioOn = vaultMode === 'unlock' && Bio.on();
@@ -7681,7 +7759,7 @@ function afterFinanceUnlock() {
   sealDocNumbers();
   setTimeout(() => AutoBackup.maybe(), 4000);
   if (Fin.codeLen && Fin.codeLen < FIN_MIN_CODE && !window.__shortCodeNag) { window.__shortCodeNag = true; setTimeout(() => toast('Your private code is short and could be guessed. Change it to 8+ characters.', 'Change', () => openVault('change'), 9000), 2500); }
-  flushPendingPosts(); rollRecurring(); setTimeout(backupNudge, 1500);
+  flushPendingPosts(); healFileKeys(); rollAfterSync(); setTimeout(backupNudge, 1500);
   if (pendingGo === 'spend') { pendingGo = null; setTimeout(() => { showTab('money'); openAdd('money'); }, 350); }
   const back = docReturn; docReturn = null;
   if (back && Sheets.isOpen('shDocView')) { openDocView(back); return; }
@@ -7689,7 +7767,11 @@ function afterFinanceUnlock() {
 }
 function onFinanceLocked(silent) {
   $('moneyTab').classList.add('hidden');
-  ['shFin', 'shSettle', 'shBudget', 'shDocView', 'shDocShare', 'shPlan'].forEach(id => Sheets.close(id, true));
+  Bio.pending = null;                                                    // a half-finished Face ID setup keeps no code
+  if (!$('lightbox').classList.contains('hidden')) $('lbClose').click();
+  if (Sheets.isOpen('shDoc')) { const d = records[editDocId]; if (d && (d.lockFiles || d.numEnc)) { $('doNumber').value = d.numEnc ? '•••• ' + (d.numTail || '') : ''; $('doNumber').disabled = true; } }
+  const sd = records[Scan.docId], lockedScan = (Scan.replace && Scan.replace.locked) || (sd && sd.lockFiles);
+  ['shFin', 'shSettle', 'shBudget', 'shDocView', 'shDocShare', 'shPlan', ...(lockedScan ? ['shScan', 'shCrop'] : [])].forEach(id => Sheets.close(id, true));
   forgetLockedPlain(); forgetSecretImgs();
   if (currentTab === 'money') showTab(prefs.lastTab || 'tasks');
   if (!silent) toast('Private section locked.');
@@ -7815,10 +7897,11 @@ $('setConnect').addEventListener('click', async () => {
   try {
     const d = await Sync.call('ping');
     if (!d.v || d.v < 16) throw new Error('This is the old script — paste the new Code.gs (v16) and redeploy.');
-    if (oldUrl !== url) await DB.set('cursor', 0);                                // new Sheet → fetch everything
-    // everything local must reach a fresh Sheet
-    Object.values(records).forEach(r => { if (!SEALED_TYPES.has(r.type)) r._dirty = 1; }); Object.values(sealed).forEach(s => { s._dirty = 1; });
-    await DB.putMany([...Object.values(records).filter(r => !SEALED_TYPES.has(r.type)), ...Object.values(sealed)]);
+    if (oldUrl !== url) {                                                        // new Sheet → fetch everything, and everything local must reach it
+      await DB.set('cursor', 0); await DB.set('firstSync', 0); window.__synced = false;
+      Object.values(records).forEach(r => { if (!SEALED_TYPES.has(r.type)) r._dirty = 1; }); Object.values(sealed).forEach(s => { s._dirty = 1; });
+      await DB.putMany([...Object.values(records).filter(r => !SEALED_TYPES.has(r.type)), ...Object.values(sealed)]);
+    }
     msg.textContent = 'Connected. Syncing…';
     const ok = await Sync.run();
     msg.className = 'msg ' + (ok ? 'ok' : 'err'); msg.textContent = ok ? 'Connected and synced.' : 'Connected, but the sync failed — see Download log.';
@@ -8088,6 +8171,184 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------- boot ---------- */
+
+/* ==========================================================================
+   v2.16 — audit fixes
+   ======================================================================== */
+/* ---------- tasks: whole-word classifier (no "now" inside "acknowledge", no "son" inside "reason") ---------- */
+const CLS_RX = new Map();
+function clsRx(w, whole) {
+  const k = (whole ? 'w:' : 's:') + w;
+  if (!CLS_RX.has(k)) CLS_RX.set(k, new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + (whole ? '(?![a-z0-9])' : '')));
+  return CLS_RX.get(k);
+}
+function classify(title) {
+  const t = ' ' + String(title || '').toLowerCase() + ' ';
+  const start = w => clsRx(w, false).test(t), whole = w => clsRx(w, true).test(t);   // word start: "pay" still finds "payment"
+  let best = 'Work', bestScore = 0;
+  for (const cat in CAT_WORDS) {
+    let score = 0;
+    CAT_WORDS[cat].forEach(w => { if (start(w)) score++; });
+    (STRONG[cat] || []).forEach(w => { if (start(w)) score += 3; });
+    if (score > bestScore) { bestScore = score; best = cat; }
+  }
+  let prio = 'Medium';
+  if (HIGH_WORDS.some(whole)) prio = 'High'; else if (LOW_WORDS.some(whole)) prio = 'Low';
+  return { category: bestScore ? best : 'Work', priority: prio, matched: bestScore > 0 };
+}
+/* repeating task: steps move by the same number of periods as the task, so they are not overdue at once */
+function spawnRepeat(t) {
+  const day = t.repeatDay || +(t.dueDate || todayISO()).slice(8, 10), today = todayISO();
+  let nx = shiftISO(t.dueDate || today, t.repeat, day), k = 1;
+  for (let i = 0; nx < today && i < 1000; i++, k++) nx = shiftISO(nx, t.repeat, day);      // completed late: next one is not already overdue
+  const shiftK = (iso, dd) => { let x = iso; for (let i = 0; x && i < k; i++) x = shiftISO(x, t.repeat, dd); return x; };
+  const clone = { ...t, id: uid('t'), status: 'active', createdAt: nowMs(), dueDate: nx, repeatDay: day,
+    subs: (t.subs || []).map(s => { const n = normSub(s), dd = n.dueDate ? (+s.day || +n.dueDate.slice(8, 10)) : 0;
+      return { ...n, done: false, dueDate: n.dueDate ? shiftK(n.dueDate, dd) : null, ...(dd && t.repeat === 'monthly' ? { day: dd } : {}) }; }) };
+  delete clone.completedOn; delete clone.completedAt; delete clone._dirty; delete clone.spawnedId;
+  t.spawnedId = clone.id;
+  put(clone, { render: false });
+  return clone;
+}
+
+/* ---------- Recently deleted: restore / delete for good ---------- */
+function binRestore(id) {
+  const r = records[id]; if (!r) return;
+  if (r.type === 'docfile' && r.locked && !Fin.key) { toast('This file is locked. Open Money with your private code first, then restore it.'); return; }
+  restore(id);
+  if (r.type === 'docfile') { if (r.keyId && records[r.keyId] && records[r.keyId].deleted) restore(r.keyId); if (Sync.on()) Sync.call('driveRestore', { fileId: r.fileId }).catch(() => {}); }
+  if (r.type === 'fin' || r.type === 'snote') scheduleRender();
+  toast('Restored.'); openBin();
+}
+async function purgeNow(ids, again) {
+  const gone = [], wait = [];
+  ids.forEach(id => { const r = records[id]; if (!r) return;
+    if (!again && r.type === 'docfile' && r.fileId) driveDelete(r.fileId);
+    if (!again && r.type === 'doc') all('docfile').forEach(f => { if (f.docId === id) { driveDelete(f.fileId); softDelete(f.id, { render: false }); } });
+    if (r._dirty && Sync.on()) { r.deletedAt = 1; put(r, { render: false }); wait.push(id); }   // its deletion has not reached the Sheet yet: removed right after it does
+    else gone.push(id); });
+  if (wait.length) Sync.run().then(() => { const done = wait.filter(id => records[id] && records[id].deleted && !records[id]._dirty); if (done.length) purgeNow(done, true); });
+  await Promise.all(gone.map(id => persistQ[id]).filter(Boolean));               // a queued save must not write it back after the delete
+  gone.forEach(id => { delete records[id]; delete sealed[id]; delete persistQ[id]; });
+  try { await DB.delMany(gone); } catch (e) { RLOG.warn('purge', e.message); }
+  scheduleRender();
+}
+/* a locked file's key that was removed while the file itself is still in use comes back after unlocking */
+function healFileKeys() {
+  let n = 0;
+  [...all('docfile'), ...all('blob')].forEach(f => { const k = f.keyId && records[f.keyId]; if (k && k.deleted) { restore(f.keyId); n++; } });
+  if (n) RLOG.info('restored file keys still in use', n);
+}
+
+/* ---------- Dates ---------- */
+function parseDateCell(v) {
+  if (v instanceof Date && !isNaN(v)) { const t = new Date(v.getTime() + 43200000); return { v: isoLocal(new Date(t.getFullYear(), t.getMonth(), t.getDate())) }; }   // Excel dates arrive a few seconds before midnight in IST
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  if (/^29\s*[-/.\s]\s*(0?2|feb[a-z]*)$/.test(s) || /^feb[a-z]*\s+29$/.test(s)) return { v: '1904-02-29', noYear: true };   // 29 Feb without a year: a leap placeholder year
+  return parseDateCellOld(v);
+}
+function icsFold(line) {
+  const out = []; let cur = '', n = 0;
+  for (const ch of line) { const b = te.encode(ch).length; if (n + b > (out.length ? 74 : 75)) { out.push(cur); cur = ''; n = 0; } cur += ch; n += b; }
+  out.push(cur); return out.join('\r\n ');
+}
+function icsText(list) {
+  const e = s => String(s).replace(/[\\;,]/g, m => '\\' + m).replace(/\n/g, '\\n'), stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Register//Dates//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  list.forEach(d => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.when || '')) return;
+    const nx = new Date(d.when + 'T00:00:00'); nx.setDate(nx.getDate() + 1);
+    const day = +d.when.slice(8, 10), mo = +d.when.slice(5, 7);
+    L.push('BEGIN:VEVENT', `UID:${d.id}@register`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${d.when.replace(/-/g, '')}`, `DTEND;VALUE=DATE:${isoLocal(nx).replace(/-/g, '')}`, `SUMMARY:${e(d.label)}`);
+    // same rule as the app: a day the month does not have moves to its last day
+    if (d.repeat === 'yearly') L.push(mo === 2 && day === 29 ? 'RRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=28,29;BYSETPOS=-1' : 'RRULE:FREQ=YEARLY');
+    else if (d.repeat === 'monthly') L.push(day >= 29 ? 'RRULE:FREQ=MONTHLY;BYMONTHDAY=' + Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',') + ';BYSETPOS=-1' : 'RRULE:FREQ=MONTHLY');
+    L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${e(d.label)}`, 'TRIGGER:-PT15H', 'END:VALARM', 'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${e(d.label)}`, 'TRIGGER:PT9H', 'END:VALARM', 'END:VEVENT');
+  });
+  L.push('END:VCALENDAR'); return L.map(icsFold).join('\r\n') + '\r\n';
+}
+/* placeholders ("set the date") made twice — e.g. on two devices before they synced — keep one */
+function dedupeSeedDates() {
+  const by = new Map();
+  all('date').forEach(d => { const k = String(d.label || '').trim().toLowerCase(); if (!k) return; (by.get(k) || by.set(k, []).get(k)).push(d); });
+  let n = 0;
+  by.forEach(L => {
+    if (L.length < 2) return;
+    const empty = d => !d.when && !d.docRef, keep = L.find(d => !empty(d)) || L.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
+    L.forEach(d => { if (d !== keep && empty(d)) { d.deleted = true; d.deletedAt = 1; put(d, { render: false }); n++; } });
+  });
+  if (n) RLOG.info('removed duplicate date placeholders', n);
+}
+
+/* ---------- Inbox: dates in a line (no "1.5 kg", "5 pm", "10 marks", "maybe", "2 decks") ---------- */
+const DMON = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?(?![a-z])';
+const DRX1 = new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*' + DMON + '(?:,?\\s*(\\d{4}))?\\b'), DRX2 = new RegExp('\\b' + DMON + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?\\b');
+function findDateIn(text) {
+  const s = ' ' + String(text || '').toLowerCase() + ' ', t = todayISO(); let m;
+  const ok = (y, mo, d) => { const dt = new Date(y, mo - 1, d); return dt.getMonth() === mo - 1 && dt.getDate() === d ? isoLocal(dt) : null; };
+  const fut = (mo, d) => { const y = +t.slice(0, 4); let r = ok(y, mo, d); if (r && r < t) r = ok(y + 1, mo, d); return r; };
+  if ((m = s.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})(?![\d.])/))) { const y = +m[3] < 100 ? 2000 + +m[3] : +m[3], r = ok(y, +m[2], +m[1]); if (r) return { iso: r, hit: m[0] }; }
+  if ((m = s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/))) { const r = ok(+m[1], +m[2], +m[3]); if (r) return { iso: r, hit: m[0] }; }
+  if ((m = s.match(DRX1))) { const r = m[3] ? ok(+m[3], MON3[m[2].slice(0, 3)], +m[1]) : fut(MON3[m[2].slice(0, 3)], +m[1]); if (r) return { iso: r, hit: m[0] }; }
+  if ((m = s.match(DRX2))) { const r = m[3] ? ok(+m[3], MON3[m[1].slice(0, 3)], +m[2]) : fut(MON3[m[1].slice(0, 3)], +m[2]); if (r) return { iso: r, hit: m[0] }; }
+  if ((m = s.match(/(^|[^\d.,])(\d{1,2})([/.])(\d{1,2})(?![\d./,])/))) {
+    const at = m.index + m[1].length, before = s.slice(Math.max(0, at - 4), at), after = s.slice(at + m[0].length - m[1].length);
+    const dotOk = m[3] === '/' || (m[4].length === 2 && !/^\s*(kg|kgs|g|gm|gms|l|ltr|ml|lakh|lac|cr|crore|%|km|hrs?|min|am|pm|x|rs)\b/.test(after));
+    if (dotOk && +m[4] >= 1 && +m[4] <= 12 && +m[2] >= 1 && +m[2] <= 31 && !/[₹]|rs/.test(before)) { const r = fut(+m[4], +m[2]); if (r) return { iso: r, hit: m[0].slice(m[1].length) }; }
+  }
+  if (/\b(today|aaj)\b/.test(s)) return { iso: t, hit: (s.match(/\b(today|aaj)\b/) || [''])[0] };
+  if (/\btomorrow\b/.test(s)) return { iso: addDays(1), hit: 'tomorrow' };
+  if ((m = s.match(/\bin (\d{1,3}) days?\b/))) return { iso: addDays(+m[1]), hit: m[0] };
+  if ((m = s.match(/\b(?:next |on |this )?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/))) { const w = WDAYS.indexOf(m[1]), now = new Date(t + 'T00:00:00').getDay(); const k = (w - now + 7) % 7 || 7; return { iso: addDays(k), hit: m[0] }; }
+  return null;
+}
+const YEARLY_CATS = ['birthday', 'anniv', 'remember'];
+
+/* ---------- Money ---------- */
+/* udhaar as it stood on a past day (not today's figures) */
+function udhaarAsOf(iso) {
+  if (iso >= todayISO()) return udhaarSplit();
+  let owed = 0, owe = 0;
+  all('fin').filter(e => isUdhaar(e.kind) && finDate(e) && finDate(e) <= iso).forEach(e => {
+    const pays = e.pays || [], pp = pays.reduce((t, p) => t + (+p.amt || 0), 0);
+    const rest = Math.max(0, (+e.paidAmount || 0) - pp);                         // paid back before instalments were recorded: date unknown
+    const left = Math.max(0, (+e.amount || 0) - pays.filter(p => (p.date || '') <= iso).reduce((t, p) => t + (+p.amt || 0), 0) - rest);
+    if (e.kind === 'lent') owed += left; else owe += left;
+  });
+  return { owed, owe };
+}
+/* a monthly entry is copied once per month; the copy's id is fixed so two devices make the same one */
+function rollRecurring() {
+  const thisM = isoMonth(new Date());
+  const seen = new Set(Object.values(records).filter(e => e.type === 'fin').map(e => (e.recurSrc || e.id) + '|' + (e.date || '').slice(0, 7)));   // deleted copies count too
+  let made = 0;
+  all('fin').filter(e => e.recurring).forEach(e => {
+    const src = e.recurSrc || e.id, id = 'rr_' + src + '_' + thisM.replace('-', '');
+    if ((e.date || '').slice(0, 7) >= thisM || seen.has(src + '|' + thisM) || records[id] || sealed[id]) return;
+    const day = Math.min(+(e.date || '').slice(8, 10) || 1, new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate());
+    const n = { ...e, id, date: thisM + '-' + String(day).padStart(2, '0'), recurSrc: src, settled: false, paidAmount: 0, createdAt: nowMs() };
+    delete n._dirty; delete n.pays; delete n.planRef; delete n.billRef; if (n.kind !== 'transfer') delete n.to; put(n, { render: false }); seen.add(src + '|' + thisM); made++;
+  });
+  if (made) toast(`${made} monthly entr${made === 1 ? 'y' : 'ies'} added for this month.`);
+}
+function rollAfterSync() {
+  if (Sync.on() && navigator.onLine && !window.GHOST) Sync.run().then(() => { if (Fin.key) rollRecurring(); }, () => { if (Fin.key) rollRecurring(); });
+  else rollRecurring();
+}
+const ARCH_START_WARN = 'Ledger entries from before the old start month were archived. With an earlier start they are left out of your balances until you bring those archives back (Settings → Archive old years). Move the start anyway?';
+
+/* ---------- Docs: one PDF worker for the whole session; documents are closed when the viewer closes ---------- */
+const pdfOpenDocs = new Set();
+const pdfWorkerOpt = () => window.__pdfWorker ? { worker: window.__pdfWorker } : {};
+Sheets.onClose.shDocView = () => { pdfOpenDocs.forEach(d => { try { d.destroy(); } catch (e) {} }); pdfOpenDocs.clear(); };
+/* the Scan screen: one save at a time */
+Scan.save = (function (inner) {
+  return async function () {
+    if (this.busy) return; this.busy = true; if ($('scSave')) $('scSave').disabled = true;
+    try { return await inner.call(this); } finally { this.busy = false; if ($('scSave')) $('scSave').disabled = !this.pages.length; }
+  };
+})(Scan.save);
+
 (async function boot() {
   try {
     await loadPrefs();
@@ -8098,6 +8359,7 @@ document.addEventListener('keydown', e => {
     retireBills();
     Sync.lastOk = (await DB.get('lastSync')) || 0;
     if (Sync.lastOk && !(await DB.get('firstSync'))) await DB.set('firstSync', Sync.lastOk);   // installs from before v2.7
+    window.__synced = !!(await DB.get('firstSync'));
     Sync.status(Sync.on() ? (Sync.lastOk ? 'ok' : '') : '', Sync.on() ? 'Last synced ' + timeAgo(Sync.lastOk) : 'Local only');
     showTab(prefs.startTab === 'last' ? prefs.lastTab : prefs.startTab || 'tasks');
     handleGo();
