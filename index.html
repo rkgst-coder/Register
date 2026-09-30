@@ -1499,7 +1499,7 @@ html.decoy-on #todayFab{display:none}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.17.0';
+const APP_VERSION = '2.17.1';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -2042,11 +2042,11 @@ function put(rec, opt) {
   if (typeof Sync !== 'undefined') Sync.soon();
   return rec;
 }
-function softDelete(id, opt) {
+function softDeleteBase(id, opt) {
   const r = records[id]; if (!r) return;
   r.deleted = true; r.deletedAt = nowMs(); put(r, opt);
 }
-function restore(id) {
+function restoreBase(id) {
   const r = records[id]; if (!r) return;
   r.deleted = false; delete r.deletedAt; put(r);
 }
@@ -2057,7 +2057,7 @@ async function purgeOldTrash() {
   for (const id in sealed) { const s = sealed[id]; if (s.deleted && !s._dirty && s.deletedAt && s.deletedAt < cutoff && !ids.includes(id) && !liveKeys.has(id)) ids.push(id); }
   if (!ids.length) return;
   const goneDocs = new Set(ids.filter(id => records[id] && records[id].type === 'doc'));
-  ids.forEach(id => { const r = records[id]; if (r && r.type === 'docfile' && r.fileId) driveDelete(r.fileId); });
+  ids.forEach(id => { const r = records[id]; if (r && r.type === 'docfile' && r.fileId) driveDelete(r.fileId); if (r && r.type === 'blob' && r.drive && r.fileId && !r.gone) driveDelete(r.fileId); });
   if (goneDocs.size) all('docfile').forEach(f => { if (goneDocs.has(f.docId)) { driveDelete(f.fileId); softDelete(f.id, { render: false }); } });
   ids.forEach(id => { delete records[id]; delete sealed[id]; });
   await DB.delMany(ids);
@@ -5658,11 +5658,16 @@ async function wipeCloud(say) {
   const files = new Set();
   (d.records || []).forEach(r => { if (r.type === 'docfile' || r.type === 'blob') { try { const p = JSON.parse(r.payload); if (p.fileId) files.add(p.fileId); } catch (e) {} } });
   Object.values(records).forEach(r => { if (r.fileId) files.add(r.fileId); });
+  (d.records || []).forEach(r => { if (r.type === 'archent') { try { const p = JSON.parse(r.payload); if (p.fileId) files.add(p.fileId); } catch (e) {} } });
   (d.records || []).forEach(r => { if (r.type === 'archidx') { try { (JSON.parse(r.payload).list || []).forEach(a => { if (a.fileId) files.add(a.fileId); }); } catch (e) {} } });
   archIndex().forEach(a => { if (a.fileId) files.add(a.fileId); });
   AutoBackup.list().forEach(b => { if (b.fileId) files.add(b.fileId); });
   let n = 0;
   for (const f of files) { say(`Removing Drive files… ${++n} of ${files.size}`); try { await Sync.call('driveDelete', { fileId: f }, 60000); } catch (e) { RLOG.warn('erase: drive file', e.message); } }
+  for (let k = 0, more = true; more && k < 30; k++) {                        // everything else in the Register folder (backups from other devices…)
+    say('Emptying the Register folder…');
+    try { const r = await Sync.call('driveEmptyFolder', { confirm: 'ERASE' }, 300000); more = !!r.more; } catch (e) { RLOG.warn('erase: empty folder', e.message); more = false; }
+  }
   const list = [...ids], now = Date.now() + 86400000, at = Date.now();
   for (let i = 0; i < list.length; i += 200) {
     const batch = list.slice(i, i + 200).map(id => ({ id, type: 'erased', updatedAt: now, deleted: false, summary: '', payload: JSON.stringify({ id, type: 'erased', updatedAt: now, at, deleted: false }) }));
@@ -6649,11 +6654,13 @@ function reportData(from, to, label) {
   const inc = F.filter(e => e.kind === 'income'), exp = F.filter(e => e.kind === 'expense' && e.category !== 'Investment'), inv = F.filter(e => e.kind === 'expense' && e.category === 'Investment');
   const grp = (L, key) => { const m = {}; L.forEach(e => { const k = key(e) || 'Other'; (m[k] = m[k] || { n: 0, a: 0 }); m[k].n++; m[k].a += +e.amount || 0; }); return Object.entries(m).sort((a, b) => b[1].a - a[1].a); };
   const c = planCfg(), asOf = to > todayISO() ? todayISO() : to;
+  let interest = 0;                                                           // worked out from your loans, as on the dashboard
+  try { if (c && accts(true).some(a => a.kind === 'loan')) planCompute(c, asOf.slice(0, 7), 'actual').forEach(r => { if (r.ym >= from.slice(0, 7) && r.ym <= to.slice(0, 7)) interest += r.interest || 0; }); } catch (e) { RLOG.warn('report interest', e.message); }
   let bal = null;
   if (c && accts().length && asOf >= monthEnd(monthAdd(c.startMonth, -1))) { const B = balancesOn(c, asOf); bal = { B, rows: accts(true).filter(a => !a.archived || Math.abs(B.accts[a.id] || 0) >= 1).map(a => [a.name, bucketOf(a.kind), B.accts[a.id] || 0]) }; }
   const udh = {}; all('fin').filter(e => isUdhaar(e.kind) && !e.settled && outstanding(e) > 0).forEach(e => { const k = e.who || '—'; udh[k] = (udh[k] || 0) + (e.kind === 'lent' ? 1 : -1) * outstanding(e); });
   const invT = F.filter(e => e.kind === 'transfer').reduce((s, e) => { const T = acctById(e.to), Fr = acctById(e.acct); return s + (T && isInvest(T.kind) ? +e.amount || 0 : 0) - (Fr && isInvest(Fr.kind) ? +e.amount || 0 : 0); }, 0);   // SIPs moved into funds, as on the dashboard
-  return { label, from, to, asOf, inc: sum(inc), exp: sum(exp), inv: sum(inv) + invT, incBy: grp(inc, e => e.category && e.category !== 'Other' ? e.category : e.desc), expBy: grp(exp, e => e.category), top: exp.slice().sort((a, b) => b.amount - a.amount).slice(0, 12), bal, udh: Object.entries(udh).filter(x => Math.abs(x[1]) >= 1), n: F.length };
+  return { label, from, to, asOf, interest, inc: sum(inc), exp: sum(exp), inv: sum(inv) + invT, incBy: grp(inc, e => e.category && e.category !== 'Other' ? e.category : e.desc), expBy: grp(exp, e => e.category), top: exp.slice().sort((a, b) => b.amount - a.amount).slice(0, 12), bal, udh: Object.entries(udh).filter(x => Math.abs(x[1]) >= 1), n: F.length };
 }
 async function makeReportPdf(R) {
   try { await loadScript(PDFLIB_URL); } catch (e) { throw new Error('the PDF tool ' + e.message); }
@@ -6682,7 +6689,7 @@ async function makeReportPdf(R) {
   text(`${R.label}  (${fmtDate(R.from, true)} - ${fmtDate(R.to, true)})`, M, 11, F, soft); y -= 14;
   text(`Made on ${new Date().toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} from ${R.n} Ledger entries. Actual figures only, no estimates.`, M, 9, F, soft); y -= 10;
   h2('Summary');
-  table([['', 330], ['Amount', 177, 'r']], [['Income received', money(R.inc)], ['Spending (excluding investments)', money(R.exp)], ['Put into investments', money(R.inv)], ['Saved (income - spending)', money(R.inc - R.exp)], ['Left after investments', money(R.inc - R.exp - R.inv)]], { boldLast: false });
+  table([['', 330], ['Amount', 177, 'r']], [['Income received', money(R.inc)], ['Spending (excluding investments)', money(R.exp)], ...(R.interest >= 1 ? [['Loan interest (worked out from your loans)', money(R.interest)]] : []), ['Put into investments', money(R.inv)], [R.interest >= 1 ? 'Saved (income - spending - loan interest)' : 'Saved (income - spending)', money(R.inc - R.exp - (R.interest || 0))], ['Left after investments', money(R.inc - R.exp - (R.interest || 0) - R.inv)]], { boldLast: false });
   h2('Income');
   table([['Source', 280], ['Entries', 60, 'r'], ['Amount', 167, 'r']], R.incBy.length ? [...R.incBy.map(([k, v]) => [k, String(v.n), money(v.a)]), ['Total', '', money(R.inc)]] : [['No income recorded', '', '']], { boldLast: R.incBy.length > 0 });
   h2('Spending by category');
@@ -6713,7 +6720,7 @@ $('rpGo').addEventListener('click', async () => {
 
 /* ---------- Archive old years (to an encrypted file in Drive) ---------- */
 const ARCH_ID = 'archive-index';
-const archIndex = () => (records[ARCH_ID] && !records[ARCH_ID].deleted && records[ARCH_ID].list) || [];
+
 function archCandidates(fy) {
   const s = +fy.slice(0, 4), from = s + '-04-01', to = (s + 1) + '-03-31', inFy = iso => iso && iso >= from && iso <= to;
   const tasks = all('task').filter(t => t.status === 'done' && inFy(t.completedOn || (t.completedAt ? isoLocal(new Date(t.completedAt)) : '')));
@@ -6760,8 +6767,7 @@ async function archiveFy(fy) {
     if (!d.fileId) throw new Error('Drive did not return a file id');
     const back = await Sync.call('driveGet', { fileId: d.fileId }, 240000);           // read it back before removing anything
     if (!back.data || back.data !== data) throw new Error('the saved archive could not be read back');
-    const idx = records[ARCH_ID] || { id: ARCH_ID, type: 'archidx', list: [] };
-    put({ ...idx, list: [...(idx.list || []), { fy, fileId: d.fileId, n: items.length, enc, at: Date.now(), ...(enc ? { salt: Fin.salt, iters: Fin.iters } : {}) }], deleted: false }, { render: false });
+    { const at = Date.now(); put({ id: 'arch-' + fy + '-' + at.toString(36), type: 'archent', fy, fileId: d.fileId, n: items.length, enc, at, ...(enc ? { salt: Fin.salt, iters: Fin.iters } : {}), deleted: false }, { render: false }); }
     items.forEach(r => { r.deleted = true; r.deletedAt = 1; r.archived = fy; put(r, { render: false }); });
     Sync.run(); scheduleRender();
     openArchive(); $('arMsg').className = 'msg ok'; $('arMsg').textContent = `Archived ${items.length} items from FY ${fy}.`;
@@ -6787,7 +6793,7 @@ async function archView(i, restoreIt) {
     if (restoreIt) {
       if (!confirm(`Bring back ${items.length} items from FY ${a.fy}?`)) { m.textContent = ''; return; }
       items.forEach(r => { const x = { ...r, deleted: false }; delete x.deletedAt; delete x.archived; put(x, { render: false }); });
-      const idx = records[ARCH_ID]; put({ ...idx, list: idx.list.filter((_, k) => k !== i) }, { render: false });
+      archForget(a);
       scheduleRender(); openArchive(); $('arMsg').className = 'msg ok'; $('arMsg').textContent = `Brought back ${items.length} items. The file stays in Drive.`; return;
     }
     m.textContent = '';
@@ -7042,7 +7048,7 @@ async function inboxTo(id, to) {
   const i = records[id]; if (!i) return;
   const text = i.text || '', first = text.split('\n')[0].trim(), all_ = (i.imgs || []).filter(b => records[b] && !records[b].deleted);
   const pdfs = all_.filter(b => isPdfBlob(records[b])), imgs = to === 'doc' ? all_ : all_.filter(b => !pdfs.includes(b));
-  if (to === 'del') { softDelete(id); toast('Deleted — in Recently deleted for 30 days.', 'Undo', () => { restore(id); openInbox(); }); openInbox(); renderInboxCard(); return; }
+  if (to === 'del') { softDelete(id); setTimeout(() => trashInboxFiles(id), 7500); toast('Deleted — in Recently deleted for 30 days.', 'Undo', () => { restore(id); openInbox(); }); openInbox(); renderInboxCard(); return; }
   Sheets.close('shInbox', true);
   if (to === 'note') {
     const n = newNote(text, first.slice(0, 60) || (imgs.length ? 'Photo' : ''), false, '');
@@ -7064,7 +7070,7 @@ async function inboxTo(id, to) {
       const before = docFilesOf(d.id).length;
       if (files.length) await addDocFiles(d.id, files);
       const attached = files.length > 0 && docFilesOf(d.id).length - before >= files.length;
-      if (attached) okIds.forEach(b => softDelete(b, { render: false }));
+      if (attached) okIds.forEach(b => { if (blobUsedElsewhere(b, i.id)) softDelete(b, { render: false }); else trashBlob(b, 'moved to a document'); });   // the document has its own copy
       const left = imgs.filter(b => !(attached && okIds.includes(b)));
       if (left.length) { i.imgs = left; put(i, { render: false }); toast(`${left.length} photo${left.length > 1 ? 's' : ''} could not be attached — kept in the Inbox.`); return; }
     }
@@ -7296,28 +7302,38 @@ function renderAttnBase() {
 /* ---------- Share into Register (iPhone Shortcut → Apps Script) ---------- */
 function openShareIn() {
   const url = prefs.cloudUrl || '(connect the Sheet first — Settings → Sync)';
-  $('siBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">iPhone does not let web apps appear in the Share menu. A one-time Shortcut does it: Share → <b>Save to Register</b> sends the photo or text straight to your Inbox (through your own Apps Script, v21 or later). It shows up here on the next sync.</p>
+  $('siBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">iPhone does not let web apps appear in the Share menu. A one-time Shortcut does it: Share → <b>Save to Register</b> sends the photo or text straight to your Inbox (through your own Apps Script, v23 or later). It shows up here on the next sync.</p>
     <div class="group" style="padding:12px 14px">
       <div class="field"><label>Web App URL</label><div style="display:flex;gap:8px"><input id="siUrl" readonly value="${esc(url)}" style="flex:1;min-width:0"><button class="btn small ghost" id="siCopyUrl">Copy</button></div></div>
       <div class="field"><label>Token</label><div style="display:flex;gap:8px"><input id="siTok" readonly type="password" value="${esc(prefs.cloudToken || '')}" style="flex:1;min-width:0"><button class="btn small ghost" id="siCopyTok">Copy</button></div></div>
     </div>
-    <div class="group-title">Make the Shortcut (once, about 5 minutes)</div>
+    <div class="group-title">Make the Shortcut (once, about 10 minutes) — photos, PDFs, text and links</div>
     <ol class="share-steps">
-      <li>Open the <b>Shortcuts</b> app → <b>＋</b> → name it <code>Save to Register</code>.</li>
-      <li>Tap <b>ⓘ</b> (Details) → switch on <b>Show in Share Sheet</b>. In the first box choose <b>Images</b>, <b>Text</b> and <b>URLs</b>.</li>
-      <li>Add <b>Ask for Input</b> → Prompt <code>A line about it (optional)</code>. Name the result <code>Line</code> (tap it → Rename).</li>
-      <li>Add <b>Get Images from Input</b> (Shortcut Input). Then <b>If</b> → <i>Images</i> <b>has any value</b>:
-        <ul><li><b>Repeat with Each</b> item in Images →</li>
-          <li>&nbsp;&nbsp;<b>Resize Image</b> (Repeat Item) → width <code>1600</code>, then <b>Convert Image</b> to <b>JPEG</b>, then <b>Base64 Encode</b> (Line Breaks: <b>None</b>).</li>
-          <li>&nbsp;&nbsp;<b>Get Contents of URL</b>: paste the URL above · Method <b>POST</b> · Request Body <b>JSON</b> with 4 Text fields: <code>token</code> = the token above, <code>action</code> = <code>inboxAdd</code>, <code>text</code> = <i>Line</i>, <code>data</code> = <i>Base64 Encoded</i>.</li>
-          <li><b>End Repeat</b></li></ul></li>
-      <li><b>Otherwise</b> (text or a link): <b>Get Text from Input</b>, then the same <b>Get Contents of URL</b> with <code>text</code> = <i>Line</i> + a new line + <i>Text</i> and no <code>data</code> field.</li>
-      <li><b>End If</b> → add <b>Show Notification</b> <code>Saved to Register Inbox</code>.</li>
-      <li>Try it: in Photos or WhatsApp tap <b>Share</b> → <b>Save to Register</b>.</li>
+      <li>Shortcuts app → <b>＋</b> → name it <code>Save to Register</code>. Tap <b>ⓘ</b> → <b>Show in Share Sheet</b> → Share Sheet Types: <b>Images, PDFs, Files, Text, URLs</b>.</li>
+      <li><b>Ask for Text with Prompt</b> → <code>A line about it (optional)</code> (leave Default Answer empty). Its answer is the variable <b>Provided Input</b>.</li>
+      <li><b>Repeat with Each</b> item in <b>Shortcut Input</b>.</li>
+      <li>&nbsp;&nbsp;<b>Get Details of Files</b> → Detail <b>File Extension</b> of <b>Repeat Item</b>.</li>
+      <li>&nbsp;&nbsp;<b>If</b> <i>File Extension</i> <b>is</b> <code>pdf</code>:
+        <ul><li><b>Base64 Encode</b> <i>Repeat Item</i> (Line Breaks: <b>None</b>) → <b>Get Name</b> of <i>Repeat Item</i></li>
+          <li><b>Get Contents of URL</b> (box A)</li></ul></li>
+      <li>&nbsp;&nbsp;<b>Otherwise</b> → <b>Get Images from Input</b> (<i>Repeat Item</i>) → <b>If</b> <i>Images</i> <b>has any value</b>:
+        <ul><li><b>Resize Image</b> width <code>1600</code> → <b>Convert Image</b> to <b>JPEG</b> → <b>Base64 Encode</b> (Line Breaks: <b>None</b>)</li>
+          <li><b>Get Contents of URL</b> (box B)</li>
+          <li><b>Otherwise</b> → <b>Get Text from Input</b> (<i>Repeat Item</i>) → <b>Get Contents of URL</b> (box C) → <b>End If</b></li></ul></li>
+      <li>&nbsp;&nbsp;<b>End If</b> → <b>End Repeat</b> → <b>Show Notification</b> <code>Saved to Register Inbox</code>.</li>
     </ol>
-    <div class="group-title">PDFs too — a second Shortcut (2 minutes, needs Code.gs v23)</div>
-    <ol class="share-steps"><li>New Shortcut <code>Save PDF to Register</code> → ⓘ → <b>Show in Share Sheet</b> → accept <b>PDFs</b> and <b>Files</b>.</li><li>Add <b>Base64 Encode</b> (Shortcut Input), Line Breaks <b>None</b>.</li><li>Add <b>Get Contents of URL</b> as above, with 5 fields: <code>token</code>, <code>action</code> = <code>inboxAdd</code>, <code>data</code> = <i>Base64 Encoded</i>, <code>mime</code> = <code>application/pdf</code>, <code>name</code> = <i>Shortcut Input</i> → <b>Name</b>.</li></ol>
-    <p class="hint">The photo goes into your Register Drive folder; nothing else in your Drive is touched. The token stays inside the Shortcut on your phone — do not share the Shortcut with anyone.</p>
+    <div class="group-title">The three “Get Contents of URL” boxes</div>
+    <p class="hint" style="margin:0 4px 6px">Each: the URL above · Method <b>POST</b> · Request Body <b>JSON</b> · every field of type <b>Text</b>. Pick variables from the bar above the keyboard.</p>
+    <ul class="share-steps">
+      <li><b>A · PDF:</b> <code>token</code> = the token above · <code>action</code> = <code>inboxAdd</code> · <code>text</code> = <i>Provided Input</i> · <code>data</code> = <i>Base64 Encoded</i> · <code>mime</code> = <code>application/pdf</code> · <code>name</code> = <i>Name</i></li>
+      <li><b>B · photo:</b> <code>token</code> · <code>action</code> = <code>inboxAdd</code> · <code>text</code> = <i>Provided Input</i> · <code>data</code> = <i>Base64 Encoded</i> · <code>mime</code> = <code>image/jpeg</code></li>
+      <li><b>C · text or link:</b> <code>token</code> · <code>action</code> = <code>inboxAdd</code> · <code>text</code> = <i>Provided Input</i>, a new line, <i>Text</i></li>
+    </ul>
+    <div class="group-title">So a refusal is not hidden (recommended)</div>
+    <p class="hint" style="margin:0 4px 6px">The script answers “OK” even when it refuses something; the reason is inside the answer. After <b>each</b> Get Contents of URL add: <b>Get Dictionary Value</b> key <code>error</code> from <i>Contents of URL</i> → <b>If</b> <i>Dictionary Value</i> <b>has any value</b> → <b>Show Alert</b> “Register refused it: <i>Dictionary Value</i>” → <b>Stop This Shortcut</b> → <b>End If</b>.</p>
+    <p class="hint" style="margin:0 4px 6px">Common answers: <code>unauthorized</code> = token does not match · <code>unknown action</code> = the new Code.gs was saved but not deployed (Deploy → Manage deployments → Edit → New version) · <code>DRIVE_FOLDER_ID is empty</code> = paste the Register folder link in the script.</p>
+    <p class="hint" style="margin:0 4px 10px">If PDFs shared from WhatsApp arrive as text, make a second Shortcut <code>Save PDF to Register</code> with only box A (Share Sheet Types: PDFs, Files) — it does not need the file-type check.</p>
+    <p class="hint">Photos and PDFs go into your Register Drive folder; nothing else in your Drive is touched. Deleting the item from the Inbox moves them to Drive's Trash. The token stays inside the Shortcut on your phone — do not share the Shortcut with anyone.</p>
     <button class="btn ghost block" id="siTest">Send a test item now</button><div class="msg" id="siMsg"></div>`;
   const cp = async (id, what) => { try { await navigator.clipboard.writeText($(id).value); toast(what + ' copied.'); } catch (e) { $(id).type = 'text'; $(id).select(); toast('Select and copy it.'); } };
   $('siCopyUrl').addEventListener('click', () => cp('siUrl', 'URL')); $('siCopyTok').addEventListener('click', () => cp('siTok', 'Token'));
@@ -7855,7 +7871,7 @@ function afterFinanceUnlock() {
   sealDocNumbers();
   setTimeout(() => AutoBackup.maybe(), 4000);
   if (Fin.codeLen && Fin.codeLen < FIN_MIN_CODE && !window.__shortCodeNag) { window.__shortCodeNag = true; setTimeout(() => toast('Your private code is short and could be guessed. Change it to 8+ characters.', 'Change', () => openVault('change'), 9000), 2500); }
-  flushPendingPosts(); healFileKeys(); rollAfterSync(); setTimeout(backupNudge, 1500);
+  flushPendingPosts(); healFileKeys(); rollAfterSync(); setTimeout(() => { try { sweepOrphans(); } catch (e) { RLOG.warn('sweep', e.message); } }, 8000); setTimeout(backupNudge, 1500);
   if (pendingGo === 'spend') { pendingGo = null; setTimeout(() => { showTab('money'); openAdd('money'); }, 350); }
   const back = docReturn; docReturn = null;
   if (back && Sheets.isOpen('shDocView')) { openDocView(back); return; }
@@ -8949,7 +8965,7 @@ function catbinLabel(r) {
   if (r.what === 'datecat') return `${r.cat.i || '📁'} ${esc(r.cat.n)}<small class="muted"> · Dates category${(r.dateIds || []).length ? ` · ${r.dateIds.length} date${r.dateIds.length > 1 ? 's' : ''}` : ''}</small>`;
   return `${r.grp.i || '📁'} ${esc(r.grp.n)}<small class="muted"> · Documents category</small>`;
 }
-function binItems() { return binItemsBase().filter(r => !(r.catBin && records[r.catBin] && records[r.catBin].deleted && records[r.catBin].deletedAt > 1)); }
+function binItems() { return binItemsBase().filter(r => !(r.catBin && records[r.catBin] && records[r.catBin].deleted && records[r.catBin].deletedAt > 1) && !(r.viaDoc && records[r.viaDoc] && records[r.viaDoc].deleted)); }   // shown with their category / document
 function restoreCatbin(r) {
   if (r.what === 'datecat') {
     const c = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false };
@@ -8965,7 +8981,7 @@ function restoreCatbin(r) {
   r.deleted = true; r.deletedAt = 1; put(r, { render: false });                  // done with it
   scheduleRender(); toast('Category restored.'); if (Sheets.isOpen('shBin')) openBin();
 }
-function binRestore(id) { const r = records[id]; if (r && r.type === 'catbin') { restoreCatbin(r); return; } binRestoreV216(id); }
+function binRestoreV2171(id) { const r = records[id]; if (r && r.type === 'catbin') { restoreCatbin(r); return; } binRestoreV216(id); }
 function deleteDateCat(key) {
   const cats = dateCats(), c = cats.find(x => x[0] === key); if (!c) return;
   const own = all('date').filter(d => dateCat(d) === key), custom = (dateCfg().custom || []).some(x => x.k === key);
@@ -9001,6 +9017,72 @@ function renderDates() {
   if (n) { home.insertAdjacentHTML('afterbegin', `<button class="ds-banner" id="dsBanner"><span>📅 <b>${n} date${n > 1 ? 's' : ''}</b> found in your notes &amp; tasks</span><b>Review ›</b></button>`); $('dsBanner').addEventListener('click', openDateSug); }
 }
 setTimeout(updateTodayBadge, 1500);
+
+
+/* ==========================================================================
+   v2.17.1
+   ======================================================================== */
+/* ---------- G4: a deleted document's expiry date goes to Recently deleted with it ---------- */
+function softDelete(id, opt) {
+  const r = records[id]; softDeleteBase(id, opt);
+  if (r && r.type === 'doc' && !window.GHOST) all('date').filter(x => x.docRef === id).forEach(x => { x.viaDoc = id; softDeleteBase(x.id, { render: false }); });
+}
+function restore(id) {
+  const r = records[id]; restoreBase(id);
+  if (r && r.type === 'doc') Object.values(records).filter(x => x.type === 'date' && x.deleted && x.viaDoc === id).forEach(x => { delete x.viaDoc; restoreBase(x.id); });
+}
+/* ---------- G1–G3: files in Drive that nothing uses any more go to Drive's Trash ---------- */
+const BLOB_OWNERS = ['note', 'snote', 'inbox'];
+function blobUsedElsewhere(b, exceptId) {
+  return Object.values(records).some(r => r.id !== exceptId && BLOB_OWNERS.includes(r.type) && !r.deleted && (r.imgs || []).includes(b));
+}
+function trashBlob(b, why) {
+  const r = records[b]; if (!r || r.type !== 'blob') return;
+  if (!r.deleted) softDeleteBase(b, { render: false });
+  if (r.drive && r.fileId && !r.gone) { driveDelete(r.fileId); r.gone = 1; put(r, { render: false }); RLOG.info('drive file to trash', why || '', b); }
+}
+/* Inbox 🗑: after the 7-second Undo, its photos and PDFs go to Drive's Trash (restoring the item brings them back) */
+function trashInboxFiles(id) {
+  const i = records[id]; if (!i || !i.deleted || window.GHOST) return;
+  (i.imgs || []).forEach(b => { if (!blobUsedElsewhere(b, id)) trashBlob(b, 'inbox deleted'); });
+}
+function restoreInboxFiles(i) {
+  (i.imgs || []).forEach(b => { const r = records[b]; if (!r || !r.deleted) return; delete r.gone; restoreBase(b); if (r.drive && r.fileId && Sync.on()) Sync.call('driveRestore', { fileId: r.fileId }).catch(() => {}); });
+}
+/* sweep: runs once per session after a sync, only when every note (private ones too) can be read */
+let blobSweepDone = false;
+function sweepOrphans() {
+  if (window.GHOST || blobSweepDone) return;
+  if (Sync.on() && !window.__synced) return;
+  const cutoff = nowMs() - 30 * 86400000;
+  // expiry dates of documents that are deleted or gone (G4, for items from before v2.17.1)
+  all('date').forEach(x => { if (!x.docRef) return; const d = records[x.docRef]; if (!d || d.deleted) { x.viaDoc = x.docRef; softDeleteBase(x.id, { render: false }); } });
+  if (finConfigured() && (!Fin.key || (Fin.lockedOut || []).length)) return;   // private notes cannot be read yet: photos wait
+  blobSweepDone = true;
+  const used = new Set(Object.values(records).filter(r => BLOB_OWNERS.includes(r.type) && (!r.deleted || (r.deletedAt || 0) > cutoff)).flatMap(r => r.imgs || []));
+  let n = 0;
+  Object.values(records).forEach(b => {
+    if (b.type !== 'blob' || n >= 200) return;
+    if (!b.deleted && !used.has(b.id) && (b.createdAt || 0) < nowMs() - 2 * 86400000) { trashBlob(b.id, 'not used'); n++; }
+    else if (b.deleted && b.drive && b.fileId && !b.gone && !used.has(b.id)) { trashBlob(b.id, 'removed earlier'); n++; }
+  });
+  if (n) { RLOG.info('unused Drive files moved to Trash', n); scheduleRender(); }
+}
+function binRestore(id) {
+  const r = records[id]; binRestoreV2171(id);
+  if (r && r.type === 'inbox' && !r.deleted) restoreInboxFiles(r);
+}
+/* ---------- P5: one record per archive (two devices archiving at once no longer lose one) ---------- */
+const archIndex = () => {
+  const L = ((records[ARCH_ID] && !records[ARCH_ID].deleted && records[ARCH_ID].list) || []).map(a => ({ ...a }));
+  all('archent').forEach(r => { if (!L.some(a => a.fileId === r.fileId)) L.push({ fy: r.fy, fileId: r.fileId, n: r.n, enc: r.enc, at: r.at, salt: r.salt, iters: r.iters, _rid: r.id }); });
+  return L.sort((a, b) => (a.at || 0) - (b.at || 0));
+};
+function archForget(a) {
+  if (a._rid) { const r = records[a._rid]; if (r) { r.deleted = true; r.deletedAt = 1; put(r, { render: false }); } return; }
+  const idx = records[ARCH_ID]; if (idx) put({ ...idx, list: (idx.list || []).filter(x => x.fileId !== a.fileId) }, { render: false });
+}
+setTimeout(() => { try { sweepOrphans(); } catch (e) { RLOG.warn('sweep', e.message); } }, 12000);
 
 (async function boot() {
   try {
