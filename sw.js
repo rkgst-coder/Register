@@ -1,10 +1,16 @@
 /* Register service worker — app shell offline.
    The page itself is fetched network-first (so a new version shows on the
-   next launch, not the one after); icons and the files in vendor/ are
-   cache-first. The Apps Script API is never cached. Bump CACHE with every
-   deploy. */
-const CACHE = 'register-v2.18.0';
-const SHELL = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
+   next launch, not the one after). index.html loads app.js?v=<version>, so
+   each page version asks for its own app.js and the two can never mix; that
+   versioned app.js, icons and the files in vendor/ are cache-first and are
+   all fetched at install, so PDFs and the Excel export work offline from the
+   first day. The Apps Script API is never cached.
+   With every deploy: bump VERSION here and APP_VERSION in app.js, and the
+   ?v= on the app.js script tag and the app-version meta in index.html. */
+const VERSION = '2.19.0';
+const CACHE = 'register-v' + VERSION;
+const SHELL = ['./', './index.html', './app.js?v=' + VERSION, './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png', './icon-512-maskable.png',
+  './vendor/pdf-3.11.174.min.js', './vendor/pdf.worker-3.11.174.min.js', './vendor/pdf-lib-1.17.1.min.js', './vendor/xlsx.full-0.18.5.min.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));
