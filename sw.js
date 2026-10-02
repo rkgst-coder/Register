@@ -1,8 +1,9 @@
 /* Register service worker — app shell offline.
    The page itself is fetched network-first (so a new version shows on the
-   next launch, not the one after); icons are cache-first. The Apps Script
-   API is never cached. Bump CACHE with every deploy. */
-const CACHE = 'register-v2.17.1';
+   next launch, not the one after); icons and the files in vendor/ are
+   cache-first. The Apps Script API is never cached. Bump CACHE with every
+   deploy. */
+const CACHE = 'register-v2.18.0';
 const SHELL = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
 
 self.addEventListener('install', e => {
@@ -15,12 +16,9 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin === 'https://cdnjs.cloudflare.com' && /\/(pdf\.js|pdf-lib|xlsx)\//.test(url.pathname)) {   // PDF viewer libraries: cache once
-    e.respondWith(caches.open(CACHE).then(c => c.match(req.url).then(hit => hit || fetch(req).then(res => { if (res.ok || res.type === 'opaque') c.put(req.url, res.clone()); return res; }))));
-    return;
-  }
   if (url.origin !== self.location.origin) return;              // script.google.com etc. go straight to the network
-  const isPage = req.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('index.html');
+  // only the app page itself is the "page": another address that happens to answer 200 must never replace the cached app
+  const isPage = url.pathname.endsWith('/') || url.pathname.endsWith('index.html');
   if (isPage) {
     e.respondWith((async () => {
       const cache = await caches.open(CACHE);

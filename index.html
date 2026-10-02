@@ -739,6 +739,19 @@ html.decoy-on #todayFab{display:none}
 #dsgBody .attn-row{display:flex;align-items:center;gap:6px;border-bottom:.5px solid var(--line);padding:0 8px}
 #dsgBody .attn-go{flex:1;text-align:left;padding:10px 6px;border:0;background:none;color:var(--ink)}
 #dsgBody .attn-ok{width:auto;flex:none;padding:4px 10px;border:1px solid var(--line);border-radius:8px;font-size:.75rem;color:var(--ink-soft);background:var(--card)}
+
+/* v2.18: security check-up, restore preview, ledger filter */
+.sc-sum{margin:0 4px 12px;font-size:.9375rem;font-weight:600}
+.sc-ic{flex:none;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8125rem;font-weight:700;background:rgba(128,128,128,.16);color:var(--ink-soft)}
+.sc-ic.ok{background:rgba(46,125,80,.16);color:var(--pos)} .sc-ic.warn{background:rgba(166,54,47,.14);color:var(--seal)}
+.sc-act{flex:none}
+.rs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin:10px 0}
+.rs-grid div{background:var(--card);border-radius:10px;padding:10px;box-shadow:var(--shadow);font-size:.8125rem}
+.rs-grid b{display:block;font-size:1.125rem}
+.fin-filter{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 6px}
+.fin-filter input[type=search]{flex:1 1 100%}
+.fin-filter select{flex:1 1 40%;min-width:0}
+.fin-filter label{display:flex;align-items:center;gap:6px;font-size:.8125rem;color:var(--ink-soft)}
 </style>
 </head>
 <body>
@@ -847,6 +860,12 @@ html.decoy-on #todayFab{display:none}
           <div class="stat"><div class="n" id="fsNet">₹0</div><div class="l">Net this month</div></div>
           <div class="stat"><div class="n" id="fsUdh">₹0</div><div class="l">Udhaar net</div></div>
         </div>
+        <div class="fin-filter" role="search">
+          <input type="search" id="finQ" placeholder="Search description or person" aria-label="Search the Ledger" autocomplete="off" enterkeyhint="search">
+          <select id="finCatF" aria-label="Category"></select><select id="finKindF" aria-label="Type"></select>
+          <label><input type="checkbox" id="finAllM"> Search all months</label>
+        </div>
+        <div class="hint" id="finFSum" style="margin:0 4px 8px"></div>
         <div class="group" id="finList"></div>
         <button class="btn ghost block" id="finCsvBtn" style="margin-top:10px">Export ledger (CSV)</button>
       </div>
@@ -1401,6 +1420,21 @@ html.decoy-on #todayFab{display:none}
   </div>
 </div>
 
+<!-- security check-up (v2.18) -->
+<div class="sheet full" id="shSecCheck">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><span class="sh-l"></span><h2>Security check-up</h2><button class="sh-r" data-close>Done</button></div>
+    <div class="sheet-body" id="scBody"></div>
+  </div>
+</div>
+<!-- restore preview (v2.18) -->
+<div class="sheet full" id="shRestore">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2>Restore backup</h2><button class="sh-r" id="rsGo">Restore</button></div>
+    <div class="sheet-body" id="rsBody"></div>
+  </div>
+</div>
+
 <!-- settings -->
 <div class="sheet full" id="shSettings">
   <div class="sheet-card"><div class="sheet-grab"></div>
@@ -1408,6 +1442,7 @@ html.decoy-on #todayFab{display:none}
     <div class="sheet-body">
       <div class="group-title">Privacy</div>
       <div class="group">
+        <button class="set-row" id="setSecCheck">Security check-up<span class="v" id="setSecCheckV">›</span></button>
         <label class="switch-row"><span>Decoy screen when the app opens<small>Tap “Register” three times to get through</small></span><input type="checkbox" class="sw" id="setDecoy"></label>
         <div class="set-row">Decoy after switching away<select id="setDecoyReturn">
           <option value="0">Immediately</option><option value="30">After 30 sec</option><option value="60">After 1 min</option>
@@ -1456,6 +1491,7 @@ html.decoy-on #todayFab{display:none}
       <div class="group-title">Data</div>
       <div class="group">
         <button class="set-row" id="setBackup">Download backup (.json)<span class="v">⤓</span></button>
+        <button class="set-row hidden" id="setBackupEnc">Download encrypted backup (.rgbk)<span class="v">🔒</span></button>
         <button class="set-row" id="setRestore">Restore / import backup<span class="v">⤒</span></button>
         <button class="set-row" id="setBin">Recently deleted<span class="v">🗑</span></button>
         <button class="set-row" id="setShareIn">Share into Register from other apps<span class="v">›</span></button>
@@ -1499,7 +1535,7 @@ html.decoy-on #todayFab{display:none}
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.17.1';
+const APP_VERSION = '2.18.0';
 const LOG_KEY = 'r2_log';
 const LOG_MAX = 400;
 const RLOG = (() => {
@@ -1543,18 +1579,21 @@ const todayISO = () => isoLocal(new Date());
 const isoMonth = d => isoLocal(d).slice(0, 7);
 const addDays = (n, from) => { const d = from ? new Date(from + 'T00:00:00') : new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return isoLocal(d); };
 const daysUntilISO = iso => Math.round((new Date(iso + 'T00:00:00') - new Date(new Date().setHours(0, 0, 0, 0))) / 86400000);
+/* v2.18: toLocaleDateString builds a new formatter on every call (≈0.1 ms each — seconds on a long list); these are built once */
+const DTF = {};
+function dateFmt(d, o) { const k = JSON.stringify(o); return (DTF[k] || (DTF[k] = new Intl.DateTimeFormat('en-IN', o))).format(d); }
 function fmtDate(iso, withYear) {
   if (!iso) return '';
   const d = new Date(iso + 'T00:00:00'); if (isNaN(d)) return '';
   const o = { day: 'numeric', month: 'short' };
   if (withYear || d.getFullYear() !== new Date().getFullYear()) o.year = 'numeric';
-  return d.toLocaleDateString('en-IN', o);
+  return dateFmt(d, o);
 }
 function relDay(iso) {
   if (!iso) return '';
   const n = daysUntilISO(iso);
   if (n === 0) return 'Today'; if (n === 1) return 'Tomorrow'; if (n === -1) return 'Yesterday';
-  if (n > 1 && n < 7) return new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long' });
+  if (n > 1 && n < 7) return dateFmt(new Date(iso + 'T00:00:00'), { weekday: 'long' });
   return fmtDate(iso);
 }
 const monthAdd = (ym, n) => { const d = new Date(ym + '-01T00:00:00'); d.setMonth(d.getMonth() + n); return isoMonth(d); };
@@ -1954,6 +1993,7 @@ async function unlockFinance(code) {
       if (s.salt !== fk.salt) reseal.push(plain);          // written under an older code → bring it forward
     } catch (e) { Fin.lockedOut.push(id); }
   }
+  storeVer++;
   if (Fin.key !== key) { for (const id in records) if (SEALED_TYPES.has(records[id].type)) delete records[id]; return false; }
   reseal.forEach(r => { r.updatedAt = Math.max(r.updatedAt, nowMs()); put(r, { render: false, keepTime: true }); });
   if (Fin.lockedOut.length) RLOG.warn('private records under another code:', Fin.lockedOut.length);
@@ -1994,17 +2034,61 @@ function lockFinance(silent) {
   Fin.key = null; Fin.salt = null; Fin.kid = null; Fin.iters = FIN_ITERS; Fin.lockedOut = []; keyCache.clear();
   try { const pa = document.getElementById('printArea'); if (pa) pa.innerHTML = ''; } catch (e) {}
   for (const id in records) if (SEALED_TYPES.has(records[id].type)) delete records[id];
+  storeVer++;
   if (typeof onFinanceLocked === 'function') onFinanceLocked(silent);
+}
+
+/* ---------- v2.18: nothing that arrives from the Sheet, a backup or an old install is trusted ----------
+   A record's id and type end up inside HTML attributes, and a few short fields (category, priority, repeat,
+   year …) are printed in lists. Anything outside the shapes the app itself creates is dropped or reset. */
+const REC_ID_RX = /^[A-Za-z0-9_.:@\-]{1,120}$/, REC_TYPE_RX = /^[a-z][a-z0-9_]{0,30}$/;
+const ISO_DATE_RX = /^\d{4}-\d{2}-\d{2}$/, FY_RX = /^\d{4}-\d{2}$/, HM_RX = /^\d{2}:\d{2}$/;
+const TASK_STATUS = ['active', 'inprogress', 'done'], TASK_REPEAT = ['none', 'daily', 'weekly', 'monthly'], DATE_REPEAT = ['once', 'yearly', 'monthly'];
+/* Returns the record (fixed in place) or null when it must not be kept. */
+function cleanRec(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  if (typeof r.id !== 'string' || !REC_ID_RX.test(r.id) || typeof r.type !== 'string' || !REC_TYPE_RX.test(r.type)) return null;
+  const pick = (v, list, dflt) => list.includes(v) ? v : dflt, dateOr = (v, dflt) => typeof v === 'string' && ISO_DATE_RX.test(v) ? v : dflt;
+  if (r.type === 'task' || r.type === 'template') {
+    r.category = fixCat(r.category); r.priority = pick(r.priority, PRIOS, 'Medium');
+    if (Array.isArray(r.subs)) r.subs.forEach(s => { if (s && typeof s === 'object') { s.priority = pick(s.priority, PRIOS, 'Medium'); if (s.dueDate != null) s.dueDate = dateOr(s.dueDate, null); } });
+    if (r.type === 'task') {
+      r.status = pick(r.status, TASK_STATUS, 'active'); r.repeat = pick(r.repeat, TASK_REPEAT, 'none');
+      if (r.dueDate != null) r.dueDate = dateOr(r.dueDate, null);
+      if (r.dueTime != null && !(typeof r.dueTime === 'string' && HM_RX.test(r.dueTime))) delete r.dueTime;
+    }
+  } else if (r.type === 'date') {
+    r.repeat = pick(r.repeat, DATE_REPEAT, 'once'); if (r.when != null && r.when !== '') r.when = dateOr(r.when, '');
+  } else if (r.type === 'doc' || r.type === 'docfile') {
+    if (r.fy != null && !(typeof r.fy === 'string' && FY_RX.test(r.fy))) r.fy = null;
+    if (r.type === 'doc') { if (r.expiry != null && r.expiry !== '') r.expiry = dateOr(r.expiry, null); if (typeof r.docType !== 'string') r.docType = 'Other'; }
+  }
+  return r;
 }
 
 /* ---------- load / query ---------- */
 async function loadAll() {
-  records = {}; sealed = {};
-  const rows = await DB.all();
-  rows.forEach(r => { if (SEALED_TYPES.has(r.type)) sealed[r.id] = r; else records[r.id] = r; });
+  records = {}; sealed = {}; storeVer++;
+  const rows = await DB.all(), bad = [];
+  rows.forEach(r => {
+    if (!r || !r.id || !r.type) return;
+    if (SEALED_TYPES.has(r.type)) { if (typeof r.id === 'string' && REC_ID_RX.test(r.id)) sealed[r.id] = r; else bad.push(r.id); return; }
+    if (cleanRec(r)) records[r.id] = r; else bad.push(r.id);
+  });
+  if (bad.length) RLOG.warn('left out of the app (unusable id or type; still stored on this device, not deleted)', bad.length);
+  storeVer++;
   RLOG.info('loaded', rows.length, 'records');
 }
-const all = type => window.GHOST ? [] : Object.values(records).filter(r => r.type === type && !r.deleted);
+/* v2.18: the per-type lists are rebuilt only when the store changed (storeVer), not on every call — lists render in O(items) instead of O(items × records).
+   A copy is returned, so callers may still sort or splice what they get. Anything that edits `records` directly must bump storeVer. */
+const allCache = { ver: -1, by: new Map() };
+const all = type => {
+  if (window.GHOST) return [];
+  if (allCache.ver !== storeVer) { allCache.ver = storeVer; allCache.by = new Map(); }
+  let l = allCache.by.get(type);
+  if (!l) { l = Object.values(records).filter(r => r.type === type && !r.deleted); allCache.by.set(type, l); }
+  return l.slice();
+};
 const trashed = () => window.GHOST ? [] : Object.values(records).filter(r => r.deleted && r.deletedAt && r.type !== 'blob' && r.type !== 'billpay' && r.type !== 'finkey' && r.type !== 'docfile' && r.type !== 'filekey' && r.type !== 'planmonth' && r.type !== 'plancfg' && r.type !== 'erasekey' && r.type !== 'erased');
 
 /* ---------- write ---------- */
@@ -2060,6 +2144,7 @@ async function purgeOldTrash() {
   ids.forEach(id => { const r = records[id]; if (r && r.type === 'docfile' && r.fileId) driveDelete(r.fileId); if (r && r.type === 'blob' && r.drive && r.fileId && !r.gone) driveDelete(r.fileId); });
   if (goneDocs.size) all('docfile').forEach(f => { if (goneDocs.has(f.docId)) { driveDelete(f.fileId); softDelete(f.id, { render: false }); } });
   ids.forEach(id => { delete records[id]; delete sealed[id]; });
+  storeVer++;
   await DB.delMany(ids);
   RLOG.info('purged trash', ids.length);
 }
@@ -2077,12 +2162,15 @@ function scheduleRender() {
    push dirty records → pull everything the server changed since our cursor.
    Newest updatedAt wins per record, on both sides.
    ======================================================================== */
+/* v2.18: the token is only ever sent to Google Apps Script (localhost is allowed for development) */
+const scriptUrlOk = u => /^https:\/\/script\.google(usercontent)?\.com\//.test(String(u || '')) || (typeof location !== 'undefined' && location.hostname === 'localhost');
 const Sync = {
   busy: false, again: false, timer: null, lastOk: 0, warnedBig: false,
-  on() { return !!(prefs.cloudUrl && prefs.cloudToken); },
+  on() { return !!(prefs.cloudUrl && prefs.cloudToken && scriptUrlOk(prefs.cloudUrl)); },
 
   async call(action, payload, timeoutMs) {
     if (window.GHOST) throw new Error('Network error');
+    if (!scriptUrlOk(prefs.cloudUrl)) throw new Error('The sync address is not a Google Apps Script address');
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), timeoutMs || 45000);
     try {
@@ -2197,6 +2285,7 @@ async function mergeRemote(rows, fromImport) {
     let rec;
     try { rec = typeof row.payload === 'string' ? JSON.parse(row.payload) : row; } catch (e) { RLOG.warn('bad payload', row.id); continue; }
     if (!rec || !rec.id || !rec.type) continue;
+    if (typeof rec.id !== 'string' || !REC_ID_RX.test(rec.id) || typeof rec.type !== 'string' || !REC_TYPE_RX.test(rec.type)) { RLOG.warn('ignored a record with an unusable id or type'); continue; }
     if (rec.purged) {                                          // Code.gs v22 keeps a small marker for rows deleted long ago
       const l = sealed[rec.id] || records[rec.id];
       if (l && !l._dirty && (l.updatedAt || 0) <= (rec.updatedAt || 0)) { delete sealed[rec.id]; delete records[rec.id]; gone.push(rec.id); n++; }
@@ -2204,6 +2293,7 @@ async function mergeRemote(rows, fromImport) {
     }
     if (rec.type === 'erased') { if (!fromImport) { erasedAt = Math.max(erasedAt, +rec.at || 1); erasedIds.set(rec.id, +rec.updatedAt || 0); } continue; }
     const isSealed = SEALED_TYPES.has(rec.type);
+    if (!isSealed && !cleanRec(rec)) continue;
     const local = isSealed ? sealed[rec.id] : records[rec.id];
     const takeKey = !fromImport && rec.id === FINKEY_ID && Sync.fresh && local && local.kid !== rec.kid && !rec.deleted;   // this device's own new code never replaces the one in use
     if (local && !takeKey && (local.updatedAt || 0) >= (rec.updatedAt || 0)) continue;
@@ -2488,11 +2578,11 @@ function taskRow(t, showCat) {
     <div class="row-main">
       <div class="row-title">${esc(t.title)}</div>
       <div class="row-sub">
-        ${showCat ? `<span><i class="cat-dot" style="background:${catColor(t.category)}"></i> ${t.category}</span>` : ''}
+        ${showCat ? `<span><i class="cat-dot" style="background:${catColor(t.category)}"></i> ${esc(t.category)}</span>` : ''}
         ${t.dueDate ? `<span class="${od || dueToday ? 'warn' : ''}">📅 ${relDay(t.dueDate)}${t.dueTime ? ' ' + fmtTime12(t.dueTime) : ''}${od ? ' · overdue' : ''}</span>` : ''}
         ${t.status === 'inprogress' ? '<span>◐ in progress</span>' : ''}
         ${t.status === 'done' && t.completedOn ? `<span>✓ ${fmtDate(t.completedOn)}</span>` : ''}
-        ${t.repeat && t.repeat !== 'none' ? `<span>🔁 ${t.repeat}</span>` : ''}
+        ${t.repeat && t.repeat !== 'none' ? `<span>🔁 ${esc(t.repeat)}</span>` : ''}
         ${subs.length ? `<button class="toggle-steps" data-steps="${t.id}" aria-expanded="${open}">☑ ${done}/${subs.length} ${open ? '▾' : '▸'}</button>` : ''}
         ${late ? `<span class="warn">⚠ ${late} step${late > 1 ? 's' : ''} overdue</span>` : ''}
         ${t.notes ? '<span aria-label="has notes">📝</span>' : ''}
@@ -2601,11 +2691,11 @@ function previewTask(id) {
   $('tvBody').innerHTML = `
     <h2 style="font-family:var(--serif);font-size:22px;margin:0 0 10px;line-height:1.3">${esc(t.title)}</h2>
     <div class="wrapchips" style="margin-bottom:14px">
-      <span class="stamp" style="background:${catColor(t.category)}">${t.category}</span>
-      <span class="pill" style="color:${PRIO_COLOR[t.priority]}">${t.priority}</span>
+      <span class="stamp" style="background:${catColor(t.category)}">${esc(t.category)}</span>
+      <span class="pill" style="color:${PRIO_COLOR[t.priority]}">${esc(t.priority)}</span>
       ${t.dueDate ? `<span class="pill ${isOverdue(t) ? 'neg' : ''}">📅 ${relDay(t.dueDate)}${t.dueTime ? ' ' + fmtTime12(t.dueTime) : ''}${isOverdue(t) ? ' · overdue' : ''}</span>` : ''}
       ${t.status === 'inprogress' ? '<span class="pill">◐ in progress</span>' : ''}${t.status === 'done' ? `<span class="pill pos">✓ done ${fmtDate(t.completedOn)}</span>` : ''}
-      ${t.repeat && t.repeat !== 'none' ? `<span class="pill">🔁 ${t.repeat}</span>` : ''}
+      ${t.repeat && t.repeat !== 'none' ? `<span class="pill">🔁 ${esc(t.repeat)}</span>` : ''}
     </div>
     ${subs.length ? `<div class="flabel">Steps ${subs.filter(s => s.done).length}/${subs.length}</div><div class="group" style="padding:4px 12px">${subs.map((s, i) => stepHtml(s, i, id)).join('')}</div>` : ''}
     ${t.notes ? `<div class="flabel">Notes</div><div style="white-space:pre-wrap;line-height:1.6;margin-bottom:14px">${linkify(esc(t.notes))}</div>` : ''}
@@ -2671,7 +2761,7 @@ function renderSteps() {
     <div class="step ${s.done ? 'done' : ''}" style="border-bottom:.5px solid var(--line);padding:8px 0">
       <button class="check ${s.done ? 'done' : ''}" data-sc="${i}" aria-label="Toggle step">${s.done ? '✓' : ''}</button>
       <button style="flex:1;text-align:left" data-so="${i}"><div class="step-text">${esc(s.text)}</div>
-        <div class="step-meta ${subOverdue(s) ? 'warn' : ''}"><span style="color:${PRIO_COLOR[s.priority]}">●</span> ${s.priority}${s.dueDate ? ' · ' + relDay(s.dueDate) : ''}${s.notes ? ' · 📝' : ''}</div></button>
+        <div class="step-meta ${subOverdue(s) ? 'warn' : ''}"><span style="color:${PRIO_COLOR[s.priority]}">●</span> ${esc(s.priority)}${s.dueDate ? ' · ' + relDay(s.dueDate) : ''}${s.notes ? ' · 📝' : ''}</div></button>
       <button class="icon-btn" data-sd="${i}" aria-label="Remove step" style="width:32px;height:32px;font-size:14px">✕</button>
     </div>
     ${editStep === i ? `<div class="sub-edit">
@@ -2720,7 +2810,7 @@ $('teTemplate').addEventListener('click', () => {
 function openTemplates() {
   const tpls = all('template');
   $('tplList').innerHTML = tpls.length ? tpls.map(t => `<div class="row"><div class="row-main"><div class="row-title">${esc(t.title)}</div>
-      <div class="row-sub"><span><i class="cat-dot" style="background:${catColor(t.category)}"></i> ${t.category}</span><span>${t.priority}</span>${(t.subs || []).length ? `<span>${t.subs.length} steps</span>` : ''}</div></div>
+      <div class="row-sub"><span><i class="cat-dot" style="background:${catColor(t.category)}"></i> ${esc(t.category)}</span><span>${esc(t.priority)}</span>${(t.subs || []).length ? `<span>${t.subs.length} steps</span>` : ''}</div></div>
       <div class="row-end"><button class="btn small" data-use="${t.id}">Use</button><button class="icon-btn" data-tdel="${t.id}" aria-label="Delete template">✕</button></div></div>`).join('')
     : '<div class="empty">No templates yet.</div>';
   $$('[data-use]', $('tplList')).forEach(b => b.addEventListener('click', () => {
@@ -2746,7 +2836,7 @@ const folderList = () => [...new Set(all('note').map(noteFolder).filter(Boolean)
 function mdInline(s) {
   const keep = [];
   const hold = h => { keep.push(h); return '\u0000' + (keep.length - 1) + '\u0000'; };
-  s = esc(s);
+  s = esc(s).replace(/\u0000/g, '');                       // the NUL is this function's own placeholder marker
   s = s.replace(/`([^`]+)`/g, (m, c) => hold(`<code>${c}</code>`));
   s = s.replace(/\[([^\]]+)\]\((https?:[^)\s]+|mailto:[^)\s]+|tel:[^)\s]+)\)/g, (m, t, u) => hold(`<a href="${u}" target="_blank" rel="noopener">${t}</a>`));
   s = s.replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)\]])/g, u => hold(`<a href="${u}" target="_blank" rel="noopener">${u}</a>`));
@@ -3449,7 +3539,7 @@ $$('#dateSeg button').forEach(b => b.addEventListener('click', () => { setPref('
 /* Financial years (Apr–Mar) as "2024-25"; newest first. */
 const fyOf = iso => { const y = +iso.slice(0, 4), m = +iso.slice(5, 7); const s = m >= 4 ? y : y - 1; return s + '-' + String((s + 1) % 100).padStart(2, '0'); };
 function fyList() { const cur = +fyOf(todayISO()).slice(0, 4), out = []; for (let s = cur + 1; s >= 2000; s--) out.push(s + '-' + String((s + 1) % 100).padStart(2, '0')); return out; }
-const fyOptions = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + (sel && !fyList().includes(sel) ? [...fyList(), sel].sort().reverse() : fyList()).map(f => `<option value="${f}"${f === sel ? ' selected' : ''}>FY ${f}</option>`).join('');
+const fyOptions = (sel, blank) => (blank ? `<option value="">${blank}</option>` : '') + (sel && !fyList().includes(sel) ? [...fyList(), sel].sort().reverse() : fyList()).map(f => `<option value="${esc(f)}"${f === sel ? ' selected' : ''}>FY ${esc(f)}</option>`).join('');
 const docPeople = () => orderPeople([...PERSON_ORDER, ...all('doc').flatMap(docOwners)]);
 /* ---------- v2.11: people (aliases, surnames ignored) and broad groups for the Docs tab ---------- */
 const DOC_ME = 'Rahul';
@@ -3512,7 +3602,7 @@ function renderDocsBase() {
   $('docChips').innerHTML = ''; $('docChips').classList.add('hidden');
   const allYears = [...new Set(docs.flatMap(docYears))].sort().reverse();
   if (docYear !== 'All' && !allYears.includes(docYear)) docYear = 'All';
-  $('docYearBar').innerHTML = allYears.length ? `<div class="doc-yearbar"><span class="muted">Year</span><select id="docYearSel" aria-label="Financial year"><option value="All">All years</option>${allYears.map(y => `<option value="${y}"${y === docYear ? ' selected' : ''}>FY ${y}</option>`).join('')}</select></div>` : '';
+  $('docYearBar').innerHTML = allYears.length ? `<div class="doc-yearbar"><span class="muted">Year</span><select id="docYearSel" aria-label="Financial year"><option value="All">All years</option>${allYears.map(y => `<option value="${esc(y)}"${y === docYear ? ' selected' : ''}>FY ${esc(y)}</option>`).join('')}</select></div>` : '';
   if ($('docYearSel')) $('docYearSel').addEventListener('change', e => { docYear = e.target.value; renderDocs(); });
   const shown = docs.filter(d => docYear === 'All' || docYears(d).includes(docYear));
   const people = orderPeople([...shown.flatMap(docOwners), ...(docYear === 'All' ? docCfgPeople() : [])]);
@@ -3545,7 +3635,7 @@ function renderDocsBase() {
     return swipeHtml(`<div class="row" style="border-left:4px solid ${DOC_COLORS[d.docType] || '#77818E'}">
       ${d.expiry ? countHtml(days, 'expired') : '<div class="count past" aria-label="no expiry">∞<small>no expiry</small></div>'}
       <div class="row-main"><div class="row-title">${esc(d.title)}${showWho ? ` <span class="muted" style="font-weight:400">· ${esc(docOwners(d).join(' & '))}</span>` : ''}</div>
-        <div class="row-sub"><span>${d.docType}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
+        <div class="row-sub"><span>${esc(d.docType)}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
       ${docSel ? `<span class="sel-box${docSel.has(d.id) ? ' on' : ''}" aria-label="${docSel.has(d.id) ? 'selected' : 'not selected'}">${docSel.has(d.id) ? '✓' : ''}</span>` : '<span class="chev">›</span>'}</div>`, '', 'Delete 🗑', `data-doc="${d.id}"`);
   }).join('') || (!docs.length ? '<div class="empty"><b>No documents</b>Aadhaar, PAN, marksheets, ITRs, policies — tap + to add, 📷 Scan, or Import from Drive. Each person gets a folder, with groups inside.</div>' : '');
   $('docList').classList.toggle('hidden', !$('docList').innerHTML);
@@ -3602,9 +3692,9 @@ $('doRemind').addEventListener('click', () => {
    by the private code and follows code changes automatically.
    ======================================================================== */
 const DOCFILE_MAX = 15 * 1024 * 1024;
-const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-const PDFLIB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+const PDFJS_URL = 'vendor/pdf-3.11.174.min.js';           // v2.18: libraries are served from this site (see vendor/README.md), not a CDN
+const PDFJS_WORKER = 'vendor/pdf.worker-3.11.174.min.js';
+const PDFLIB_URL = 'vendor/pdf-lib-1.17.1.min.js';
 const PDF_PAGE_BATCH = 10;
 const docPlain = new Map();                       // docfile id -> { blob, url }, memory only
 const docFilesOf = docId => all('docfile').filter(f => f.docId === docId).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -3693,7 +3783,7 @@ async function fileToBytes(file) {
 function docFileBadge(d) {
   const n = docFilesOf(d.id).length;
   const ys = d.byYear ? docYears(d).filter(y => y !== d.fy) : [];
-  return (d.who ? `<span>👤 ${esc(docOwners(d).join(' & '))}</span>` : '') + (d.fy ? `<span>FY ${d.fy}</span>` : '') + (ys.length ? `<span>${ys.length === 1 ? 'FY ' + ys[0] : ys.length + ' years · latest ' + ys[0]}</span>` : '') + (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
+  return (d.who ? `<span>👤 ${esc(docOwners(d).join(' & '))}</span>` : '') + (d.fy ? `<span>FY ${esc(d.fy)}</span>` : '') + (ys.length ? `<span>${ys.length === 1 ? 'FY ' + ys[0] : ys.length + ' years · latest ' + ys[0]}</span>` : '') + (n ? `<span>📎 ${n}</span>` : '') + (d.lockFiles ? '<span aria-label="files locked">🔒</span>' : '');
 }
 /* Long ID numbers show only their last 4 characters on screen (Aadhaar, PAN, passport, licence). */
 const docNumShown = d => d.number ? maskNo(d.number) : d.numEnc ? '•••• ' + (d.numTail || '') : '';
@@ -3857,6 +3947,7 @@ async function showDocFile(f) {
   }
 }
 function loadScript(src) {
+  src = new URL(src, location.href).href;                 // document.scripts reports absolute URLs
   return new Promise((res, rej) => {
     const had = [...document.scripts].find(s => s.src === src);
     if (had && had.dataset.ok) return res();
@@ -4097,7 +4188,7 @@ function finRow(e, showDate) {
   return swipeHtml(`<div class="row ${e.settled ? 'muted' : ''}">
     <div class="row-main"><div class="row-title">${esc(e.desc || '—')}${e.who ? ` <span class="muted">· ${esc(e.who)}</span>` : ''}</div>
       <div class="row-sub">${showDate !== false ? `<span>${fmtDate(e.date)}</span>` : ''}${isUdhaar(e.kind) ? `<span class="pill">${e.kind === 'lent' ? 'lent' : 'borrowed'}</span>` : ''}
-        ${e.category ? `<span><i class="cat-dot" style="background:${FIN_COLORS[e.category] || '#777'}"></i> ${e.category}</span>` : ''}${e.recurring ? '<span>🔁 monthly</span>' : ''}
+        ${e.category ? `<span><i class="cat-dot" style="background:${FIN_COLORS[e.category] || '#777'}"></i> ${esc(e.category)}</span>` : ''}${e.recurring ? '<span>🔁 monthly</span>' : ''}
         ${finRoute(e)}${part ? `<span>${fmtMoney(e.paidAmount)} paid back</span>` : ''}${e.settled && isUdhaar(e.kind) ? '<span class="pos">settled</span>' : ''}</div></div>
     <div class="row-end"><span class="amt ${cls}">${sign}${fmtMoney(e.amount)}</span></div></div>`, '', 'Delete 🗑', `data-fin="${e.id}"`);
 }
@@ -4117,13 +4208,34 @@ function renderLedger() {
   $('fsNet').textContent = (net < 0 ? '−' : '') + fmtMoney(net); $('fsNet').className = 'n ' + (net < 0 ? 'neg' : 'pos');
   const u = lent - borrowed; $('fsUdh').textContent = (u < 0 ? '−' : '') + fmtMoney(u); $('fsUdh').className = 'n ' + (u < 0 ? 'neg' : u > 0 ? 'pos' : '');
   // group by day
+  // v2.18: search / category / type filter, optionally across all months, with totals for what is shown
+  const FQ = finFilterState(), filtering = FQ.active;
+  const shown = (FQ.allMonths ? entries.slice() : month).filter(FQ.match);
+  const LIMIT = 300, cut = shown.length > LIMIT;
   const byDay = {};
-  month.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt).forEach(e => (byDay[e.date] = byDay[e.date] || []).push(e));
+  shown.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt).slice(0, LIMIT).forEach(e => (byDay[e.date] = byDay[e.date] || []).push(e));
   const days = Object.keys(byDay);
-  $('finList').innerHTML = days.length ? days.map(d => `<div class="group-title" style="margin:12px 14px 4px">${relDay(d)}</div>${byDay[d].map(e => finRow(e, false)).join('')}`).join('')
-    : '<div class="empty"><b>Nothing this month</b>Tap + to record spending, income or udhaar.</div>';
+  const sumOf = k => shown.filter(e => e.kind === k).reduce((t, e) => t + (+e.amount || 0), 0), ud = shown.filter(e => isUdhaar(e.kind)).length;
+  $('finFSum').textContent = filtering ? (shown.length ? `${shown.length} entr${shown.length === 1 ? 'y' : 'ies'}${FQ.allMonths ? ' across all months' : ' this month'} · Spent ${fmtMoney(sumOf('expense'))} · Received ${fmtMoney(sumOf('income'))}${ud ? ` · ${ud} udhaar` : ''}${cut ? ` · showing the newest ${LIMIT}` : ''}` : '') : '';
+  $('finList').innerHTML = days.length ? days.map(d => `<div class="group-title" style="margin:12px 14px 4px">${FQ.allMonths ? fmtDate(d, true) : relDay(d)}</div>${byDay[d].map(e => finRow(e, false)).join('')}`).join('')
+    : filtering ? '<div class="empty"><b>No matches</b>Try a shorter word, or tick “Search all months”.</div>' : '<div class="empty"><b>Nothing this month</b>Tap + to record spending, income or udhaar.</div>';
   wireFinRows($('finList'));
 }
+/* the filter lives in its own controls; locking Money clears it */
+function finFilterState() {
+  const q = $('finQ').value.trim().toLowerCase(), cat = $('finCatF').value, kind = $('finKindF').value, allMonths = $('finAllM').checked;
+  const match = e => (!q || (String(e.desc || '') + ' ' + String(e.who || '') + ' ' + String(e.category || '')).toLowerCase().includes(q))
+    && (!cat || (cat === '__none' ? !e.category : e.category === cat))
+    && (!kind || (kind === 'udhaar' ? isUdhaar(e.kind) : e.kind === kind));
+  return { q, cat, kind, allMonths, match, active: !!(q || cat || kind) };
+}
+function initFinFilter() {
+  $('finCatF').innerHTML = '<option value="">All categories</option>' + FIN_CATS.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('') + '<option value="__none">No category</option>';
+  $('finKindF').innerHTML = '<option value="">All types</option><option value="expense">Spent</option><option value="income">Received</option><option value="udhaar">Udhaar</option><option value="transfer">Transfer</option>';
+  ['finQ', 'finCatF', 'finKindF', 'finAllM'].forEach(id => $(id).addEventListener(id === 'finQ' ? 'input' : 'change', () => renderLedger()));
+}
+function clearFinFilter() { $('finQ').value = ''; $('finCatF').value = ''; $('finKindF').value = ''; $('finAllM').checked = false; }
+initFinFilter();
 $('finPrev').addEventListener('click', () => { finMonth = monthAdd(finMonth, -1); renderLedger(); });
 $('finNext').addEventListener('click', () => { finMonth = monthAdd(finMonth, 1); renderLedger(); });
 
@@ -4212,8 +4324,8 @@ function renderBudgets() {
   $('budBars').innerHTML = cats.length ? cats.map(c => {
     const spent = byCat[c] || 0, cap = bud[c] || 0, over = cap && spent > cap;
     const pct = cap ? Math.min(100, Math.round(spent / cap * 100)) : Math.round(spent / max * 100);
-    return `<div class="bar-row"><div class="bar-lbl"><span>${c}${over ? ' ⚠' : ''}</span><span class="${over ? 'neg' : ''}">${fmtMoney(spent)}${cap ? ' / ' + fmtMoney(cap) : ''}</span></div>
-      <div class="bar-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${c}"><div class="bar-fill" style="width:${pct}%;background:${over ? 'var(--neg)' : FIN_COLORS[c] || '#77818E'}"></div></div></div>`;
+    return `<div class="bar-row"><div class="bar-lbl"><span>${esc(c)}${over ? ' ⚠' : ''}</span><span class="${over ? 'neg' : ''}">${fmtMoney(spent)}${cap ? ' / ' + fmtMoney(cap) : ''}</span></div>
+      <div class="bar-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(c)}"><div class="bar-fill" style="width:${pct}%;background:${over ? 'var(--neg)' : FIN_COLORS[c] || '#77818E'}"></div></div></div>`;
   }).join('') : '<div class="empty">No spending recorded this month.</div>';
 }
 $('budPrev').addEventListener('click', () => { budMonth = monthAdd(budMonth, -1); renderBudgets(); });
@@ -4233,7 +4345,8 @@ $('bgSave').addEventListener('click', () => {
 $('finCsvBtn').addEventListener('click', () => {
   const rows = [['Date', 'Description', 'Type', 'Category', 'Person', 'Amount', 'Paid back', 'Outstanding', 'Settled']];
   all('fin').sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(e => rows.push([e.date, e.desc, e.kind, e.category || '', e.who || '', e.amount, e.paidAmount || 0, isUdhaar(e.kind) ? outstanding(e) : '', e.settled ? 'yes' : 'no']));
-  const csv = rows.map(r => r.map(c => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const safe = c => typeof c === 'string' && /^[=+\-@\t\r]/.test(c) ? "'" + c : c;     // v2.18: Excel would run a cell that starts with = + - @ as a formula
+  const csv = rows.map((r, i) => r.map(c => `"${String(c == null ? '' : i ? safe(c) : c).replace(/"/g, '""')}"`).join(',')).join('\n');
   shareOrDownload('﻿' + csv, 'register-ledger-' + todayISO() + '.csv', 'text/csv');
 });
 
@@ -5416,7 +5529,7 @@ function planSettingsSheet() {
 }
 
 /* ---------- Excel export (SheetJS, loaded on first use, then kept offline) ---------- */
-const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+const XLSX_URL = 'vendor/xlsx.full-0.18.5.min.js';
 async function exportXlsx() {
   const c = planCfg();
   try { await loadScript(XLSX_URL); } catch (e) { toast('Excel export needs internet the first time.'); return; }
@@ -5687,7 +5800,7 @@ async function wipeDevice() {
       rq.onerror = () => res();
     } catch (e) { res(); }
   });
-  records = {}; sealed = {};
+  records = {}; sealed = {}; storeVer++;
   try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
   try { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } catch (e) {}
   try { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.unregister())); } catch (e) {}
@@ -6138,6 +6251,7 @@ async function purgeNowOld(ids) {
     if (r.type === 'doc') all('docfile').forEach(f => { if (f.docId === id) { driveDelete(f.fileId); softDelete(f.id, { render: false }); } });
     r.deletedAt = 1; put(r, { render: false }); });
   ids.forEach(id => { delete records[id]; delete sealed[id]; });
+  storeVer++;
   try { await DB.delMany(ids); } catch (e) {}
   scheduleRender();
 }
@@ -6466,8 +6580,8 @@ function dateRowHtml({ d, w, days }, showCat) {
   return swipeHtml(`<div class="row">
       ${days == null ? '<div class="count past" aria-label="no date">?<small>no date</small></div>' : countHtml(days)}
       <div class="row-main"><div class="row-title">${esc(d.label)}</div>
-        <div class="row-sub">${w ? `<span>${w.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>` : '<span class="warn">set the date</span>'}${age ? `<span>${age}</span>` : ''}
-        ${d.repeat && d.repeat !== 'once' ? `<span class="pill">${d.repeat}</span>` : ''}${showCat && cat ? `<span>${cat[2]} ${esc(cat[1])}</span>` : ''}</div></div>
+        <div class="row-sub">${w ? `<span>${dateFmt(w, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>` : '<span class="warn">set the date</span>'}${age ? `<span>${age}</span>` : ''}
+        ${d.repeat && d.repeat !== 'once' ? `<span class="pill">${esc(d.repeat)}</span>` : ''}${showCat && cat ? `<span>${cat[2]} ${esc(cat[1])}</span>` : ''}</div></div>
       <span class="chev">›</span></div>`, '', 'Delete 🗑', `data-date="${d.id}"`);
 }
 function renderDatesBase() {
@@ -6744,7 +6858,7 @@ function openArchive() {
     <div class="group-title">Ready to archive</div>
     <div class="group">${rows.length ? rows.map(r => `<div class="chk-row"><div class="row-main"><div class="row-title">FY ${r.f}</div><div class="row-sub"><span>${r.tasks.length} done task${r.tasks.length === 1 ? '' : 's'}</span>${finUnlocked() ? `<span>${r.fins.length} Ledger entr${r.fins.length === 1 ? 'y' : 'ies'}</span>` : ''}${r.blocked ? `<span class="muted">${r.blocked} kept (used by your plan or open udhaar)</span>` : ''}</div></div>
       ${r.tasks.length + r.fins.length ? `<button class="btn small" data-arch="${r.f}">Archive</button>` : ''}</div>`).join('') : '<div class="empty">Nothing old enough to archive yet.</div>'}</div>
-    ${idx.length ? `<div class="group-title">Archives in Drive</div><div class="group">${idx.map((a, i) => `<div class="chk-row"><div class="row-main"><div class="row-title">FY ${a.fy}${a.enc ? ' 🔒' : ''}</div><div class="row-sub"><span>${a.n} items</span><span>${fmtDate(isoLocal(new Date(a.at)), true)}</span></div></div>
+    ${idx.length ? `<div class="group-title">Archives in Drive</div><div class="group">${idx.map((a, i) => `<div class="chk-row"><div class="row-main"><div class="row-title">FY ${esc(a.fy)}${a.enc ? ' 🔒' : ''}</div><div class="row-sub"><span>${a.n} items</span><span>${fmtDate(isoLocal(new Date(a.at)), true)}</span></div></div>
       <button class="btn small ghost" data-arv="${i}">View</button><button class="btn small ghost" data-arr="${i}">Bring back</button></div>`).join('')}</div>` : ''}
     <div id="arView"></div>`;
   $$('[data-arch]').forEach(b => b.addEventListener('click', () => archiveFy(b.dataset.arch)));
@@ -7878,7 +7992,7 @@ function afterFinanceUnlock() {
   showTab('money');
 }
 function onFinanceLocked(silent) {
-  $('moneyTab').classList.add('hidden');
+  $('moneyTab').classList.add('hidden'); clearFinFilter();
   Bio.pending = null;                                                    // a half-finished Face ID setup keeps no code
   if (!$('lightbox').classList.contains('hidden')) $('lbClose').click();
   if (Sheets.isOpen('shDoc')) { const d = records[editDocId]; if (d && (d.lockFiles || d.numEnc)) { $('doNumber').value = d.numEnc ? '•••• ' + (d.numTail || '') : ''; $('doNumber').disabled = true; } }
@@ -7967,7 +8081,8 @@ function openSettings() {
   $('setAppLockV').textContent = AppLock.on() ? 'On' : 'Off'; $('setAppIdle').value = String(+prefs.appIdle || 0); $('setMoneyIdle').value = String(+prefs.moneyIdle || 5); $('setMoneyIdleRow').classList.toggle('hidden', !finUnlocked());
   $('setVaultCode').classList.toggle('hidden', !finUnlocked()); $('setVaultLock').classList.toggle('hidden', !finUnlocked());
   $('setBio').classList.toggle('hidden', !finUnlocked() || !Bio.supported()); $('setBioV').textContent = Bio.on() ? 'On' : 'Off';
-  ['setAutoBkRow', 'setAutoBkNow', 'setAutoBkTest'].forEach(i => $(i).classList.toggle('hidden', !finUnlocked()));
+  ['setAutoBkRow', 'setAutoBkNow', 'setAutoBkTest', 'setBackupEnc'].forEach(i => $(i).classList.toggle('hidden', !finUnlocked()));
+  { const w = securityChecks().filter(c => c.state === 'warn').length; $('setSecCheckV').textContent = w ? w + ' to review' : '✓'; }
   $('setIconBadge').checked = !!prefs.iconBadge; $('setDateDays').value = String(prefs.dateBadgeDays || 7);
   $('setBioDiag').classList.add('hidden'); if (finUnlocked() && Bio.supported()) bioDiag().then(s => { if (s) { $('setBioDiag').textContent = s; $('setBioDiag').classList.remove('hidden'); } });
   $('setDictLang').value = prefs.dictLang || 'en-IN';
@@ -8002,7 +8117,7 @@ $('setDictLang').addEventListener('change', () => setPref('dictLang', $('setDict
 $('setConnect').addEventListener('click', async () => {
   const url = normaliseScriptUrl($('setUrl').value), token = $('setToken').value.trim(), msg = $('setSyncMsg');
   $('setUrl').value = url;
-  if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url) && location.hostname !== 'localhost') { msg.className = 'msg err'; msg.textContent = 'That should be the https://script.google.com/macros/s/…/exec URL.'; return; }
+  if (!scriptUrlOk(url)) { msg.className = 'msg err'; msg.textContent = 'That should be the https://script.google.com/macros/s/…/exec URL.'; return; }
   if (!token) { msg.className = 'msg err'; msg.textContent = 'Enter the token.'; return; }
   const oldUrl = prefs.cloudUrl;
   setPref('cloudUrl', url); setPref('cloudToken', token);
@@ -8065,12 +8180,13 @@ const AutoBackup = {
   save(l) { try { localStorage.setItem('r2_autobk', JSON.stringify(l)); } catch (e) {} },
   info() { const l = this.list(), last = l[l.length - 1]; return !driveOn() ? 'Needs the Drive folder in Sync settings.' : last ? `Last: ${fmtDate(last.date, true)} · ${last.count} items · ${l.length} kept` : 'No Drive backup yet.'; },
   due() { const l = this.list(), last = l[l.length - 1]; return !last || Date.now() - last.at > 7 * 86400000; },
+  /* the encrypted envelope, shared by the Drive backup and "Download encrypted backup" */
+  async pack(rows) { const fk = records[FINKEY_ID]; return JSON.stringify({ v: 1, app: APP_VERSION, at: Date.now(), salt: fk.salt, iters: fk.iters || FIN_ITERS, enc: await aesEnc(Fin.key, JSON.stringify(rows)) }); },
   async maybe() { if (prefs.autoBackup && Fin.key && driveOn() && navigator.onLine && this.due()) { try { await this.run(); } catch (e) { RLOG.warn('auto backup', e.message); } } },
   async run(say) {
     if (!Fin.key) throw new Error('Unlock the private section first (the backup is encrypted with its key).');
     if (!driveOn()) throw new Error('Set the Drive folder in Settings → Sync first.');
-    const rows = backupRows(), fk = records[FINKEY_ID];
-    const body = JSON.stringify({ v: 1, app: APP_VERSION, at: Date.now(), salt: fk.salt, iters: fk.iters || FIN_ITERS, enc: await aesEnc(Fin.key, JSON.stringify(rows)) });
+    const rows = backupRows(), body = await this.pack(rows);
     const name = 'register-backup-' + todayISO() + '.rgbk';
     const d = await Sync.call('driveUpload', { folderId: prefs.driveFolder, name, mime: 'application/octet-stream', data: b64(te.encode(body)) }, 240000);
     if (!d.fileId) throw new Error('Drive did not return a file id');
@@ -8114,6 +8230,7 @@ $('restoreFile').addEventListener('change', e => {
         try { key = await deriveFinKey(oldCode, arr.salt, arr.iters); } catch (err) { key = null; } }
       try { arr = JSON.parse(await aesDec(key, arr.enc)); } catch (err) { toast('Wrong code, or the file is damaged.'); return; } }
     if (!Array.isArray(arr)) { toast('Unexpected file format.'); return; }
+    if (!(await confirmRestore(restorePlan(arr), f.name))) { toast('Restore cancelled. Nothing was changed.'); return; }
     await importRecords(arr, 'backup file');
     if (oldCode && Fin.key && Fin.lockedOut.length) { const n = await recoverLockedOut(oldCode); if (n) toast(`Money entries from the backup re-sealed under your current code (${n}).`); }
   };
@@ -8126,7 +8243,8 @@ async function importRecords(arr, from) {
   let oldCode = null; const plainMoney = [], rows = [];
   arr.forEach(r => {
     if (!r || !r.id || !r.type) return;
-    if (r.type === 'settings') { if (r.vaultCode) oldCode = String(r.vaultCode); return; }   // the code is never stored in plaintext again
+    if (r.type === 'settings') { if (r.vaultCode) oldCode = String(r.vaultCode); return; }
+    if (typeof r.id !== 'string' || !REC_ID_RX.test(r.id) || typeof r.type !== 'string' || !REC_TYPE_RX.test(r.type)) return;   // the code is never stored in plaintext again
     if (SEALED_TYPES.has(r.type) && !r.enc) plainMoney.push(r); else rows.push({ ...r, updatedAt: r.updatedAt || nowMs() });
   });
   // plain records + already-sealed money
@@ -8344,6 +8462,7 @@ async function purgeNow(ids, again) {
   if (wait.length) Sync.run().then(() => { const done = wait.filter(id => records[id] && records[id].deleted && !records[id]._dirty); if (done.length) purgeNow(done, true); });
   await Promise.all(gone.map(id => persistQ[id]).filter(Boolean));               // a queued save must not write it back after the delete
   gone.forEach(id => { delete records[id]; delete sealed[id]; delete persistQ[id]; });
+  storeVer++;
   try { await DB.delMany(gone); } catch (e) { RLOG.warn('purge', e.message); }
   scheduleRender();
 }
@@ -8575,17 +8694,24 @@ const AppLock = {
   },
   async pinOk(pin) { const a = this.get(); return !!a && (await pinHash(pin, a.salt)) === a.hash; }
 };
+/* v2.18: the PIN's wrong-try counter is kept on the device, so closing and reopening the app no longer resets it */
+const PinLimit = {
+  get() { try { return JSON.parse(localStorage.getItem('r2_pf') || '{"n":0,"until":0}'); } catch (e) { return { n: 0, until: 0 }; } },
+  set(v) { try { localStorage.setItem('r2_pf', JSON.stringify(v)); } catch (e) {} },
+  wait() { const v = this.get(); return Math.max(0, v.until - Date.now()); },
+  fail() { const v = this.get(); v.n++; if (v.n >= 5) v.until = Date.now() + Math.min(15 * 60000, 30000 * Math.pow(2, v.n - 5)); this.set(v); return this.wait(); },
+  reset() { this.set({ n: 0, until: 0 }); }
+};
 function decoyUnlock() {
   if (!AppLock.on()) { hideDecoy(); return; }
-  if (AppLock.fails >= 2 || !Bio.supported()) { $('alPin').classList.remove('hidden'); setTimeout(() => $('alPinIn').focus(), 50); return; }
+  if (AppLock.fails >= 2 || !Bio.supported()) { if (PinLimit.wait()) return; $('alPin').classList.remove('hidden'); setTimeout(() => $('alPinIn').focus(), 50); return; }
   AppLock.check().then(() => { AppLock.fails = 0; hideDecoy(); }, e => { AppLock.fails++; RLOG.warn('app lock', e.name || e.message); });
 }
-{ let wrong = 0;
-  const go = async () => {
+{ const go = async () => {
     const v = $('alPinIn').value; $('alPinIn').value = '';
-    if (wrong >= 5) return;
-    if (await AppLock.pinOk(v)) { wrong = 0; AppLock.fails = 0; $('alPin').classList.add('hidden'); hideDecoy(); }
-    else if (++wrong >= 5) { $('alPin').classList.add('hidden'); setTimeout(() => { wrong = 0; }, 5 * 60000); }
+    if (PinLimit.wait()) { $('alPin').classList.add('hidden'); return; }
+    if (await AppLock.pinOk(v)) { PinLimit.reset(); AppLock.fails = 0; $('alPin').classList.add('hidden'); hideDecoy(); }
+    else if (PinLimit.fail()) $('alPin').classList.add('hidden');
   };
   $('alPinGo').addEventListener('click', go);
   $('alPinIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } }); }
@@ -9084,6 +9210,96 @@ function archForget(a) {
 }
 setTimeout(() => { try { sweepOrphans(); } catch (e) { RLOG.warn('sweep', e.message); } }, 12000);
 
+
+/* ==========================================================================
+   v2.18 — encrypted backup, restore preview, security check-up
+   ======================================================================== */
+$('setBackupEnc').addEventListener('click', async () => {
+  const m = $('setDataMsg');
+  if (!Fin.key) { m.className = 'msg err'; m.textContent = 'Unlock the private section first — the backup is encrypted with your private code.'; return; }
+  m.className = 'msg'; m.textContent = 'Encrypting…';
+  try {
+    const rows = backupRows(), body = await AutoBackup.pack(rows);
+    await shareOrDownload(body, 'register-backup-' + todayISO() + '.rgbk', 'application/octet-stream');
+    try { localStorage.setItem('r2_lastBackup', String(Date.now())); } catch (e) {}
+    m.className = 'msg ok'; m.textContent = `Encrypted backup of ${rows.length} items created. Everything in it is locked with your private code — keep that code safe, the file cannot be opened without it.`;
+  } catch (e) { m.className = 'msg err'; m.textContent = 'Could not make the backup: ' + (e.message || e); }
+});
+
+const RESTORE_LABELS = { task: 'Tasks', note: 'Notes', date: 'Key dates', doc: 'Documents', docfile: 'Document files', blob: 'Pictures', inbox: 'Inbox items', template: 'Templates', billpay: 'Bill payments', oldbill: 'Old bills' };
+/* What would a backup file do? Counted only — nothing is changed. */
+function restorePlan(arr) {
+  const P = { total: arr.length, unusable: 0, fresh: 0, newer: 0, same: 0, deleted: 0, sealedRows: 0, legacyMoney: 0, byType: {}, ignored: 0 };
+  arr.forEach(r => {
+    if (!r || typeof r !== 'object' || typeof r.id !== 'string' || typeof r.type !== 'string' || !REC_ID_RX.test(r.id) || !REC_TYPE_RX.test(r.type)) { P.unusable++; return; }
+    if (r.type === 'settings' || r.type === 'erased') { P.ignored++; return; }
+    const sealedType = SEALED_TYPES.has(r.type);
+    if (sealedType && !r.enc) P.legacyMoney++;
+    if (sealedType) P.sealedRows++; else P.byType[r.type] = (P.byType[r.type] || 0) + 1;
+    if (r.deleted) P.deleted++;
+    const local = (sealedType ? sealed : records)[r.id], ts = +r.updatedAt || 0;
+    if (!local) P.fresh++; else if (sealedType && !r.enc) P.newer++; else if (ts > (+local.updatedAt || 0)) P.newer++; else P.same++;
+  });
+  return P;
+}
+function confirmRestore(P, fileName) {
+  return new Promise(res => {
+    let done = false; const finish = v => { if (!done) { done = true; res(v); } };
+    const grouped = {}; Object.entries(P.byType).forEach(([t, n]) => { const k = RESTORE_LABELS[t] || 'Settings & other'; grouped[k] = (grouped[k] || 0) + n; });
+    const types = Object.entries(grouped).sort((a, b) => b[1] - a[1]);
+    $('rsBody').innerHTML = `<p class="hint" style="margin:0 4px 6px">${esc(fileName || 'Backup file')} · ${P.total.toLocaleString('en-IN')} entries. Nothing has been changed yet.</p>
+      <div class="rs-grid"><div><b>${P.fresh}</b>new on this device</div><div><b>${P.newer}</b>would replace an older copy here</div><div><b>${P.same}</b>already here, or newer here — kept</div>${P.unusable || P.ignored ? `<div><b>${P.unusable + P.ignored}</b>skipped (not usable)</div>` : ''}</div>
+      <div class="group-title">What is inside</div>
+      <div class="group">${types.map(([t, n]) => `<div class="chk-row"><div class="row-main"><div class="row-title">${esc(t)}</div></div><b>${n}</b></div>`).join('')}
+        ${P.sealedRows ? `<div class="chk-row"><div class="row-main"><div class="row-title">Money &amp; private items</div><div class="row-sub">${P.legacyMoney ? `${P.legacyMoney} from the old app will be encrypted with your private code` : 'stay encrypted'}</div></div><b>${P.sealedRows}</b></div>` : ''}</div>
+      ${P.deleted ? `<p class="hint">${P.deleted} of these are items that were deleted when the backup was made; they come back as deleted.</p>` : ''}
+      <p class="hint">Restoring never removes anything on this device. A copy is replaced only when the backup's copy is newer.</p>`;
+    $('rsGo').disabled = !(P.fresh + P.newer); $('rsGo').textContent = P.fresh + P.newer ? `Restore ${P.fresh + P.newer}` : 'Nothing to restore';
+    $('rsGo').onclick = () => { finish(true); Sheets.close('shRestore', true); };
+    Sheets.onClose.shRestore = () => finish(false);
+    Sheets.open('shRestore');
+  });
+}
+
+/* Looks only at this device: nothing is sent anywhere. */
+function securityChecks() {
+  const out = [], unlocked = finUnlocked(), fk = records[FINKEY_ID];
+  const add = (state, t, d, act) => out.push({ state, t, d, act });
+  if (!finConfigured()) add('info', 'Private section', 'Not set up yet. Tap “Register” three times to choose a code for Money and private notes.');
+  else {
+    if (!unlocked) add('info', 'Private code strength', 'Unlock the private section to check it.');
+    else if (Fin.codeLen && Fin.codeLen < 12) add('warn', 'Private code is short', `It is ${Fin.codeLen} characters. A phrase of four or more words is much harder to guess.`, { label: 'Change code', fn: () => openVault('change') });
+    else if (Fin.codeLen) add('ok', 'Private code length', `${Fin.codeLen} characters.`);
+    const it = fk ? (+fk.iters || FIN_ITERS) : FIN_ITERS_NEW;
+    if (it < FIN_ITERS_NEW) add('warn', 'Older key setting', `Your code is stretched ${it.toLocaleString('en-IN')} times; new codes use ${FIN_ITERS_NEW.toLocaleString('en-IN')}. Changing the code upgrades it — your other devices will ask for the new code.`, unlocked ? { label: 'Change code', fn: () => openVault('change') } : null);
+    else add('ok', 'Key setting', 'Uses the current strength.');
+  }
+  if (Sync.on()) {
+    const tl = String(prefs.cloudToken || '').length;
+    if (tl < 24) add('warn', 'Sync token is short', `It is ${tl} characters, so it can be guessed. Anyone who has it can read everything in the Sheet that is not Money, and the Drive files. In Apps Script run makeToken, paste the long token into SECRET and into Settings → Token, then deploy a new version.`);
+    else add('ok', 'Sync token', 'Long enough.');
+  } else add('info', 'Sync', 'Not connected — nothing leaves this device.');
+  const ids = all('doc').filter(d => d.docType === 'Identity' && !d.lockFiles && (d.number || docFilesOf(d.id).length));
+  if (ids.length) add('warn', `${ids.length} ID document${ids.length > 1 ? 's' : ''} not locked`, 'Numbers (Aadhaar, PAN…) are in your Sheet as plain text and the files in Drive are not encrypted. Open each one and switch on “Lock files”: ' + ids.slice(0, 4).map(d => d.title).join(', ') + (ids.length > 4 ? '…' : '') + '.', { label: 'Open first', fn: () => { Sheets.close('shSecCheck', true); Sheets.close('shSettings', true); showTab('docs'); openDoc(ids[0].id); } });
+  else if (all('doc').some(d => d.docType === 'Identity')) add('ok', 'ID documents', 'All locked.');
+  const last = +(lsGet('r2_lastBackup') || 0), days = last ? Math.floor((Date.now() - last) / 86400000) : null;
+  if (days == null || days > 30) add('warn', days == null ? 'No backup made on this device' : `Last backup ${days} days ago`, 'A backup file is your way back if the phone is lost.', unlocked ? { label: 'Encrypted backup', fn: () => $('setBackupEnc').click() } : { label: 'Download backup', fn: () => $('setBackup').click() });
+  else add('ok', 'Backup', days === 0 ? 'Made today.' : `Made ${days} day${days > 1 ? 's' : ''} ago.`);
+  if (driveOn()) { if (prefs.autoBackup) add('ok', 'Weekly Drive backup', 'On.'); else add('warn', 'Weekly Drive backup is off', 'It keeps encrypted copies in your Drive folder. Turn it on in Settings → Data (needs Money unlocked).'); }
+  if (AppLock.on()) add('ok', 'Face ID to open', 'On.'); else add('warn', 'Face ID to open is off', 'Anyone who opens the app past the decoy screen sees your tasks, notes and documents.', { label: 'Turn on', fn: () => { Sheets.close('shSecCheck', true); $('setAppLock').click(); } });
+  if (prefs.decoyLaunch) add('ok', 'Decoy screen', 'Shown when the app opens.'); else add('warn', 'Decoy screen is off at launch', 'The app opens straight onto your data.', { label: 'Turn on', fn: () => { setPref('decoyLaunch', true); if ($('setDecoy')) $('setDecoy').checked = true; } });
+  if (+prefs.appIdle > 0) add('ok', 'Idle lock', `After ${prefs.appIdle} minute${+prefs.appIdle > 1 ? 's' : ''}.`); else add('warn', 'The app never locks when idle', 'If you leave it open, it stays open.', { label: 'Lock after 5 min', fn: () => { setPref('appIdle', 5); if ($('setAppIdle')) $('setAppIdle').value = '5'; } });
+  return out;
+}
+function openSecCheck() {
+  const L = securityChecks(), warn = L.filter(c => c.state === 'warn').length;
+  $('scBody').innerHTML = `<div class="sc-sum">${warn ? `${warn} thing${warn > 1 ? 's' : ''} worth fixing` : 'Nothing to fix'}</div><div class="group">${L.sort((a, b) => (b.state === 'warn') - (a.state === 'warn')).map((c, i) => `<div class="chk-row"><span class="sc-ic ${c.state}" aria-hidden="true">${c.state === 'ok' ? '✓' : c.state === 'warn' ? '!' : 'i'}</span><div class="row-main"><div class="row-title">${esc(c.t)}</div><div class="row-sub" style="white-space:normal">${esc(c.d)}</div></div>${c.act ? `<button class="btn small sc-act" data-sca="${i}">${esc(c.act.label)}</button>` : ''}</div>`).join('')}</div>
+    <p class="hint">This looks only at settings on this device. It cannot see your Google account or Sheet.</p>`;
+  $$('[data-sca]', $('scBody')).forEach(b => b.addEventListener('click', () => { const c = L[+b.dataset.sca]; c.act.fn(); if (Sheets.isOpen('shSecCheck')) openSecCheck(); }));
+  if (!Sheets.isOpen('shSecCheck')) Sheets.open('shSecCheck');
+}
+$('setSecCheck').addEventListener('click', openSecCheck);
+
 (async function boot() {
   try {
     await loadPrefs();
@@ -9101,7 +9317,7 @@ setTimeout(() => { try { sweepOrphans(); } catch (e) { RLOG.warn('sweep', e.mess
     // first run after upgrading on the same address: offer to bring the old data across
     // v1 kept the Sheet URL/token and Drive folder in localStorage — carry them over
     if (!prefs.cloudUrl) {
-      try { const c = JSON.parse(localStorage.getItem('reg_cloud') || '{}'); if (c.url && c.token) { setPref('cloudUrl', normaliseScriptUrl(c.url)); setPref('cloudToken', c.token); RLOG.info('adopted v1 sync settings'); } } catch (e) {}
+      try { const c = JSON.parse(localStorage.getItem('reg_cloud') || '{}'); if (c.url && c.token && scriptUrlOk(normaliseScriptUrl(c.url))) { setPref('cloudUrl', normaliseScriptUrl(c.url)); setPref('cloudToken', c.token); RLOG.info('adopted v1 sync settings'); } } catch (e) {}
     }
     if (!prefs.driveFolder && localStorage.getItem('reg_driveFolder')) setPref('driveFolder', localStorage.getItem('reg_driveFolder'));
     const needsMigrate = (localStorage.getItem('reg_recs') && localStorage.getItem('r2_legacyDone') !== '1' && localStorage.getItem('reg_devKey'))
