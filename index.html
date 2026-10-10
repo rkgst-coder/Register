@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.19.0">
+<meta name="app-version" content="2.20.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
-<meta name="description" content="Tasks, notes, dates, documents and a private ledger.">
+<meta name="description" content="Tasks, notes, dates and documents.">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#F2EEE3">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -877,6 +877,62 @@ html[data-hand="left"] .hint-bubble::after{right:auto;left:24px}
 html.decoy-on .hint-bubble{display:none}
 .task .wait-pill{color:var(--brass);font-weight:600}
 .check.wait{border-color:var(--brass);border-style:dotted;background:rgba(147,115,31,.08)}
+
+/* v2.20 — Tasks: the daily page */
+.t-hero{background:linear-gradient(160deg,var(--card) 0%,var(--card2) 100%);border-radius:18px;box-shadow:var(--shadow);padding:16px 16px 14px;margin:0 0 14px;border:1px solid var(--line)}
+.t-hero-top{display:flex;align-items:flex-start;gap:12px}
+.t-greet{flex:1;min-width:0}
+.t-greet>span{display:block;font-size:.8125rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--brass)}
+.t-greet b{display:block;font-family:var(--serif);font-size:1.375rem;line-height:1.2;margin-top:2px}
+.t-greet p{margin:6px 0 0;font-size:.9375rem;color:var(--ink-soft);line-height:1.35}
+.t-greet p .warn{color:var(--seal);font-weight:600}
+.t-ring{position:relative;width:64px;height:64px;flex:none}
+.t-ring svg{width:64px;height:64px;transform:rotate(-90deg)}
+.t-ring circle{fill:none;stroke-width:5}
+.t-ring .trk{stroke:var(--line)}
+.t-ring .arc{stroke:var(--brass);stroke-linecap:round;stroke-dasharray:125.66;stroke-dashoffset:125.66;transition:stroke-dashoffset .6s ease}
+.t-ring.full .arc{stroke:var(--forest)}
+.t-ring span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:700;font-size:.9375rem}
+.t-stats{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0}
+.t-stats span{font-size:.8125rem;color:var(--ink-soft);background:var(--field);border:1px solid var(--line);border-radius:14px;padding:4px 10px}
+.t-stats b{font-family:var(--serif);color:var(--ink);font-size:.9375rem;margin-right:2px}
+.t-stats .warn{border-color:var(--seal);color:var(--seal)}.t-stats .warn b{color:var(--seal)}
+.t-stats #tStreak{border-color:var(--brass-soft);color:var(--brass);font-weight:600}
+.t-week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin:12px 0 2px;align-items:end;height:40px}
+.t-week div{display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end}
+.t-week i{display:block;width:100%;max-width:22px;border-radius:4px 4px 2px 2px;background:var(--brass-soft);opacity:.55;min-height:3px}
+.t-week div.on i{background:var(--brass);opacity:1}
+.t-week small{font-size:.6875rem;color:var(--ink-faint);font-weight:600}
+.t-week div.on small{color:var(--ink)}
+.t-quick{display:flex;gap:8px;margin-top:12px}
+.t-quick input{flex:1;min-width:0;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:11px 12px;font-size:1rem;color:var(--ink)}
+.t-quick button{flex:none;width:44px;border-radius:12px;background:var(--ink);color:var(--paper);font-size:1.25rem;font-weight:700}
+.t-qhint{font-size:.8125rem;color:var(--ink-faint);margin:6px 2px 0;min-height:0}
+.t-qhint:empty{display:none}
+.t-focus{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:13px 14px;margin:0 0 16px;border-left:4px solid var(--brass)}
+.t-focus.od{border-left-color:var(--seal)}
+.t-focus .tf-main{flex:1;min-width:0}
+.t-focus small{display:block;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--brass)}
+.t-focus.od small{color:var(--seal)}
+.t-focus b{display:block;font-size:1.0625rem;font-weight:600;line-height:1.3;margin-top:2px;word-break:break-word}
+.t-focus .tf-sub{font-size:.8125rem;color:var(--ink-faint);margin-top:2px}
+.t-focus .tf-done{flex:none;background:var(--forest);color:#fff;border-radius:18px;padding:8px 14px;font-weight:700;font-size:.875rem}
+.t-hero.all-clear{border-color:var(--forest)}
+
+/* v2.20 — Today button: a calendar tile with today's date (no longer a sun that looks like a light/dark switch) */
+.td-tile{display:inline-flex;flex-direction:column;width:24px;height:25px;border:2px solid var(--ink);border-radius:6px;overflow:hidden;line-height:1;box-sizing:border-box}
+.td-tile i{display:block;height:6px;background:var(--seal);flex:none}
+.td-tile b{flex:1;display:flex;align-items:center;justify-content:center;font-size:.6875rem;font-weight:800;font-family:var(--sans);color:var(--ink);letter-spacing:-.02em}
+#toast #toastMute{font-size:.8125rem;font-weight:600;color:var(--paper);opacity:.8;white-space:nowrap}
+#toast #toastClose{color:var(--paper);opacity:.7;font-size:1rem;padding:0 2px}
+#toast{flex-wrap:wrap}
+
+/* v2.20 — Dates: + Task on upcoming rows, "in Calendar" mark */
+.d-task{flex:none;align-self:center;border:1px solid var(--line-strong);background:var(--field);color:var(--ink);border-radius:14px;padding:6px 10px;font-size:.8125rem;font-weight:600;white-space:nowrap}
+.pill.cal-in{background:rgba(60,90,68,.14);color:var(--forest)}
+
+/* v2.20 — nothing about Money shows while it is locked */
+html:not(.fin-open) .priv-only{display:none!important}
 </style>
 </head>
 <body>
@@ -901,7 +957,7 @@ html.decoy-on .hint-bubble{display:none}
   <header class="appbar">
     <div class="wordmark" id="wordmark">Register<small id="todayLbl"></small></div>
     <div class="spacer"></div>
-    <button class="icon-btn" id="todayFab" aria-label="Today">☀︎<i class="badge hidden" id="todayBadge"></i></button>
+    <button class="icon-btn" id="todayFab" aria-label="Today"><span class="td-tile" aria-hidden="true"><i></i><b id="todayNum"></b></span><i class="badge hidden" id="todayBadge"></i></button>
     <button class="icon-btn" id="syncBtn" aria-label="Sync now">⟳<i class="sync-dot" id="syncDot"></i></button>
     <button class="icon-btn" id="hideBtn" aria-label="Hide">◐</button>
     <button class="icon-btn" id="settingsBtn" aria-label="Settings">⚙︎</button>
@@ -914,12 +970,23 @@ html.decoy-on .hint-bubble{display:none}
     <section class="screen" id="scr-tasks">
       <div class="large-title">Tasks <span class="sub" id="taskSub"></span></div>
       <div id="inboxCard"></div>
-      <div class="stats">
-        <div class="stat"><div class="n" id="stActive">0</div><div class="l">Open</div></div>
-        <div class="stat"><div class="n" id="stToday">0</div><div class="l">Done today</div></div>
-        <div class="stat" id="stOverdueBox"><div class="n" id="stOverdue">0</div><div class="l">Overdue</div></div>
+      <div class="t-hero" id="tHero">
+        <div class="t-hero-top">
+          <div class="t-greet"><span id="tGreet">Today</span><b id="tDayLbl"></b><p id="tMsg"></p></div>
+          <div class="t-ring" id="tRing" aria-hidden="true"><svg viewBox="0 0 48 48"><circle class="trk" cx="24" cy="24" r="20"/><circle class="arc" id="tArc" cx="24" cy="24" r="20"/></svg><span id="tRingN">0</span></div>
+        </div>
+        <div class="t-stats">
+          <span><b id="stActive">0</b> open</span>
+          <span><b id="stToday">0</b> done today</span>
+          <span id="stOverdueBox" class="hidden"><b id="stOverdue">0</b> overdue</span>
+          <span id="tStreak" class="hidden"></span>
+        </div>
+        <div class="t-week" id="tWeek" aria-label="Tasks finished in the last 7 days"></div>
+        <form class="t-quick" id="tQuickForm" autocomplete="off"><input id="tQuick" placeholder="Add a task…  e.g. Call CA tomorrow 5pm" enterkeyhint="done" aria-label="Add a task"><button id="tQuickGo" type="submit" aria-label="Add task">＋</button></form>
+        <div class="t-qhint" id="tQuickHint" aria-live="polite"></div>
       </div>
-      <div class="chips" id="catChips"></div>
+      <div id="tFocus"></div>
+      <div class="chips hidden" id="catChips"></div>
       <div class="chips" id="taskModeChips"></div>
       <div id="taskList"></div>
       <details class="fold" id="doneFold"><summary id="doneLbl">Completed</summary><div class="group" id="doneList"></div></details>
@@ -1052,7 +1119,7 @@ html.decoy-on .hint-bubble{display:none}
     <div class="sheet-head"><button class="sh-l" id="teDelete" style="color:var(--seal)">Delete</button><h2>Edit task</h2><button class="sh-r" data-close>Done</button></div>
     <div class="sheet-body">
       <input class="title-input" id="teTitle" placeholder="Task" enterkeyhint="done">
-      <div class="field" style="margin-top:14px"><label>Category</label><div class="wrapchips" id="teCat"></div></div>
+      <div class="field hidden" style="margin-top:14px"><label>Category</label><div class="wrapchips" id="teCat"></div></div>
       <div class="field"><label>Priority</label><div class="wrapchips" id="tePrio"></div></div>
       <div class="field"><label>Status</label><div class="wrapchips" id="teStatus"></div>
         <div id="teWaitW" class="hidden" style="margin-top:8px"><input id="teWait" placeholder="Waiting on whom or what? (e.g. CA, bank reply)" autocomplete="off" enterkeyhint="done"></div></div>
@@ -1072,7 +1139,7 @@ html.decoy-on .hint-bubble{display:none}
       </div>
       <div class="field"><label>Notes</label><textarea id="teNotes" rows="4" placeholder="Any detail worth keeping"></textarea></div>
       <div class="btn-row">
-        <button class="btn ghost" id="teRefile">↻ Re-file</button>
+        <button class="btn ghost" id="teRefile">↻ Guess priority</button>
         <button class="btn ghost" id="teTemplate">⧉ Save as template</button>
       </div>
     </div>
@@ -1194,6 +1261,7 @@ html.decoy-on .hint-bubble{display:none}
       <div class="field"><label>Category</label><select id="deCat"></select></div>
       <p class="hint" id="deInfo" style="margin:0 4px 10px"></p>
       <button class="btn ghost block" id="deIcs">📅 Add to iPhone Calendar (reminds you)</button>
+      <button class="btn ghost block" id="deTask" style="margin-top:8px">☑ Add as a task</button>
     </div>
   </div>
 </div>
@@ -1212,7 +1280,7 @@ html.decoy-on .hint-bubble{display:none}
         <div class="field"><label>Started</label><input type="month" id="beStart"></div>
         <div class="field"><label>Category</label><select id="beCat"></select></div>
       </div>
-      <div class="group"><label class="switch-row">Also record in Money when paid<input type="checkbox" class="sw" id="bePost"></label></div>
+      <div class="group priv-only"><label class="switch-row">Also record in Money when paid<input type="checkbox" class="sw" id="bePost"></label></div>
     </div>
   </div>
 </div>
@@ -1254,7 +1322,7 @@ html.decoy-on .hint-bubble{display:none}
         <input type="file" id="doFileIn" class="vh" accept="image/*,application/pdf,.pdf" multiple tabindex="-1" aria-hidden="true">
         <div class="msg" id="doFileMsg"></div>
       </div>
-      <div class="group"><label class="switch-row"><span>Lock files<small class="dq-sub">Encrypted; opens only with your private code. Use for Aadhaar, PAN, passport.</small></span><input type="checkbox" class="sw" id="doLock"></label></div>
+      <div class="group"><label class="switch-row"><span>Lock files<small class="dq-sub">Encrypted; opens only after unlocking. Use for Aadhaar, PAN, passport.</small></span><input type="checkbox" class="sw" id="doLock"></label></div>
       <button class="btn ghost block hidden" id="doRemind">📅 Add expiry to Key dates</button>
     </div>
   </div>
@@ -1626,7 +1694,7 @@ html.decoy-on .hint-bubble{display:none}
         <div class="set-search"><input type="search" id="setQ" placeholder="Search settings" aria-label="Search settings" autocomplete="off" enterkeyhint="search"></div>
         <div class="group" id="setQRes" hidden></div>
         <div class="group" id="setMenu">
-          <button class="set-row set-nav" data-page="privacy"><span class="set-ic" aria-hidden="true">🔒</span><span>Privacy<small>Decoy, Face ID, private code, idle lock</small></span><span class="v" id="setPrivV">›</span></button>
+          <button class="set-row set-nav" data-page="privacy"><span class="set-ic" aria-hidden="true">🔒</span><span>Privacy<small>Decoy, Face ID, idle lock</small></span><span class="v" id="setPrivV">›</span></button>
           <button class="set-row set-nav" data-page="sync"><span class="set-ic" aria-hidden="true">☁︎</span><span>Sync &amp; Drive<small>Google Sheet, Drive folder, share into Register</small></span><span class="v" id="setSyncV">›</span></button>
           <button class="set-row set-nav" data-page="data"><span class="set-ic" aria-hidden="true">🗄</span><span>Backup &amp; Data<small>Backups, restore, data health, archive, log</small></span><span class="v">›</span></button>
           <button class="set-row set-nav" data-page="look"><span class="set-ic" aria-hidden="true">🎨</span><span>Look &amp; Feel<small>Appearance, text size, start tab, badges</small></span><span class="v">›</span></button>
@@ -1654,7 +1722,7 @@ html.decoy-on .hint-bubble{display:none}
           <button class="set-row hidden" id="setBio">Unlock with Face ID<span class="v" id="setBioV">Off</span></button>
           <div class="bio-diag hidden" id="setBioDiag"></div>
         </div>
-        <p class="hint">Face ID to open and the decoy are screen locks. Money, PNote, the Emergency sheet and locked files are encrypted with your private code.</p>
+        <p class="hint">Face ID to open and the decoy are screen locks.<span class="priv-only"> Money, PNote, the Emergency sheet and locked files are encrypted with your private code.</span></p>
       </div>
 
       <div class="set-page hidden" data-page="sync" data-title="Sync &amp; Drive">
@@ -1719,9 +1787,12 @@ html.decoy-on .hint-bubble{display:none}
           <div class="set-row"><span>Text size</span><select id="setText"><option value="system">Follow iPhone</option><option value="small">Small</option><option value="default">Default</option><option value="large">Large</option><option value="xl">Extra large</option></select></div>
           <label class="switch-row">High contrast<input type="checkbox" class="sw" id="setContrast"></label>
           <label class="switch-row">Left-handed (+ button on the left)<input type="checkbox" class="sw" id="setLeft"></label>
+          <label class="switch-row">Show Today on the first open of each day<input type="checkbox" class="sw" id="setTodayAuto"></label>
+          <div class="set-row"><span>Reminders you hid with “Don’t show again”</span><button class="btn small ghost" id="setUnmute">Show again</button></div>
           <label class="switch-row">Show task steps expanded<input type="checkbox" class="sw" id="setSteps"></label>
           <label class="switch-row">Open notes straight into editing<input type="checkbox" class="sw" id="setNoteEdit"></label>
           <label class="switch-row"><span>Show the count on the app icon<small>Dates coming up. iPhone asks to allow notifications once.</small></span><input type="checkbox" class="sw" id="setIconBadge"></label>
+          <div class="set-row"><span>Show at the top of Dates (“Coming up”)</span><select id="setDateSoon"><option value="7">7 days ahead</option><option value="15">15 days ahead</option><option value="30">30 days ahead</option><option value="45">45 days ahead</option><option value="60">60 days ahead</option><option value="90">90 days ahead</option></select></div>
           <div class="set-row"><span>Dates count as “near” within</span><select id="setDateDays"><option value="3">3 days</option><option value="7">7 days</option><option value="15">15 days</option><option value="30">30 days</option></select></div>
           <div class="set-row"><span>Voice typing language</span><select id="setDictLang"><option value="en-IN">English (India)</option><option value="hi-IN">Hindi</option><option value="en-US">English (US)</option></select></div>
         </div>
@@ -1739,9 +1810,9 @@ html.decoy-on .hint-bubble{display:none}
 </div>
 
 <div id="lightbox" class="hidden"><img id="lbImg" alt=""><button id="lbClose" aria-label="Close">✕</button></div>
-<div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button></div>
+<div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.19.0"></script>
+<script src="app.js?v=2.20.0"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.19.0';
+const APP_VERSION = '2.20.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -145,17 +145,42 @@ function parseDateToken(tok) {
 }
 
 /* ---------- toast with optional action (Undo) ---------- */
-let toastTimer = null, toastFn = null;
-function toast(msg, actLabel, act, ms) {
+/* v2.20: messages queue up and show one after another — a second one no longer hides the first.
+   An Undo toast for a newer action replaces an older Undo toast (only the latest action can be undone).
+   opts.once = a key: the toast gets "Don't show again", and once tapped that toast never appears again. */
+let toastTimer = null, toastFn = null, toastCur = null;
+const toastQ = [];
+const toastMuted = k => { try { return (JSON.parse(localStorage.getItem('r2_toastMute') || '[]')).includes(k); } catch (e) { return false; } };
+function toastMute(k) { try { const L = JSON.parse(localStorage.getItem('r2_toastMute') || '[]'); if (!L.includes(k)) L.push(k); localStorage.setItem('r2_toastMute', JSON.stringify(L)); } catch (e) {} }
+function toast(msg, actLabel, act, ms, opts) {
   if (window.GHOST) return;
-  clearTimeout(toastTimer);
-  $('toastMsg').textContent = msg;
-  const b = $('toastAct');
-  if (actLabel) { b.textContent = actLabel; b.classList.remove('hidden'); toastFn = act; } else { b.classList.add('hidden'); toastFn = null; }
-  $('toast').classList.add('show');
-  toastTimer = setTimeout(() => $('toast').classList.remove('show'), ms || (actLabel ? 6000 : 2800));
+  opts = opts || {};
+  if (opts.once && toastMuted(opts.once)) return;
+  const t = { msg, actLabel, act, ms, once: opts.once };
+  if ((toastCur && toastCur.msg === msg) || toastQ.some(x => x.msg === msg)) return;   // already showing or waiting
+  if (!toastCur) { toastShow(t); return; }
+  if (t.once) { toastQ.push(t); return; }                                     // reminders wait their turn, one after another
+  if (toastCur.once) toastQ.unshift(toastCur);                                // feedback on what you just did shows now; the reminder comes back after it
+  toastShow(t);
 }
-$('toastAct').addEventListener('click', () => { const f = toastFn; $('toast').classList.remove('show'); if (f) f(); });
+function toastShow(t) {
+  clearTimeout(toastTimer); toastCur = t;
+  $('toastMsg').textContent = t.msg;
+  const b = $('toastAct');
+  if (t.actLabel) { b.textContent = t.actLabel; b.classList.remove('hidden'); toastFn = t.act; } else { b.classList.add('hidden'); toastFn = null; }
+  const m = $('toastMute'); if (m) m.classList.toggle('hidden', !t.once);
+  const c = $('toastClose'); if (c) c.classList.toggle('hidden', !t.once && !toastQ.length);
+  $('toast').classList.add('show');
+  toastTimer = setTimeout(toastNext, t.ms || (t.actLabel ? 6000 : 2800) + (t.once ? 3000 : 0));
+}
+function toastNext() {
+  clearTimeout(toastTimer); toastCur = null; toastFn = null;
+  $('toast').classList.remove('show');
+  if (toastQ.length) setTimeout(() => { if (!toastCur && toastQ.length) toastShow(toastQ.shift()); }, 320);
+}
+$('toastAct').addEventListener('click', () => { const f = toastFn; toastNext(); if (f) f(); });
+if ($('toastMute')) $('toastMute').addEventListener('click', () => { if (toastCur && toastCur.once) toastMute(toastCur.once); toastNext(); });
+if ($('toastClose')) $('toastClose').addEventListener('click', toastNext);
 
 /* ---------- downloads + share ---------- */
 function dl(blob, name) {
@@ -391,7 +416,7 @@ function setPref(k, v) {
    cleared after the server has accepted that exact version — so an edit made
    offline, or during a failed upload, is never skipped.
    ======================================================================== */
-const SEALED_TYPES = new Set(['fin', 'budget', 'filekey', 'snote', 'plancfg', 'planmonth', 'invest', 'loan', 'goal', 'acct', 'recur', 'subscfg', 'emerg']);   // v2.19: + subscriptions settings, Emergency sheet
+const SEALED_TYPES = new Set(['fin', 'budget', 'filekey', 'snote', 'plancfg', 'planmonth', 'invest', 'loan', 'goal', 'acct', 'recur', 'subscfg', 'emerg', 'dropkey']);   // v2.20: + the quick-log opening key   // v2.19: + subscriptions settings, Emergency sheet
 const FINKEY_ID = '__finkey__';
 let records = {};          // id -> plaintext record (money records only while unlocked)
 let sealed = {};           // id -> sealed form of money records (always present)
@@ -519,6 +544,7 @@ function lockFinance(silent) {
   try { const pa = document.getElementById('printArea'); if (pa) pa.innerHTML = ''; } catch (e) {}
   for (const id in records) if (SEALED_TYPES.has(records[id].type)) delete records[id];
   storeVer++;
+  document.documentElement.classList.remove('fin-open');          // v2.20: hides every .priv-only mention
   if (typeof onFinanceLocked === 'function') onFinanceLocked(silent);
 }
 
@@ -574,7 +600,7 @@ const all = type => {
   if (!l) { l = Object.values(records).filter(r => r.type === type && !r.deleted); allCache.by.set(type, l); }
   return l.slice();
 };
-const trashed = () => window.GHOST ? [] : Object.values(records).filter(r => r.deleted && r.deletedAt && r.type !== 'chunk' && r.type !== 'blob' && r.type !== 'billpay' && r.type !== 'finkey' && r.type !== 'docfile' && r.type !== 'filekey' && r.type !== 'planmonth' && r.type !== 'plancfg' && r.type !== 'erasekey' && r.type !== 'erased');
+const trashed = () => window.GHOST ? [] : Object.values(records).filter(r => r.deleted && r.deletedAt && r.type !== 'chunk' && r.type !== 'blob' && r.type !== 'billpay' && r.type !== 'finkey' && r.type !== 'docfile' && r.type !== 'filekey' && r.type !== 'planmonth' && r.type !== 'plancfg' && r.type !== 'erasekey' && r.type !== 'erased' && r.type !== 'qlog' && r.type !== 'dropkey');
 
 /* ---------- write ---------- */
 function persist(rec) {
@@ -604,7 +630,7 @@ function put(rec, opt) {
   rec._dirty = 1;
   if (rec.deleted === undefined) rec.deleted = false;
   if (!rec.createdAt) rec.createdAt = nowMs();
-  if (SEALED_TYPES.has(rec.type) && !Fin.key) { RLOG.error('put sealed while locked', rec.id); toast('Unlock the private section first.'); return rec; }
+  if (SEALED_TYPES.has(rec.type) && !Fin.key) { RLOG.error('put sealed while locked', rec.id); toast('Unlock first.'); return rec; }
   records[rec.id] = rec;
   persist(rec);
   if (opt.render !== false) scheduleRender();
@@ -1175,7 +1201,6 @@ function taskRow(t, showCat) {
     <div class="row-main">
       <div class="row-title">${esc(t.title)}</div>
       <div class="row-sub">
-        ${showCat ? `<span><i class="cat-dot" style="background:${catColor(t.category)}"></i> ${esc(t.category)}</span>` : ''}
         ${t.dueDate ? `<span class="${od || dueToday ? 'warn' : ''}">📅 ${relDay(t.dueDate)}${t.dueTime ? ' ' + fmtTime12(t.dueTime) : ''}${od ? ' · overdue' : ''}</span>` : ''}
         ${t.status === 'inprogress' ? '<span>◐ in progress</span>' : ''}
         ${t.status === 'waiting' ? `<span class="wait-pill">⏳ waiting${t.waitingOn ? ' on ' + esc(t.waitingOn) : ''}${t.waitingSince ? ' · ' + waitAge(t) : ''}</span>` : ''}
@@ -1223,20 +1248,20 @@ function renderTasks() {
   const tasks = all('task');
   const open = tasks.filter(t => t.status !== 'done');
   // category chips
-  chipGroup($('catChips'), ['All', ...CATS].map(c => ({ v: c, l: `${c} ${c === 'All' ? open.length : open.filter(t => t.category === c).length}` })),
-    activeCat, v => { activeCat = v; renderTasks(); }, c => c === 'All' ? 'var(--ink-faint)' : catColor(c));
-  chipGroup($('taskModeChips'), [{ v: 'due', l: 'By date' }, { v: 'prio', l: 'By priority' }, { v: 'prog', l: 'In progress' }, { v: 'wait', l: `Waiting on${open.some(t => t.status === 'waiting') ? ' ' + open.filter(t => t.status === 'waiting').length : ''}` }, { v: 'new', l: 'Newest' }],
+  // v2.20: no category split — every open task is in one list
+  chipGroup($('taskModeChips'), [{ v: 'due', l: 'By date' }, { v: 'prio', l: 'By priority' }, { v: 'prog', l: 'In progress' }, { v: 'wait', l: `Waiting on${open.some(t => t.status === 'waiting') ? ' ' + open.filter(t => t.status === 'waiting').length : ''}` }, { v: 'new', l: 'Newest' }, { v: 'old', l: 'Oldest' }],
     prefs.taskMode, v => { setPref('taskMode', v); renderTasks(); });
   $$('#taskModeChips .chip').forEach(c => c.style.fontSize = '13px');
 
-  let live = open.filter(t => activeCat === 'All' || t.category === activeCat);
-  const showCat = activeCat === 'All';
+  let live = open.slice();
+  const showCat = false;
   const today = todayISO(), weekEnd = addDays(7);
   let groups = [];
   if (prefs.taskMode === 'prio') groups = PRIOS.map(p => [p + ' priority', live.filter(t => t.priority === p).sort(byDueThenPrio)]);
   else if (prefs.taskMode === 'prog') groups = [['In progress', live.filter(t => t.status === 'inprogress').sort(byDueThenPrio)]];
   else if (prefs.taskMode === 'wait') groups = [['Waiting on', live.filter(t => t.status === 'waiting').sort((a, b) => String(a.waitingSince || '').localeCompare(String(b.waitingSince || '')) || byDueThenPrio(a, b))]];
   else if (prefs.taskMode === 'new') groups = [['Newest first', [...live].sort((a, b) => b.createdAt - a.createdAt)]];
+  else if (prefs.taskMode === 'old') groups = [['Oldest first', [...live].sort((a, b) => a.createdAt - b.createdAt)]];
   else {
     const g = { o: [], t: [], m: [], w: [], l: [], n: [], x: [] };
     live.forEach(t => {
@@ -1251,14 +1276,11 @@ function renderTasks() {
   groups = groups.filter(g => g[1].length);
   $('taskList').innerHTML = groups.length ? groups.map(([k, v]) =>
     `<div class="group-title">${k} <span class="gcount">${v.length}</span></div><div class="group">${v.map(t => taskRow(t, showCat)).join('')}</div>`).join('')
-    : `<div class="empty"><b>${open.length ? 'Nothing here' : 'All clear'}</b>Tap + to add a task. Try “Draft ITC letter #work !high @tomorrow”.</div>`;
+    : `<div class="empty"><b>${open.length ? 'Nothing here' : 'All clear'}</b>Tap + to add a task. Try “Draft ITC letter tomorrow high”.</div>`;
   wireTaskRows($('taskList'));
 
-  // stats
-  $('stActive').textContent = open.length;
-  $('stToday').textContent = tasks.filter(t => t.completedOn === today).length;
-  const od = tasks.filter(isOverdue).length;
-  $('stOverdue').textContent = od; $('stOverdueBox').classList.toggle('warn', od > 0);
+  // stats + the daily card (v2.20)
+  renderTaskHero(tasks, open);
   $('taskSub').textContent = '';
 
   // completed (last 60 days)
@@ -1276,6 +1298,64 @@ function renderTasks() {
       <div class="row-end"><button class="btn small ghost" data-restore="${r.id}">Restore</button></div></div>`).join('')
     : '<div class="empty">Trash is empty.</div>';
   $$('[data-restore]', $('trashList')).forEach(b => b.addEventListener('click', () => { restore(b.dataset.restore); toast('Restored.'); }));
+}
+
+/* ---------- v2.20: the daily card at the top of Tasks ---------- */
+function taskStreak(doneDays) {
+  let n = 0, d = todayISO();
+  if (!doneDays.has(d)) d = addDays(-1);                 // today not started yet: yesterday keeps the streak alive
+  while (doneDays.has(d) && n < 999) { n++; d = addDays(-1, d); }
+  return n;
+}
+function renderTaskHero(tasks, open) {
+  if (!$('tHero')) return;
+  const today = todayISO(), doneToday = tasks.filter(t => t.completedOn === today).length;
+  const od = open.filter(isOverdue), dueToday = open.filter(t => t.dueDate === today);
+  $('stActive').textContent = open.length; $('stToday').textContent = doneToday;
+  $('stOverdue').textContent = od.length; $('stOverdueBox').classList.toggle('warn', od.length > 0); $('stOverdueBox').classList.add('hidden');   // the message above already says it
+  const h = new Date().getHours();
+  $('tGreet').textContent = h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  $('tDayLbl').textContent = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+  const left = od.length + dueToday.length, total = left + doneToday, pct = total ? doneToday / total : 0;
+  $('tArc').style.strokeDashoffset = String(125.66 * (1 - pct));
+  $('tRingN').textContent = total ? `${doneToday}/${total}` : doneToday ? '✓' : '—';
+  $('tRing').classList.toggle('full', total > 0 && !left);
+  $('tRing').setAttribute('aria-label', total ? `${doneToday} of ${total} done for today` : 'Nothing due today');
+  $('tMsg').innerHTML = od.length ? `<span class="warn">${od.length} overdue</span>${dueToday.length ? ` and ${dueToday.length} due today` : ''} — clear one first.`
+    : dueToday.length ? `${dueToday.length} left for today.${doneToday ? ' Keep going.' : ''}`
+    : doneToday ? 'All clear for today. Well done.'
+    : open.length ? 'Nothing due today — pick one below.' : 'Nothing open. Add one below.';
+  $('tHero').classList.toggle('all-clear', !left && doneToday > 0);
+  // last 7 days
+  const days = []; for (let i = 6; i >= 0; i--) days.push(addDays(-i));
+  const cnt = {}; tasks.forEach(t => { if (t.completedOn) cnt[t.completedOn] = (cnt[t.completedOn] || 0) + 1; });
+  const max = Math.max(1, ...days.map(d => cnt[d] || 0));
+  $('tWeek').innerHTML = days.map(d => { const n = cnt[d] || 0, wd = new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'narrow' });
+    return `<div class="${d === today ? 'on' : ''}" title="${n} done"><i style="height:${n ? Math.max(8, Math.round(n / max * 30)) : 3}px"></i><small>${wd}</small></div>`; }).join('');
+  const st = taskStreak(new Set(Object.keys(cnt)));
+  $('tStreak').classList.toggle('hidden', st < 2); $('tStreak').textContent = `🔥 ${st}-day streak`;
+  // up next: the one task to do now
+  const pick = [...od, ...dueToday].sort((a, b) => isOverdue(b) - isOverdue(a) || prioRank[a.priority] - prioRank[b.priority] || (a.dueDate || '').localeCompare(b.dueDate || ''))[0]
+    || open.filter(t => t.status === 'inprogress').sort(byDueThenPrio)[0];
+  const f = $('tFocus');
+  if (!pick) { f.innerHTML = ''; return; }
+  const late = isOverdue(pick);
+  f.innerHTML = `<div class="t-focus${late ? ' od' : ''}" role="button" tabindex="0" id="tfOpen"><div class="tf-main"><small>${late ? 'Overdue · do this first' : pick.status === 'inprogress' ? 'In progress' : 'Up next'}</small><b>${esc(pick.title)}</b>
+    <div class="tf-sub">${esc(pick.priority)} priority${pick.dueDate ? ' · ' + relDay(pick.dueDate) : ''}${pick.dueTime ? ' ' + fmtTime12(pick.dueTime) : ''}</div></div><button class="tf-done" id="tfDone">✓ Done</button></div>`;
+  $('tfDone').addEventListener('click', e => { e.stopPropagation(); completeWithUndo(pick.id); });
+  $('tfOpen').addEventListener('click', () => previewTask(pick.id));
+}
+function quickTaskAdd(raw) {
+  const q = parseQuickAdd(raw || ''); if (!q.title) return null;
+  const g = classify(q.title);
+  return newTask({ title: q.title, category: fixCat(q.category || g.category), priority: q.priority || g.priority, dueDate: q.dueDate || null, dueTime: q.dueTime || undefined });
+}
+if ($('tQuickForm')) {
+  const hint = () => { const v = $('tQuick').value, q = parseQuickAdd(v);
+    $('tQuickHint').innerHTML = v.trim() && q.title ? `<b>${esc(q.title)}</b> · ${esc(q.priority || classify(q.title).priority)}${q.dueDate ? ' · 📅 ' + relDay(q.dueDate) : ''}${q.dueTime ? ' ' + fmtTime12(q.dueTime) : ''}` : ''; };
+  $('tQuick').addEventListener('input', hint);
+  $('tQuickForm').addEventListener('submit', e => { e.preventDefault(); const t = quickTaskAdd($('tQuick').value); if (!t) { $('tQuick').focus(); return; }
+    $('tQuick').value = ''; hint(); toast(`Added: ${t.title.slice(0, 40)}${t.dueDate ? ' · ' + relDay(t.dueDate) : ''}`, 'Undo', () => softDelete(t.id)); });
 }
 
 /* ---------- task preview (read-only) ---------- */
@@ -1299,7 +1379,6 @@ function previewTask(id) {
   $('tvBody').innerHTML = `
     <h2 style="font-family:var(--serif);font-size:22px;margin:0 0 10px;line-height:1.3">${esc(t.title)}</h2>
     <div class="wrapchips" style="margin-bottom:14px">
-      <span class="stamp" style="background:${catColor(t.category)}">${esc(t.category)}</span>
       <span class="pill" style="color:${PRIO_COLOR[t.priority]}">${esc(t.priority)}</span>
       ${t.dueDate ? `<span class="pill ${isOverdue(t) ? 'neg' : ''}">📅 ${relDay(t.dueDate)}${t.dueTime ? ' ' + fmtTime12(t.dueTime) : ''}${isOverdue(t) ? ' · overdue' : ''}</span>` : ''}
       ${t.status === 'inprogress' ? '<span class="pill">◐ in progress</span>' : ''}${t.status === 'waiting' ? `<span class="pill">⏳ waiting${t.waitingOn ? ' on ' + esc(t.waitingOn) : ''}${t.waitingSince ? ' · ' + waitAge(t) : ''}</span>` : ''}${t.status === 'done' ? `<span class="pill pos">✓ done ${fmtDate(t.completedOn)}</span>` : ''}
@@ -1408,8 +1487,8 @@ $('teDelete').addEventListener('click', () => { const id = editTaskId; Sheets.cl
 $('teRefile').addEventListener('click', () => {
   clearTimeout(teTimer); teSave();                                         // keep what was typed in the last moment
   const t = records[editTaskId]; const g = classify(t.title);
-  t.category = g.category; t.priority = g.priority; put(t, { render: false }); openTaskEditor(t.id);
-  toast(g.matched ? `Re-filed under ${g.category}.` : 'No strong match — left as Work.');
+  t.priority = g.priority; put(t, { render: false }); openTaskEditor(t.id);
+  toast(`Priority set to ${g.priority}.`);
 });
 $('teTemplate').addEventListener('click', () => {
   const t = records[editTaskId]; teSave();
@@ -1422,7 +1501,7 @@ $('teTemplate').addEventListener('click', () => {
 function openTemplates() {
   const tpls = all('template');
   $('tplList').innerHTML = tpls.length ? tpls.map(t => `<div class="row"><div class="row-main"><div class="row-title">${esc(t.title)}</div>
-      <div class="row-sub"><span><i class="cat-dot" style="background:${catColor(t.category)}"></i> ${esc(t.category)}</span><span>${esc(t.priority)}</span>${(t.subs || []).length ? `<span>${t.subs.length} steps</span>` : ''}</div></div>
+      <div class="row-sub"><span>${esc(t.priority)}</span>${(t.subs || []).length ? `<span>${t.subs.length} steps</span>` : ''}</div></div>
       <div class="row-end"><button class="btn small" data-use="${t.id}">Use</button><button class="icon-btn" data-tdel="${t.id}" aria-label="Delete template">✕</button></div></div>`).join('')
     : '<div class="empty">No templates yet.</div>';
   $$('[data-use]', $('tplList')).forEach(b => b.addEventListener('click', () => {
@@ -1984,6 +2063,8 @@ function openDate(id) {
   $('deCat').innerHTML = dateCats().map(c => `<option value="${c[0]}"${c[0] === dateCat(d) ? ' selected' : ''}>${c[2]} ${esc(c[1])}</option>`).join('');
   const w = d.when ? isoLocal(nextOccurrence(d)) : '', age = w ? dateAge(d, w) : '';
   $('deInfo').textContent = w ? `Next: ${fmtDate(w, true)} (${inDays(daysTo(w))})${age ? ', ' + age : ''}${d.docRef && records[d.docRef] ? ' · linked to the document “' + records[d.docRef].title + '”' : ''}` : 'No date yet — pick one above.';
+  $('deIcs').textContent = inCal(d) ? `✓ In iPhone Calendar (sent ${fmtDate(d.calOn)}) — send again` : '📅 Add to iPhone Calendar (reminds you)';
+  const tk = dateTask(d); $('deTask').textContent = tk ? '☑ In Tasks — open it' : '☑ Add as a task'; $('deTask').disabled = !d.when && !tk;
   Sheets.open('shDate');
 }
 $('deSave').addEventListener('click', () => {
@@ -1993,6 +2074,7 @@ $('deSave').addEventListener('click', () => {
   put(d); Sheets.close('shDate'); toast('Saved.');
 });
 $('deDelete').addEventListener('click', () => { const id = editDateId; Sheets.close('shDate', true); deleteWithUndo(id); });
+$('deTask').addEventListener('click', () => { const d = records[editDateId]; if (!d) return; const tk = dateTask(d); Sheets.close('shDate', true); if (tk) { showTab('tasks'); openTaskEditor(tk.id); } else dateToTask(d.id); });
 
 /* ---------- bills ---------- */
 function billDueIn(b, ym) {
@@ -2089,7 +2171,7 @@ function settlePay(id, ym, status, typed) {
 function bulkPaid(id) {
   const b = records[id]; if (!b) return;
   const l = overduePeriods(b, isoMonth(new Date())); if (!l.length) return;
-  if (!confirm(`Mark ${l.length} earlier months of "${b.label}" as paid? They are not written into Money.`)) return;
+  if (!confirm(`Mark ${l.length} earlier months of "${b.label}" as paid? ${finUnlocked() ? ' They are not written into Money.' : ''}`)) return;
   const made = l.map(ym => put({ id: uid('bp'), type: 'billpay', billId: id, period: ym, status: 'paid', amount: b.amount || 0, paidOn: monthEnd(ym), bulk: true, deleted: false }, { render: false }).id);
   scheduleRender();
   toast(`${l.length} months marked paid.`, 'Undo', () => { made.forEach(x => softDelete(x, { render: false })); scheduleRender(); });
@@ -2262,7 +2344,7 @@ function openDocBase(id) {
   editDocId = id;
   $('doTitle').value = d.title; $('doWho').value = d.who || ''; $('docWhoDl').innerHTML = docPeople().map(p => `<option value="${esc(p)}">`).join(''); $('doNumber').value = d.number || ''; $('doExpiry').value = d.expiry || '';
   $('doNumber').disabled = false; $('doNumber').placeholder = '';
-  if (d.numEnc) { $('doNumber').disabled = true; $('doNumber').placeholder = Fin.key ? 'Opening…' : 'Locked — enter your private code to see or change';
+  if (d.numEnc) { $('doNumber').disabled = true; $('doNumber').placeholder = Fin.key ? 'Opening…' : 'Locked';
     if (Fin.key) docNumFull(d).then(n => { if (editDocId === id) { $('doNumber').value = n; $('doNumber').disabled = false; $('doNumber').placeholder = ''; if (Sheets.onOpen.shDoc) Sheets.onOpen.shDoc(); } })
       .catch(() => { if (editDocId === id) $('doNumber').placeholder = 'Locked under an older code — unchanged'; }); }
   $('doIssuer').value = d.issuer || ''; $('doNotes').value = d.notes || ''; $('doDueKind').innerHTML = dueKindOpts(d.dueKind);
@@ -2277,7 +2359,7 @@ function openDocBase(id) {
 $('doSave').addEventListener('click', async () => {
   const d = records[editDocId]; if (!d) return;
   const numLocked = $('doNumber').disabled || (d.lockFiles && !Fin.key);            // never store a locked document's number in the clear
-  if (numLocked && !$('doNumber').disabled && $('doNumber').value.trim() !== (d.number || '')) toast('The number was not changed — open Money first to edit a locked document\'s number.');
+  if (numLocked && !$('doNumber').disabled && $('doNumber').value.trim() !== (d.number || '')) toast('The number was not changed — it is locked.');
   d.title = $('doTitle').value.trim() || d.title; d.docType = chipValue($('doType')) || d.docType;
   if (!numLocked) { d.number = $('doNumber').value.trim(); if (!d.number) { delete d.numEnc; delete d.numTail; } } d.expiry = $('doExpiry').value || null; d.issuer = $('doIssuer').value.trim(); d.notes = $('doNotes').value;
   d.folder = $('doFolder').value.trim();
@@ -2433,7 +2515,7 @@ async function addDocFiles(docId, files) {
   const d = records[docId]; if (!d) return;
   const msg = $('doFileMsg');
   if (!driveOn()) { msg.className = 'msg err'; msg.textContent = 'Files are kept in your Google Drive folder. Set it in Settings (Drive folder), tap Test, then try again.'; return; }
-  if (d.lockFiles && !Fin.key) { msg.className = 'msg err'; msg.textContent = 'This document locks its files. Enter your private code first (tap "Register" three times).'; return; }
+  if (d.lockFiles && !Fin.key) { msg.className = 'msg err'; msg.textContent = 'This document locks its files — unlock first.'; return; }
   let ok = 0; const bad = [], fyPick = d.byYear ? $('doFileFy').value : null;   // read once: the editor may show another document before the uploads finish
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -2507,7 +2589,7 @@ $('doFileIn').addEventListener('change', e => { const files = [...e.target.files
 $('doLock').addEventListener('change', () => {
   const d = records[editDocId]; if (!d) return;
   const want = $('doLock').checked;
-  if (!Fin.key) { $('doLock').checked = !want; toast('Enter your private code first — tap "Register" three times.'); return; }
+  if (!Fin.key) { $('doLock').checked = !want; toast('Unlock first to change this.'); return; }
   d.lockFiles = want; put(d, { render: false });
   sealDocNumber(d).then(ch => { if (ch) put(d, { render: false }); });
   convertDocFiles(d);
@@ -2525,7 +2607,7 @@ function openDocView(id) {
     + (d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : '');
   const sh = $('dvNumShow'); if (sh) sh.addEventListener('click', async () => { const on = sh.textContent === 'Show';
     if (!on) { $('dvNum').textContent = docNumShown(d); sh.textContent = 'Show'; return; }
-    try { $('dvNum').textContent = await docNumFull(d); sh.textContent = 'Hide'; } catch (e) { toast('Locked — tap "Register" three times and enter your private code.'); } });
+    try { $('dvNum').textContent = await docNumFull(d); sh.textContent = 'Hide'; } catch (e) { toast('Locked.'); } });
   const cp = $('dvNumCopy'); if (cp) cp.addEventListener('click', async () => { try { await navigator.clipboard.writeText(await docNumFull(d)); toast('Number copied.'); } catch (e) { toast('Could not copy — tap Show and select it.'); } });
   const fs = docFilesOf(id);
   $('dvFiles').innerHTML = fs.length ? fs.map(f => `<figure class="dv-file" data-dvf="${f.id}"><figcaption>${f.locked ? '🔒 ' : ''}${esc(f.name)}</figcaption>
@@ -2724,7 +2806,7 @@ $('dsGo').addEventListener('click', async () => {
     }
   } catch (e) {
     $('dsGo').disabled = false; msg.className = 'msg err';
-    msg.textContent = e.code === 'LOCKED' ? 'Enter your private code first to share locked files.' : 'Could not prepare: ' + e.message; return;
+    msg.textContent = e.code === 'LOCKED' ? 'These files are locked — unlock first to share them.' : 'Could not prepare: ' + e.message; return;
   }
   if (AF_DS.mode === 'one' && files.length > 1) {
     msg.textContent = 'Combining into one PDF…';
@@ -2761,8 +2843,15 @@ $('dqAdd').addEventListener('click', () => {
    MONEY (private, encrypted) — ledger, udhaar by person, budgets
    ======================================================================== */
 let finMonth = isoMonth(new Date()), budMonth = isoMonth(new Date());
-const KINDS = [{ v: 'expense', l: 'Spent' }, { v: 'income', l: 'Received' }, { v: 'lent', l: 'Udhaar diya (lent)' }, { v: 'borrowed', l: 'Udhaar liya (borrowed)' }, { v: 'transfer', l: 'Transfer' }];
-const isUdhaar = k => k === 'lent' || k === 'borrowed';
+const KINDS = [{ v: 'expense', l: 'Spent' }, { v: 'income', l: 'Received' }, { v: 'lent', l: 'Udhaar diya (lent)' }, { v: 'borrowed', l: 'Udhaar liya (borrowed)' }, { v: 'paidby', l: 'Paid by someone' }, { v: 'transfer', l: 'Transfer' }];
+const isUdhaar = k => k === 'lent' || k === 'borrowed' || k === 'paidby';
+/* v2.20 "Paid by someone": your spending (counts in its category and budgets) that someone else paid for.
+   Stored as kind 'expense' + paidBy, with who / paidAmount / pays / settled like udhaar liya. No account moves
+   until you pay them back; each pay-back leaves the account it was paid from. */
+const isPaidBy = e => !!(e && e.kind === 'expense' && e.paidBy);
+const isUdh = e => !!e && (e.kind === 'lent' || e.kind === 'borrowed' || isPaidBy(e));   // an entry with money still open with a person
+const youOwe = e => !!e && (e.kind === 'borrowed' || isPaidBy(e));
+const uiKind = e => isPaidBy(e) ? 'paidby' : e.kind;
 const outstanding = e => Math.max(0, (e.amount || 0) - (e.paidAmount || 0));
 const people = () => [...new Set(all('fin').map(e => (e.who || '').trim()).filter(Boolean))].sort();
 function refreshPeopleList() {
@@ -2797,12 +2886,12 @@ $$('#moneySeg button').forEach(b => b.addEventListener('click', () => { setPref(
 function finRow(e, showDate) {
   const sign = e.kind === 'income' ? '+' : e.kind === 'expense' ? '−' : e.kind === 'transfer' ? '↔ ' : '';
   const cls = e.kind === 'income' ? 'pos' : e.kind === 'expense' ? 'neg' : '';
-  const part = isUdhaar(e.kind) && !e.settled && (e.paidAmount || 0) > 0;
+  const part = isUdh(e) && !e.settled && (e.paidAmount || 0) > 0;
   return swipeHtml(`<div class="row fin-row ${e.settled ? 'muted' : ''}">
     <div class="row-main"><div class="row-title">${esc(e.desc || '—')}${e.who ? ` <span class="muted">· ${esc(e.who)}</span>` : ''}</div>
-      <div class="row-sub">${showDate !== false ? `<span>${fmtDate(e.date)}</span>` : ''}${isUdhaar(e.kind) ? `<span class="pill">${e.kind === 'lent' ? 'lent' : 'borrowed'}</span>` : ''}
+      <div class="row-sub">${showDate !== false ? `<span>${fmtDate(e.date)}</span>` : ''}${isUdh(e) ? `<span class="pill">${e.kind === 'lent' ? 'lent' : isPaidBy(e) ? 'paid by ' + esc(e.who || 'someone') : 'borrowed'}</span>` : ''}
         ${e.category ? `<span><i class="cat-dot" style="background:${FIN_COLORS[e.category] || '#777'}"></i> ${esc(e.category)}</span>` : ''}${e.recurring ? '<span>🔁 monthly</span>' : ''}
-        ${finRoute(e)}${part ? `<span>${fmtMoney(e.paidAmount)} paid back</span>` : ''}${e.settled && isUdhaar(e.kind) ? '<span class="pos">settled</span>' : ''}</div></div>
+        ${finRoute(e)}${part ? `<span>${fmtMoney(e.paidAmount)} paid back</span>` : ''}${e.settled && isUdh(e) ? '<span class="pos">settled</span>' : ''}</div></div>
     <div class="row-end"><span class="amt ${cls}">${sign}${fmtMoney(e.amount)}</span></div></div>`, '', 'Delete 🗑', `data-fin="${e.id}"`);
 }
 function wireFinRows(root) {
@@ -2860,7 +2949,7 @@ function renderLedgerList() {
   const byDay = {};
   shown.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt).slice(0, LIMIT).forEach(e => (byDay[e.date] = byDay[e.date] || []).push(e));
   const days = Object.keys(byDay);
-  const sumOf = (L, k) => L.filter(e => e.kind === k).reduce((t, e) => t + (+e.amount || 0), 0), ud = shown.filter(e => isUdhaar(e.kind)).length;
+  const sumOf = (L, k) => L.filter(e => e.kind === k).reduce((t, e) => t + (+e.amount || 0), 0), ud = shown.filter(isUdh).length;
   $('finFSum').textContent = filtering ? (shown.length ? `${shown.length} entr${shown.length === 1 ? 'y' : 'ies'}${FQ.allMonths ? ' across all months' : ' this month'} · Spent ${fmtMoney(sumOf(shown, 'expense'))} · Received ${fmtMoney(sumOf(shown, 'income'))}${ud ? ` · ${ud} udhaar` : ''}${cut ? ` · showing the newest ${LIMIT}` : ''}` : '') : '';
   $('finFSum').classList.toggle('hidden', !$('finFSum').textContent);
   const dayHead = d => { const L = byDay[d], sp = sumOf(L, 'expense'), rc = sumOf(L, 'income');
@@ -2874,7 +2963,7 @@ function finFilterState() {
   const q = $('finQ').value.trim().toLowerCase(), cat = $('finCatF').value, kind = $('finKindF').value, allMonths = $('finAllM').checked;
   const match = e => (!q || (String(e.desc || '') + ' ' + String(e.who || '') + ' ' + String(e.category || '')).toLowerCase().includes(q))
     && (!cat || (cat === '__none' ? !e.category : e.category === cat))
-    && (!kind || (kind === 'udhaar' ? isUdhaar(e.kind) : e.kind === kind));
+    && (!kind || (kind === 'udhaar' ? isUdh(e) : e.kind === kind));
   return { q, cat, kind, allMonths, match, active: !!(q || cat || kind) };
 }
 function initFinFilter() {
@@ -2897,10 +2986,10 @@ $('finPrev').addEventListener('click', () => { finMonth = monthAdd(finMonth, -1)
 $('finNext').addEventListener('click', () => { finMonth = monthAdd(finMonth, 1); renderLedger(); });
 
 function renderUdhaar() {
-  const ud = all('fin').filter(e => isUdhaar(e.kind));
+  const ud = all('fin').filter(isUdh);
   const open = ud.filter(e => !e.settled);
   const owed = open.filter(e => e.kind === 'lent').reduce((s, e) => s + outstanding(e), 0);
-  const owe = open.filter(e => e.kind === 'borrowed').reduce((s, e) => s + outstanding(e), 0);
+  const owe = open.filter(youOwe).reduce((s, e) => s + outstanding(e), 0);
   $('udOwed').textContent = rsShort(owed); $('udOwe').textContent = rsShort(owe);
   { const u = owed - owe; $('udNet').textContent = (u < 0 ? '−' : u > 0 ? '+' : '') + rsShort(Math.abs(u)); $('udNet').className = 'n ' + (u < 0 ? 'neg' : u > 0 ? 'pos' : ''); }   // v2.19: moved here from the Ledger
   const byP = {};
@@ -2912,7 +3001,7 @@ function renderUdhaar() {
         <div class="row-main"><div class="row-title">${esc(p)}</div><div class="row-sub">${bal >= 0 ? 'owes you' : 'you owe'} · ${list.length} entr${list.length > 1 ? 'ies' : 'y'}</div></div>
         <span class="amt ${bal >= 0 ? 'pos' : 'neg'}">${fmtMoney(bal)}</span></div>
       <div class="person-lines">${list.sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(e => `
-        <div class="pline"><span class="d">${fmtDate(e.date)} · ${esc(e.desc || '')}${(e.paidAmount || 0) > 0 ? ` · ${fmtMoney(e.paidAmount)} back` : ''}</span>
+        <div class="pline"><span class="d">${fmtDate(e.date)} · ${esc(e.desc || '')}${isPaidBy(e) ? ' (paid for you)' : ''}${(e.paidAmount || 0) > 0 ? ` · ${fmtMoney(e.paidAmount)} back` : ''}</span>
           <span class="amt ${e.kind === 'lent' ? 'pos' : 'neg'}" style="font-size:13.5px">${fmtMoney(outstanding(e))}</span>
           <button class="btn small ghost" data-settle="${e.id}">Settle</button><button class="icon-btn" data-fe="${e.id}" aria-label="Edit entry" style="width:32px;height:32px;font-size:14px">✎</button></div>`).join('')}
         ${list.length > 1 ? `<button class="linkbtn" data-settleall="${esc(p)}">Settle all with ${esc(p)}</button>` : ''}</div></div>`).join('')
@@ -3002,7 +3091,7 @@ $('bgSave').addEventListener('click', () => {
 });
 $('finCsvBtn').addEventListener('click', () => {
   const rows = [['Date', 'Description', 'Type', 'Category', 'Person', 'Amount', 'Paid back', 'Outstanding', 'Settled']];
-  all('fin').sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(e => rows.push([e.date, e.desc, e.kind, e.category || '', e.who || '', e.amount, e.paidAmount || 0, isUdhaar(e.kind) ? outstanding(e) : '', e.settled ? 'yes' : 'no']));
+  all('fin').sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(e => rows.push([e.date, e.desc, e.kind, e.category || '', e.who || '', e.amount, e.paidAmount || 0, isUdh(e) ? outstanding(e) : '', e.settled ? 'yes' : 'no']));
   const safe = c => typeof c === 'string' && /^[=+\-@\t\r]/.test(c) ? "'" + c : c;     // v2.18: Excel would run a cell that starts with = + - @ as a formula
   const csv = rows.map((r, i) => r.map(c => `"${String(c == null ? '' : i ? safe(c) : c).replace(/"/g, '""')}"`).join(',')).join('\n');
   shareOrDownload('﻿' + csv, 'register-ledger-' + todayISO() + '.csv', 'text/csv');
@@ -3189,6 +3278,9 @@ function ledgerFlows(c) {
   all('fin').forEach(e => {
     const a = +e.amount || 0, d = finDate(e), acct = e.acct || (e.kind !== 'transfer' && e.date && e.date.slice(0, 7) >= start ? dflt : null);
     if (e.kind === 'income') push(d, acct, a, 'inc', e);
+    else if (isPaidBy(e)) {                                                    // v2.20: no account at purchase; pay-backs leave the account they came from
+      (e.pays || []).forEach(p => push(p.date, p.acct || null, -(+p.amt || 0), 'udh', e));
+    }
     else if (e.kind === 'expense') push(d, acct, -a, 'exp', e);
     else if (e.kind === 'transfer') { push(d, e.acct, -a, 'out', e); push(d, e.to, a, 'in', e); }
     else if (e.kind === 'lent' || e.kind === 'borrowed') {
@@ -3203,7 +3295,7 @@ function ledgerFlows(c) {
 }
 function udhaarSplit() {
   let owed = 0, owe = 0;
-  all('fin').filter(e => isUdhaar(e.kind) && !e.settled).forEach(e => { if (e.kind === 'lent') owed += outstanding(e); else owe += outstanding(e); });
+  all('fin').filter(e => isUdh(e) && !e.settled).forEach(e => { if (e.kind === 'lent') owed += outstanding(e); else owe += outstanding(e); });
   return { owed, owe };
 }
 const bucketOf = k => k === 'cash' ? 'cash' : isInvest(k) ? 'invest' : k === 'card' ? 'card' : k === 'loan' ? 'loan' : 'bank';
@@ -3308,7 +3400,7 @@ function applyUdhPays(ref, who, acct, amt, date) {
   });
 }
 function udhaarNet() {
-  return all('fin').filter(e => isUdhaar(e.kind) && !e.settled).reduce((s, e) => s + (e.kind === 'lent' ? 1 : -1) * outstanding(e), 0);
+  return all('fin').filter(e => isUdh(e) && !e.settled).reduce((s, e) => s + (e.kind === 'lent' ? 1 : -1) * outstanding(e), 0);
 }
 
 /* ---------- planned items of a month ---------- */
@@ -3891,13 +3983,14 @@ function finAfterUnlock() {
 }
 
 /* ---------- balance check: "What was it?" ---------- */
+const udhKindIs = (e, kind) => kind === 'borrowed' ? youOwe(e) : e.kind === kind;
 function udhOpen(kind, who) {
-  return all('fin').filter(e => e.kind === kind && !e.settled && outstanding(e) > 0 && (e.who || '').trim().toLowerCase() === (who || '').trim().toLowerCase())
+  return all('fin').filter(e => udhKindIs(e, kind) && !e.settled && outstanding(e) > 0 && (e.who || '').trim().toLowerCase() === (who || '').trim().toLowerCase())
     .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
 }
 function udhPeople(kind) {
   const m = new Map();
-  all('fin').filter(e => e.kind === kind && !e.settled && outstanding(e) > 0 && (e.who || '').trim()).forEach(e => { const k = e.who.trim(); m.set(k, (m.get(k) || 0) + outstanding(e)); });
+  all('fin').filter(e => udhKindIs(e, kind) && !e.settled && outstanding(e) > 0 && (e.who || '').trim()).forEach(e => { const k = e.who.trim(); m.set(k, (m.get(k) || 0) + outstanding(e)); });
   return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 /* Money paid back on someone's oldest open udhaar entries (kind 'lent' = they pay you, 'borrowed' = you pay them). */
@@ -4228,7 +4321,7 @@ async function exportXlsx() {
       recurs().map(r => [r.name, r.kind, +r.amt, r.from ? acctName(r.from) : '', r.to ? acctName(r.to) : '', +r.every || 1, r.start, r.end || '', r.budget ? 'yes' : '', (r.steps || []).map(x => x.a + ' from ' + x.month).join('; ')])), [24, 10, 12, 20, 20, 8, 9, 9, 9, 30]);
   }
   add('Ledger', [['Date', 'Description', 'Type', 'Category', 'Account', 'To account', 'Person', 'Amount', 'Outstanding (udhaar)']].concat(
-    all('fin').sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(e => [e.date, e.desc, e.kind, e.category || '', e.acct ? acctName(e.acct) : '', e.to ? acctName(e.to) : '', e.who || '', +e.amount, isUdhaar(e.kind) ? outstanding(e) : ''])), [11, 30, 10, 12, 20, 20, 14, 12, 12]);
+    all('fin').sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(e => [e.date, e.desc, e.kind, e.category || '', e.acct ? acctName(e.acct) : '', e.to ? acctName(e.to) : '', e.who || '', +e.amount, isUdh(e) ? outstanding(e) : ''])), [11, 30, 10, 12, 20, 20, 14, 12, 12]);
   const out = X.write(wb, { bookType: 'xlsx', type: 'array' });
   shareOrDownload(out, 'register-money-' + todayISO() + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
@@ -4407,9 +4500,9 @@ function openEraseSetup() {
 }
 function openErase() {
   const r = eraseRec();
-  if (!r) { eraseSheet('Emergency erase', '<p class="hint" style="margin:0 4px">No erase code is set. First use "Set emergency erase code" in Settings (it asks for your private code).</p>'); return; }
+  if (!r) { eraseSheet('Emergency erase', '<p class="hint" style="margin:0 4px">No erase code is set. First use "Set emergency erase code" in Settings.</p>'); return; }
   const cloud = Sync.on();
-  eraseSheet('Emergency erase', `<div class="erase-warn"><b>This deletes all Register data</b> — tasks, notes, dates, documents and their files, Money, Plan and private notes. It cannot be undone from the app.</div>
+  eraseSheet('Emergency erase', `<div class="erase-warn"><b>This deletes all Register data</b> — tasks, notes, dates, documents and their files${finUnlocked() ? ', Money, Plan and private notes' : ' and everything else'}. It cannot be undone from the app.</div>
     <div class="group"><label class="switch-row"><span>Also erase the Google Sheet and Drive files<small>${cloud ? "Sheet rows are overwritten; Drive files go to Drive's bin. Your other devices clear their copy when they next sync." : 'Sync is not connected, so only this device can be erased.'}</small></span><input type="checkbox" class="sw" id="erCloud"${cloud ? ' checked' : ' disabled'}></label></div>
     <div class="field"><label>Erase code</label><input type="password" id="erCode" autocomplete="off"></div>
     <div class="field"><label>Type ERASE in capital letters</label><input id="erWord" autocapitalize="characters" autocomplete="off" autocorrect="off"></div>
@@ -4642,7 +4735,7 @@ async function runImport() {
   for (const id of toLock) { const d = records[id]; if (d && Fin.key) { try { await convertDocFiles(d); } catch (e) { RLOG.warn('import lock', e.message); } } }
   const unlockedIn = [...toLock].filter(id => docFilesOf(id).some(f => !f.locked)).length;
   scheduleRender(); go.disabled = false;
-  if (unlockedIn) bad.push(`${unlockedIn} locked document${unlockedIn > 1 ? 's' : ''} got files that are not locked yet — open Money, then "Finish locking" in that document`);
+  if (unlockedIn) bad.push(`${unlockedIn} locked document${unlockedIn > 1 ? 's' : ''} got files that are not locked yet — unlock, then "Finish locking" in that document`);
   m.className = bad.length ? 'msg err' : 'msg ok';
   m.textContent = `Imported ${ok} of ${total} files into ${pick.length} documents.` + (bad.length ? ' Not copied: ' + bad.slice(0, 8).join('; ') + (bad.length > 8 ? ` … and ${bad.length - 8} more.` : '') : ' Lock sensitive ones (Aadhaar, PAN…) from each document\'s editor.');
   toast(`Imported ${ok} files.`); renderTidyBtn();
@@ -5110,11 +5203,11 @@ function askAnswer(raw) {
   const dItem = d => ({ k: 'Doc', id: d.id, t: esc(d.title) + ' · <b>' + esc(docOwners(d).join(' & ')) + '</b>', s: d.expiry ? fmtDate(d.expiry, true) : '' });
   // ----- money (only with Money open) -----
   if (has(/\b(spent|spend|spending|expenses?|income|earned|received|salary|owes?|owed|udhaar|balance|balances|savings?)\b/)) {
-    if (!finUnlocked()) return ans('Open Money with your private code first — then ask again.');
+    if (!finUnlocked()) return isQ ? ans('I can answer things like:\n• When does Ruchi\'s passport expire?\n• Birthdays this month · What is coming up next week?\n• Which documents have no file? · Overdue tasks') : null;   // v2.20: nothing about Money while it is locked
     if (has(/\b(owes?|owed|udhaar)\b/)) {
       const names = [...who.flatMap(p => [p, ...Object.keys(PERSON_ALIAS).filter(k => PERSON_ALIAS[k] === p)]), ...words].map(w => w.toLowerCase());   // "Moni" finds entries saved as Ruchi, and the other way round
       const hitWho = s => { s = String(s || '').toLowerCase(); return names.some(w => s.split(/[^a-z0-9]+/).includes(w) || (w.length > 3 && s.includes(w))); };
-      const L = all('fin').filter(e => isUdhaar(e.kind) && !e.settled && outstanding(e) > 0 && (!names.length || hitWho(e.who)));
+      const L = all('fin').filter(e => isUdh(e) && !e.settled && outstanding(e) > 0 && (!names.length || hitWho(e.who)));
       if (!L.length) return ans('No open udhaar' + (who.length || words.length ? ' for ' + [...who, ...words].join(', ') : '') + '.');
       const by = {}; L.forEach(e => { const k = e.who || '—'; by[k] = (by[k] || 0) + (e.kind === 'lent' ? 1 : -1) * outstanding(e); });
       return ans(Object.entries(by).map(([p, v]) => v >= 0 ? `${p} owes you ${rs(v)}` : `You owe ${p} ${rs(-v)}`).join('\n'), L.slice(0, 12).map(e => ({ k: '₹', id: e.id, t: esc(e.desc || 'Udhaar') + ' · ' + esc(e.who || ''), s: rs(outstanding(e)) })));
@@ -5188,7 +5281,7 @@ function askAnswer(raw) {
     let L = all('note'); if (words.length) L = L.filter(n => words.some(w => (n.title + ' ' + n.text + ' ' + (n.folder || '')).toLowerCase().includes(w)));
     return ans(`${L.length} note${L.length === 1 ? '' : 's'}${words.length ? ' about "' + words.join(' ') + '"' : ''}.`, L.slice(0, 20).map(n => ({ k: 'Note', id: n.id, t: esc(n.title || 'Untitled'), s: n.folder || '' })));
   }
-  return isQ ? ans('I can answer things like:\n• When does Ruchi\'s passport expire?\n• Birthdays this month · What is coming up next week?\n• How much did I spend on food in August? · Who owes me udhaar?\n• Which documents have no file? · Overdue tasks') : null;
+  return isQ ? ans('I can answer things like:\n• When does Ruchi\'s passport expire?\n• Birthdays this month · What is coming up next week?\n' + (finUnlocked() ? '• How much did I spend on food in August? · Who owes me udhaar?\n' : '') + '• Which documents have no file? · Overdue tasks') : null;
 }
 
 /* ---------- Dates: categories, badge, Calendar ---------- */
@@ -5267,14 +5360,34 @@ function dateRows(list) {
   return list.map(d => { if (!d.when) return { d, w: null, days: null }; const w = nextOccurrence(d); return { d, w, days: Math.round((w - t0) / 86400000) }; })
     .sort((a, b) => (a.days == null) - (b.days == null) || (a.days < 0) - (b.days < 0) || (a.days || 0) - (b.days || 0) || a.d.label.localeCompare(b.d.label));
 }
-function dateRowHtml({ d, w, days }, showCat) {
+/* v2.20: a date sent to iPhone Calendar is marked, until its date, repeat or name changes */
+const calSig = d => `${d.when || ''}|${d.repeat || 'once'}|${d.label || ''}`;
+const inCal = d => !!(d && d.when && d.calSig && d.calSig === calSig(d));
+function markInCal(list) {
+  const t = todayISO();
+  list.forEach(x => { const d = records[x.id]; if (!d || d.deleted || d.type !== 'date') return; d.calSig = calSig(x); d.calOn = t; put(d, { render: false }); });
+  scheduleRender();
+}
+/* v2.20: a date as a task (due on the day it next falls); the date remembers it so it is not added twice */
+const dateTask = d => { const t = d && d.taskId && records[d.taskId]; return t && !t.deleted && t.status !== 'done' ? t : null; };
+function dateToTask(id) {
+  const d = records[id]; if (!d) return;
+  const have = dateTask(d);
+  if (have) { toast('Already in Tasks.', 'Open', () => { Sheets.closeAll(); showTab('tasks'); openTaskEditor(have.id); }); return; }
+  const w = d.when ? isoLocal(nextOccurrence(d)) : null;
+  const t = newTask({ title: d.label, dueDate: w, priority: 'Medium', notes: 'From Dates', fromDate: d.id });
+  d.taskId = t.id; put(d, { render: false }); scheduleRender();
+  toast(`Added to Tasks${w ? ' — due ' + relDay(w) : ''}.`, 'Change', () => { Sheets.closeAll(); showTab('tasks'); openTaskEditor(t.id); }, 7000);
+}
+function dateRowHtml({ d, w, days }, showCat, withTask) {
   const cat = dateCats().find(c => c[0] === dateCat(d)), age = w ? dateAge(d, isoLocal(w)) : '';
+  const tk = dateTask(d);
   return swipeHtml(`<div class="row">
       ${days == null ? '<div class="count past" aria-label="no date">?<small>no date</small></div>' : countHtml(days)}
       <div class="row-main"><div class="row-title">${esc(d.label)}</div>
         <div class="row-sub">${w ? `<span>${dateFmt(w, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>` : '<span class="warn">set the date</span>'}${age ? `<span>${age}</span>` : ''}
-        ${d.repeat && d.repeat !== 'once' ? `<span class="pill">${esc(d.repeat)}</span>` : ''}${showCat && cat ? `<span>${cat[2]} ${esc(cat[1])}</span>` : ''}</div></div>
-      <span class="chev">›</span></div>`, '', 'Delete 🗑', `data-date="${d.id}"`);
+        ${d.repeat && d.repeat !== 'once' ? `<span class="pill">${esc(d.repeat)}</span>` : ''}${showCat && cat ? `<span>${cat[2]} ${esc(cat[1])}</span>` : ''}${inCal(d) ? '<span class="pill cal-in">📅 in Calendar</span>' : ''}${tk ? '<span class="pill">☑ in Tasks</span>' : ''}</div></div>
+      ${withTask && w && !tk ? `<button class="d-task" data-dtask="${d.id}" aria-label="Add ${esc(d.label)} to Tasks">＋ Task</button>` : '<span class="chev">›</span>'}</div>`, '', 'Delete 🗑', `data-date="${d.id}"`);
 }
 function renderDatesBase() {
   if (!window.GHOST && (!Sync.on() || window.__synced)) { seedDates(); tidySeededExpiry(); syncAllDocDates(); dedupeSeedDates(); }   // a new device waits for its first sync
@@ -5282,8 +5395,8 @@ function renderDatesBase() {
   if (datePath && !cats.some(c => c[0] === datePath)) datePath = null;
   let list = [];
   if (!datePath) {
-    const days = +(prefs.dateBadgeDays || 7), soon = dateRows(dates.filter(d => d.when)).filter(x => x.days >= 0 && x.days <= 30);
-    home.innerHTML = `<div class="date-top">${soon.length ? `<div class="group-title">Coming up · next 30 days</div><div class="group" id="dateSoon">${soon.map(x => dateRowHtml(x, true)).join('')}</div>` : '<p class="hint" style="margin:0 4px 8px">Nothing in the next 30 days.</p>'}</div>`;
+    const days = +(prefs.dateBadgeDays || 7), soonN = +(prefs.dateSoonDays || 30), soon = dateRows(dates.filter(d => d.when)).filter(x => x.days >= 0 && x.days <= soonN);
+    home.innerHTML = `<div class="date-top">${soon.length ? `<div class="group-title">Coming up · next ${soonN} days</div><div class="group" id="dateSoon">${soon.map(x => dateRowHtml(x, true, true)).join('')}</div>` : `<p class="hint" style="margin:0 4px 8px">Nothing in the next ${soonN} days.</p>`}</div>`;
     home.innerHTML += `<div class="group-title" id="dateCatTitle" style="margin-top:4px">Categories</div><div class="folders">${cats.map(([k, n, i]) => { const own = dates.filter(d => dateCat(d) === k), set = own.filter(d => d.when).length, near = dateRows(own.filter(d => d.when)).filter(x => x.days >= 0 && x.days <= days).length;
       return `<button class="folder" data-dcat="${k}"><b>${i} ${esc(n)}</b><span>${own.length} · ${set} dated</span>${near ? `<small class="warn">${near} within ${days} days</small>` : ''}</button>`; }).join('')}</div>
       <div class="date-cat-actions"><button class="btn ghost small" id="dateNewCat">＋ New category</button><button class="btn ghost small" id="dateIcsAll">📅 All to iPhone Calendar</button><button class="btn ghost small" id="dateImp">⤓ Import / export (CSV)</button></div>`;
@@ -5295,7 +5408,7 @@ function renderDatesBase() {
   }
   $('dateList').innerHTML = list.map(x => dateRowHtml(x, !datePath)).join('') || (datePath ? '<div class="empty">Nothing here yet — tap “Add here”.</div>' : '');
   $('dateList').classList.toggle('hidden', !$('dateList').innerHTML);
-  $$('[data-date]', $('datesPane')).forEach(w => { const id = w.dataset.date; bindSwipe(w, null, () => deleteWithUndo(id)); onTap(w, () => openDate(id)); });
+  $$('[data-date]', $('datesPane')).forEach(w => { const id = w.dataset.date; bindSwipe(w, null, () => deleteWithUndo(id)); onTap(w, e => { if (e && e.target && e.target.closest('[data-dtask]')) { dateToTask(id); return; } openDate(id); }); });
   $$('[data-dcat]', home).forEach(b => b.addEventListener('click', () => { datePath = b.dataset.dcat; renderDates(); $('main').scrollTop = 0; }));
   $$('[data-dback]', home).forEach(b => b.addEventListener('click', () => { datePath = null; renderDates(); }));
   const on = (id, f) => { if ($(id)) $(id).addEventListener('click', f); };
@@ -5311,9 +5424,9 @@ function renderDatesBase() {
     if ((cfg.custom || []).some(x => x.k === datePath)) cfg.custom = cfg.custom.filter(x => x.k !== datePath); else cfg.hidden = [...new Set([...(cfg.hidden || []), datePath])];
     datePath = null; put(cfg); toast(`Deleted "${c[1]}".`);
   });
-  on('dateIcsAll', () => icsSave(dates.filter(d => d.when), 'Register dates'));
+  on('dateIcsAll', () => icsSaveNew(dates.filter(d => d.when), 'Register dates'));
   on('dateImp', openDateImport);
-  on('dateIcsCat', () => icsSave(dates.filter(d => d.when && dateCat(d) === datePath), (cats.find(x => x[0] === datePath) || [0, 'Dates'])[1]));
+  on('dateIcsCat', () => icsSaveNew(dates.filter(d => d.when && dateCat(d) === datePath), (cats.find(x => x[0] === datePath) || [0, 'Dates'])[1]));
 }
 function dateNearCount() {
   if (window.GHOST) return 0;
@@ -5334,7 +5447,7 @@ function dateNudge() {
   const n = +(prefs.dateBadgeDays || 7), L = dateRows(all('date').filter(d => d.when)).filter(x => x.days >= 0 && x.days <= n);
   if (!L.length) return;
   try { localStorage.setItem(key, today); } catch (e) {}
-  toast(`📅 ${L.slice(0, 2).map(x => `${x.d.label} (${inDays(x.days)})`).join(', ')}${L.length > 2 ? ` +${L.length - 2} more` : ''}`, 'See', () => { datePath = null; showTab('dates'); }, 8000);
+  toast(`📅 ${L.slice(0, 2).map(x => `${x.d.label} (${inDays(x.days)})`).join(', ')}${L.length > 2 ? ` +${L.length - 2} more` : ''}`, 'See', () => { datePath = null; showTab('dates'); }, 8000, { once: 'dateNudge' });
 }
 function icsTextOld(list) {
   const e = s => String(s).replace(/[\\;,]/g, m => '\\' + m).replace(/\n/g, '\\n'), stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
@@ -5348,10 +5461,18 @@ function icsTextOld(list) {
   });
   L.push('END:VCALENDAR'); return L.join('\r\n') + '\r\n';
 }
-function icsSave(list, name) {
+function icsSave(list, name, skipped) {
   if (!list.length) { toast('No dates filled in yet.'); return; }
   dl(new Blob([icsText(list)], { type: 'text/calendar' }), name.replace(/[\\/:*?"<>|]/g, '-') + '.ics');
-  toast(`${list.length} date${list.length > 1 ? 's' : ''} sent to Calendar — tap “Add All” if asked. Reminders: 9 AM the day before and 9 AM on the day.`, null, null, 7000);
+  markInCal(list);
+  toast(`${list.length} date${list.length > 1 ? 's' : ''} sent to Calendar${skipped ? ` (${skipped} already there, left out)` : ''} — tap “Add All” if asked. Reminders: 9 AM the day before and 9 AM on the day.`, null, null, 7000);
+}
+/* only the dates not sent before, so iPhone Calendar does not get them twice */
+function icsSaveNew(list, name) {
+  if (!list.length) { toast('No dates filled in yet.'); return; }
+  const fresh = list.filter(d => !inCal(d));
+  if (!fresh.length) { toast(`All ${list.length} are already in Calendar.`, 'Send all again', () => icsSave(list, name), 8000); return; }
+  icsSave(fresh, name, list.length - fresh.length);
 }
 $('deIcs').addEventListener('click', () => { const d = records[editDateId]; if (!d) return; const w = $('deWhen').value; if (!w) { toast('Set the date first.'); return; } icsSave([{ ...d, when: w, label: $('deLabel').value.trim() || d.label, repeat: $('deRepeat').value }], d.label); });
 $('setIconBadge').addEventListener('change', async () => {
@@ -5362,6 +5483,7 @@ $('setIconBadge').addEventListener('change', async () => {
   updateDateBadge();
 });
 $('setDateDays').addEventListener('change', () => { setPref('dateBadgeDays', +$('setDateDays').value); updateDateBadge(); });
+$('setDateSoon').addEventListener('change', () => { setPref('dateSoonDays', +$('setDateSoon').value); scheduleRender(); });
 setTimeout(dateNudge, 5000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { updateDateBadge(); setTimeout(dateNudge, 1500); } });
 
@@ -5369,7 +5491,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) { up
    v2.13
    ======================================================================== */
 /* ---------- quick actions: long-press +, and ?go= links (app shortcuts) ---------- */
-const QUICK = [['capture', '📥', 'Capture (sort later)'], ['spend', '₹', 'Add spend', true], ['note', '🗒', 'New note'], ['task', '☑︎', 'New task'], ['scan', '📷', 'Scan document'], ['date', '📅', 'Key date'], ['ask', '🔍', 'Ask / search']];
+const QUICK = [['capture', '📥', 'Capture (sort later)'], ['spend', '₹', 'Add spend', true], ['qlog', '#', 'Quick log', false, true], ['note', '🗒', 'New note'], ['task', '☑︎', 'New task'], ['scan', '📷', 'Scan document'], ['date', '📅', 'Key date'], ['ask', '🔍', 'Ask / search']];
 let pendingGo = null;
 function doQuick(k) {
   Sheets.closeAll();
@@ -5380,9 +5502,10 @@ function doQuick(k) {
   else if (k === 'date') { showTab('dates'); openAdd('date'); }
   else if (k === 'ask') openSearch();
   else if (k === 'capture') openCapture();
+  else if (k === 'qlog') openAdd('qlog');
 }
 function openQuick() {
-  $('qaGrid').innerHTML = QUICK.filter(q => !q[3] || finUnlocked()).map(([k, i, l]) => `<button data-qa="${k}"><b>${i}</b>${l}</button>`).join('');
+  $('qaGrid').innerHTML = QUICK.filter(q => (!q[3] || finUnlocked()) && (!q[4] || qlReady())).map(([k, i, l]) => `<button data-qa="${k}"><b>${i}</b>${l}</button>`).join('');
   $$('[data-qa]').forEach(b => b.addEventListener('click', () => doQuick(b.dataset.qa)));
   Sheets.open('shQuick');
 }
@@ -5464,7 +5587,7 @@ function reportData(from, to, label) {
   try { if (c && accts(true).some(a => a.kind === 'loan')) planCompute(c, asOf.slice(0, 7), 'actual').forEach(r => { if (r.ym >= from.slice(0, 7) && r.ym <= to.slice(0, 7)) interest += r.interest || 0; }); } catch (e) { RLOG.warn('report interest', e.message); }
   let bal = null;
   if (c && accts().length && asOf >= monthEnd(monthAdd(c.startMonth, -1))) { const B = balancesOn(c, asOf); bal = { B, rows: accts(true).filter(a => !a.archived || Math.abs(B.accts[a.id] || 0) >= 1).map(a => [a.name, bucketOf(a.kind), B.accts[a.id] || 0]) }; }
-  const udh = {}; all('fin').filter(e => isUdhaar(e.kind) && !e.settled && outstanding(e) > 0).forEach(e => { const k = e.who || '—'; udh[k] = (udh[k] || 0) + (e.kind === 'lent' ? 1 : -1) * outstanding(e); });
+  const udh = {}; all('fin').filter(e => isUdh(e) && !e.settled && outstanding(e) > 0).forEach(e => { const k = e.who || '—'; udh[k] = (udh[k] || 0) + (e.kind === 'lent' ? 1 : -1) * outstanding(e); });
   const invT = F.filter(e => e.kind === 'transfer').reduce((s, e) => { const T = acctById(e.to), Fr = acctById(e.acct); return s + (T && isInvest(T.kind) ? +e.amount || 0 : 0) - (Fr && isInvest(Fr.kind) ? +e.amount || 0 : 0); }, 0);   // SIPs moved into funds, as on the dashboard
   return { label, from, to, asOf, interest, inc: sum(inc), exp: sum(exp), inv: sum(inv) + invT, incBy: grp(inc, e => e.category && e.category !== 'Other' ? e.category : e.desc), expBy: grp(exp, e => e.category), top: exp.slice().sort((a, b) => b.amount - a.amount).slice(0, 12), bal, udh: Object.entries(udh).filter(x => Math.abs(x[1]) >= 1), n: F.length };
 }
@@ -5535,7 +5658,7 @@ function archCandidates(fy) {
     const c = planCfg(), start = c ? c.startMonth + '-01' : '9999';
     all('fin').filter(e => inFy((e.date || '').slice(0, 10))).forEach(e => {
       const pays = (e.pays || []).map(p => p.date || '');
-      const ok = e.date < start && pays.every(d => d < start) && !(isUdhaar(e.kind) && !e.settled && outstanding(e) > 0);
+      const ok = e.date < start && pays.every(d => d < start) && !(isUdh(e) && !e.settled && outstanding(e) > 0);
       ok ? fins.push(e) : blocked++;
     });
   }
@@ -5992,7 +6115,7 @@ async function editDocFile(fid) {
     }
     msg.textContent = '';
     Scan.openEdit(f, pages);
-  } catch (e) { msg.className = 'msg err'; msg.textContent = 'Could not open it for editing: ' + (e.code === 'LOCKED' ? 'enter your private code first' : e.message); }
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'Could not open it for editing: ' + (e.code === 'LOCKED' ? 'it is locked — unlock first' : e.message); }
 }
 Scan.openEdit = function (f, pages) {
   this.open(f.docId); this.replace = f; this.mode = 'orig'; this.pages = pages;
@@ -6046,7 +6169,7 @@ function inboxNudge() {
   const key = 'r2_inboxNudge', today = todayISO(); let last = ''; try { last = localStorage.getItem(key) || ''; } catch (e) {}
   if (last === today) return;
   try { localStorage.setItem(key, today); } catch (e) {}
-  toast(`📥 ${n} items are waiting in your Inbox.`, 'Sort now', openInbox, 9000);
+  toast(`📥 ${n} items are waiting in your Inbox.`, 'Sort now', openInbox, 9000, { once: 'inbox' });
 }
 function updateInboxBadge() {
   const b = $('tasksBadge'); if (!b) return;
@@ -6155,7 +6278,7 @@ $('docImportBtn').addEventListener('click', openImport);
 function lastAcct(kind) { try { return (JSON.parse(localStorage.getItem('r2_lastAcct') || '{}'))[kind] || null; } catch (e) { return null; } }
 function rememberAcct(kind, id) { try { const m = JSON.parse(localStorage.getItem('r2_lastAcct') || '{}'); m[kind] = id; localStorage.setItem('r2_lastAcct', JSON.stringify(m)); } catch (e) {} }
 const hasAccts = () => Fin.key && typeof accts === 'function' && accts().length > 0;
-const acctLabelFor = k => k === 'income' ? 'Received into' : k === 'expense' ? 'Paid from' : k === 'lent' ? 'Given from' : k === 'borrowed' ? 'Received into' : 'From';
+const acctLabelFor = k => k === 'income' ? 'Received into' : k === 'expense' ? 'Paid from' : k === 'lent' ? 'Given from' : k === 'borrowed' ? 'Received into' : k === 'paidby' ? 'Paying back from' : 'From';
 function acctPick(prefix, kind, acct, to) {
   const wrap = $(prefix + 'AcctWrap'); if (!wrap) return;
   const on = hasAccts(); wrap.classList.toggle('hidden', !on);
@@ -6184,7 +6307,7 @@ function backupNudge() {
     const last = +localStorage.getItem('r2_lastBackup') || 0, shown = +localStorage.getItem('r2_backupNudge') || 0, now = Date.now();
     if (now - last < 30 * 86400000 || now - shown < 3 * 86400000) return;
     localStorage.setItem('r2_backupNudge', String(now));
-    toast(last ? 'It has been over a month since your last backup.' : 'You have not downloaded a backup on this device yet.', 'Back up', () => $('setBackup').click(), 8000);
+    toast(last ? 'It has been over a month since your last backup.' : 'You have not downloaded a backup on this device yet.', 'Back up', () => $('setBackup').click(), 8000, { once: 'backup' });
   } catch (e) {}
 }
 $('setBackup').addEventListener('click', () => { try { localStorage.setItem('r2_lastBackup', String(Date.now())); } catch (e) {} });
@@ -6211,7 +6334,7 @@ function openFin(id) {
   $('feCat').innerHTML = ['', ...FIN_CATS].map(c => `<option value="${c}" ${c === (e.category || '') ? 'selected' : ''}>${c || '— none —'}</option>`).join('');
   $('fePaid').value = e.paidAmount || 0; $('feSettled').value = e.settled ? 'yes' : 'no'; $('feRecur').checked = !!e.recurring;
   const sync = k => { $('feWhoWrap').classList.toggle('hidden', !isUdhaar(k)); $('fePaidWrap').classList.toggle('hidden', !isUdhaar(k)); acctPick('fe', k, k === e.kind ? e.acct : null, e.to); };
-  chipGroup($('feKind'), KINDS, e.kind, sync); sync(e.kind);
+  chipGroup($('feKind'), KINDS, uiKind(e), sync); sync(uiKind(e));
   Sheets.open('shFin');
 }
 $('feSave').addEventListener('click', () => {
@@ -6221,12 +6344,14 @@ $('feSave').addEventListener('click', () => {
   { const p = calcAmount($('fePaid').value); if (isUdhaar(chipValue($('feKind')) || e.kind) && String($('fePaid').value).trim() && (isNaN(p) || p < 0)) { toast('"Paid back so far" is not an amount — nothing was saved.'); $('fePaid').focus(); return; } }
   if ((chipValue($('feKind')) || e.kind) === 'transfer' && !$('feAcctWrap').classList.contains('hidden') && $('feTo').value === $('feAcct').value) { toast('Pick two different accounts.'); return; }   // checked before anything changes
   e.amount = a;
-  e.kind = chipValue($('feKind')) || e.kind; e.desc = $('feDesc').value.trim(); e.who = $('feWho').value.trim();
+  { const k = chipValue($('feKind')) || uiKind(e); if (k === 'paidby') { e.kind = 'expense'; e.paidBy = 1; } else { e.kind = k; delete e.paidBy; } }
+  e.desc = $('feDesc').value.trim(); e.who = $('feWho').value.trim();
+  if (isPaidBy(e) && !e.who) { toast('Who paid for it? Add the name.'); $('feWho').focus(); return; }
   e.date = $('feDate').value || e.date; e.category = $('feCat').value; e.recurring = $('feRecur').checked;
   const oldPaid = +e.paidAmount || 0;
   e.paidAmount = Math.max(0, Math.min(calcAmount($('fePaid').value) || 0, e.amount)); e.settled = $('feSettled').value === 'yes';
   if (e.settled) e.paidAmount = e.amount;
-  if (isUdhaar(e.kind) && Math.abs(e.paidAmount - oldPaid) >= 0.005 && (e.pays || []).length + (hasAccts() ? 1 : 0) > 0) {   // keep the account side in step (B15)
+  if (isUdh(e) && Math.abs(e.paidAmount - oldPaid) >= 0.005 && (e.pays || []).length + (hasAccts() ? 1 : 0) > 0) {   // keep the account side in step (B15)
     let d = e.paidAmount - oldPaid; const pays = (e.pays || []).slice();
     if (d > 0) pays.push({ date: todayISO(), amt: +d.toFixed(2), acct: $('feAcctWrap').classList.contains('hidden') ? (pays.length ? pays[pays.length - 1].acct : null) : $('feAcct').value });
     else { d = -d; while (d > 0.005 && pays.length) { const q = pays[pays.length - 1]; if (+q.amt <= d + 0.005) { d -= +q.amt; pays.pop(); } else { q.amt = +((+q.amt - d).toFixed(2)); d = 0; } } }
@@ -6259,7 +6384,7 @@ function rollRecurringOld() {
    ======================================================================== */
 const ADD_TYPES = [
   { k: 'task', i: '☑︎', l: 'Task' }, { k: 'note', i: '🗒', l: 'Note' },
-  { k: 'date', i: '📅', l: 'Key date' }, { k: 'doc', i: '📁', l: 'Document' }, { k: 'money', i: '₹', l: 'Money', priv: true }
+  { k: 'date', i: '📅', l: 'Key date' }, { k: 'doc', i: '📁', l: 'Document' }, { k: 'money', i: '₹', l: 'Money', priv: true }, { k: 'qlog', i: '#', l: 'Quick log', ql: true }
 ];
 let addKind = 'task';
 const AF = {};          // per-form state (chip choices)
@@ -6288,7 +6413,8 @@ function openAdd(kind) {
   }
   if (kind === 'money' && !finUnlocked()) kind = 'task';
   addKind = kind;
-  $('addTypes').innerHTML = ADD_TYPES.filter(t => !t.priv || finUnlocked()).map(t =>
+  if (kind === 'qlog' && !qlReady()) kind = 'task';
+  $('addTypes').innerHTML = ADD_TYPES.filter(t => (!t.priv || finUnlocked()) && (!t.ql || qlReady())).map(t =>
     `<button data-k="${t.k}" class="${t.k === kind ? 'on' : ''}" aria-pressed="${t.k === kind}"><b>${t.i}</b>${t.l}</button>`).join('');
   $$('#addTypes button').forEach(b => b.addEventListener('click', () => { addKind = b.dataset.k; $$('#addTypes button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); renderAddForm(true); }));
   renderAddForm(true);
@@ -6310,7 +6436,7 @@ function dueChips(el, val, onPick) {
   chipGroup(el, opts, opts.some(o => o.v === val) ? val : 'pick', v => onPick(v));
 }
 
-function renderAddForm(focus) { Dictate.stop(); renderAddForm0(focus); ['afTitle', 'afBody'].forEach(i => { if ($(i) && addKind !== 'money') addMic($(i)); }); }
+function renderAddForm(focus) { Dictate.stop(); renderAddForm0(focus); ['afTitle', 'afBody'].forEach(i => { if ($(i) && addKind !== 'money' && addKind !== 'qlog') addMic($(i)); }); }
 function renderAddForm0(focus) {
   const f = $('addForm'); Object.keys(AF).forEach(k => delete AF[k]);
   const k = addKind;
@@ -6320,11 +6446,10 @@ function renderAddForm0(focus) {
       <div class="guess" id="afGuess"></div>
       <div class="field" style="margin-top:12px"><label>Due</label><div class="wrapchips" id="afDue"></div>
         <input type="date" id="afDate" class="hidden" style="margin-top:8px"></div>
-      <div class="field"><label>Category</label><div class="wrapchips" id="afCat"></div></div>
       <div class="field"><label>Priority</label><div class="wrapchips" id="afPrio"></div></div>
       <button class="linkbtn" id="afTpl">⧉ Start from a template</button>`;
     AF.due = ''; AF.cat = 'auto'; AF.prio = 'auto';
-    $('afSyntax').innerHTML = ['#work', '#personal', '#finance', '#errands', '!high', '!low', '@today', '@tomorrow', '@mon', '@15sep'].map(s => `<button class="chip" style="padding:5px 10px;font-size:13px">${s}</button>`).join('');
+    $('afSyntax').innerHTML = ['!high', '!low', '@today', '@tomorrow', '@mon', '@15sep'].map(s => `<button class="chip" style="padding:5px 10px;font-size:13px">${s}</button>`).join('');
     $$('#afSyntax .chip').forEach(c => c.addEventListener('click', () => {
       const tok = c.textContent, inp = $('afTitle'); let v = inp.value;
       if (tok[0] === '#') v = v.replace(/#\w+/g, ''); else if (tok[0] === '!') v = v.replace(/![a-z]+/gi, ''); else v = v.replace(/@\S+/g, '');
@@ -6332,12 +6457,21 @@ function renderAddForm0(focus) {
     }));
     dueChips($('afDue'), '', v => { if (v === 'pick') { $('afDate').classList.remove('hidden'); $('afDate').focus(); AF.due = $('afDate').value; } else { $('afDate').classList.add('hidden'); AF.due = v; } taskGuess(); });
     $('afDate').addEventListener('change', () => { AF.due = $('afDate').value; taskGuess(); });
-    chipGroup($('afCat'), [{ v: 'auto', l: 'Auto' }, ...CATS.map(c => ({ v: c, l: c }))], 'auto', v => { AF.cat = v; taskGuess(); }, c => c === 'auto' ? 'var(--ink-faint)' : catColor(c));
     chipGroup($('afPrio'), [{ v: 'auto', l: 'Auto' }, ...PRIOS.map(p => ({ v: p, l: p }))], 'auto', v => { AF.prio = v; taskGuess(); }, p => p === 'auto' ? 'var(--ink-faint)' : PRIO_COLOR[p]);
     $('afTitle').addEventListener('input', taskGuess);
     $('afTitle').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveAdd(true); } });
     $('afTpl').addEventListener('click', openTemplates);
     taskGuess();
+  } else if (k === 'qlog') {
+    f.innerHTML = `<div class="field"><label>Value</label><input id="afQlVal" inputmode="decimal" placeholder="0" autocomplete="off" aria-label="Value"></div>
+      <div class="field"><label>Note</label><input id="afTitle" placeholder="What it is" autocomplete="off" enterkeyhint="done"></div>
+      <div class="field"><label>When</label><div class="wrapchips" id="afWhen"></div><input type="date" id="afDate" class="hidden" style="margin-top:8px"></div>`;
+    AF.when = todayISO();
+    chipGroup($('afWhen'), [{ v: todayISO(), l: 'Today' }, { v: addDays(-1), l: 'Yesterday' }, { v: 'pick', l: 'Pick…' }], AF.when, v => {
+      if (v === 'pick') { $('afDate').classList.remove('hidden'); $('afDate').value = AF.when; } else { $('afDate').classList.add('hidden'); AF.when = v; } });
+    $('afDate').addEventListener('change', () => { AF.when = $('afDate').value || todayISO(); });
+    wireCalc($('afQlVal'));
+    $('afTitle').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveAdd(false); } });
   } else if (k === 'note') {
     f.innerHTML = `<div class="field"><input id="afTitle" placeholder="Title (optional)" autocomplete="off"></div>
       <div class="field"><textarea id="afBody" rows="7" placeholder="Write or paste anything… markdown works"></textarea></div>
@@ -6382,13 +6516,13 @@ function renderAddForm0(focus) {
       <div class="guess" id="afAmtHint" style="text-align:center"></div>
       <div class="field" style="margin-top:10px"><div class="wrapchips" id="afKind"></div></div>
       <div class="field"><label>For</label><input id="afTitle" list="descDl" placeholder="What was it?" autocomplete="off"><datalist id="descDl">${descs.map(d => `<option value="${esc(d)}">`).join('')}</datalist></div>
-      <div class="field hidden" id="afWhoWrap"><label>Person</label><input id="afWho" list="peopleDl" placeholder="Who?" autocomplete="off"></div>
+      <div class="field hidden" id="afWhoWrap"><label id="afWhoLbl">Person</label><input id="afWho" list="peopleDl" placeholder="Who?" autocomplete="off"></div>
       <div class="grid2 hidden" id="afAcctWrap"><div class="field"><label id="afAcctLbl">Paid from</label><select id="afAcct"></select></div><div class="field hidden" id="afToWrap"><label>To</label><select id="afTo"></select></div></div>
       <div class="field" id="afCatWrap"><label>Category</label><div class="wrapchips" id="afCat"></div></div>
       <div class="field"><label>Date</label><div class="wrapchips" id="afWhen"></div><input type="date" id="afDate" class="hidden" style="margin-top:8px"></div>
       <div class="group"><label class="switch-row">Repeats every month<input type="checkbox" class="sw" id="afRecur"></label></div>`;
     AF.kind = 'expense'; AF.cat = ''; AF.when = todayISO();
-    const kindChips = sel => chipGroup($('afKind'), KINDS, sel, v => { AF.kind = v; $('afWhoWrap').classList.toggle('hidden', !isUdhaar(v)); acctPick('af', v); });
+    const kindChips = sel => chipGroup($('afKind'), KINDS, sel, v => { AF.kind = v; $('afWhoWrap').classList.toggle('hidden', !isUdhaar(v)); acctPick('af', v); if (v === 'paidby') $('afAcctWrap').classList.add('hidden'); { const g = $('afRecur') && $('afRecur').closest('.group'); if (g) g.classList.toggle('hidden', v === 'paidby'); } $('afWhoLbl') && ($('afWhoLbl').textContent = v === 'paidby' ? 'Who paid for it' : 'Person'); });
     kindChips('expense');
     acctPick('af', 'expense');
     const catChips = sel => chipGroup($('afCat'), [{ v: '', l: 'None' }, ...FIN_CATS.map(c => ({ v: c, l: c }))], sel, v => { AF.cat = v; AF.catTouched = true; }, c => FIN_COLORS[c]);
@@ -6403,12 +6537,12 @@ function renderAddForm0(focus) {
     AF.fill = (x) => {
       $('afAmt').value = x.amount > 0 ? x.amount : ''; $('afAmt').dispatchEvent(new Event('input'));
       $('afTitle').value = x.desc || ''; $('afWho').value = x.who || '';
-      AF.kind = x.kind || 'expense'; kindChips(AF.kind); $('afWhoWrap').classList.toggle('hidden', !isUdhaar(AF.kind)); acctPick('af', AF.kind, x.acct || null, x.to || null);
+      AF.kind = x.kind === 'expense' && x.paidBy ? 'paidby' : x.kind || 'expense'; kindChips(AF.kind); $('afWhoWrap').classList.toggle('hidden', !isUdhaar(AF.kind)); acctPick('af', AF.kind, x.acct || null, x.to || null); if (AF.kind === 'paidby') $('afAcctWrap').classList.add('hidden');
       AF.cat = x.kind === 'transfer' ? '' : (x.cat || ''); AF.catTouched = !!x.cat; catChips(AF.cat);
       AF.when = x.date || todayISO();
       if (AF.when === todayISO() || AF.when === addDays(-1)) whenChips(AF.when); else { whenChips('pick'); $('afDate').classList.remove('hidden'); $('afDate').value = AF.when; }
     };
-    $$('[data-rec]', f).forEach(b => b.addEventListener('click', () => { const e = recent[+b.dataset.rec]; AF.fill({ amount: e.amount, kind: e.kind, desc: e.desc, who: e.who, acct: e.acct, to: e.to, cat: e.category, date: todayISO() }); $('afAmt').focus(); toast('Filled in — change anything, then Save.'); }));
+    $$('[data-rec]', f).forEach(b => b.addEventListener('click', () => { const e = recent[+b.dataset.rec]; AF.fill({ amount: e.amount, kind: e.kind, paidBy: e.paidBy, desc: e.desc, who: e.who, acct: e.acct, to: e.to, cat: e.category, date: todayISO() }); $('afAmt').focus(); toast('Filled in — change anything, then Save.'); }));
     const qHint = () => { const v = $('afQuick').value, q = parseMoneyLine(v);
       $('afQuickHint').innerHTML = !v.trim() ? 'Type it as you say it — amount first or last. @account, #category, yday or 15sep work too.'
         : q.error ? esc(q.error) : `${moneyLineText(q)} <button type="button" id="afQuickFill">Edit first</button>`;
@@ -6424,7 +6558,7 @@ function renderAddForm0(focus) {
     $('afQuickGo').addEventListener('click', quickSave);
     $('afQuick').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); quickSave(); } });
   }
-  const first = f.querySelector(k === 'money' ? '#afQuick' : '#afTitle');
+  const first = f.querySelector(k === 'money' ? '#afQuick' : k === 'qlog' ? '#afQlVal' : '#afTitle');
   if (focus && first) setTimeout(() => first.focus(), 320);
 }
 
@@ -6463,6 +6597,10 @@ function saveAdd(another) {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
     put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, who: normWho(v('afDocWho')), dueKind: $('afDueKind') ? $('afDueKind').value : 'expiry', deleted: false }); { const nd = all('doc').sort((a, b) => b.createdAt - a.createdAt)[0]; if (nd && nd.expiry) { syncDocDate(nd); toast('Document added — the ' + dueWord(nd.dueKind) + ' is in Dates too.'); } }
     toast(docFolderForNew() ? 'Document added to ' + docFolderForNew() + '.' : 'Document added.');
+  } else if (k === 'qlog') {
+    const val = calcAmount(v('afQlVal'));
+    if (isNaN(val) || !(val > 0)) { $('afQlVal').focus(); return; }
+    quickLogSave(Math.round(val * 100) / 100, v('afTitle'), AF.when || todayISO()).then(ok => toast(ok ? 'Logged.' : 'Could not log — try again.'), e => { RLOG.error('quick log', e); toast('Could not log — try again.'); });
   } else if (k === 'money') {
     const useAcct = !$('afAcctWrap').classList.contains('hidden');
     const rec = saveMoneyEntry({ amount: calcAmount(v('afAmt')), kind: AF.kind, desc: v('afTitle'), who: v('afWho'), cat: AF.kind === 'transfer' ? '' : AF.cat || '',
@@ -6515,7 +6653,7 @@ function hl(text, q) {
 }
 function runSearchBase() {
   const q = $('searchIn').value.trim().toLowerCase(), box = $('searchRes');
-  if (!q) { box.innerHTML = '<div class="empty">Type to search tasks, steps, notes, dates and documents (try “aadhar ruchi”), or ask: “when does Ruchi\'s passport expire?”, “birthdays this month”, “spent on food in August”' + (finUnlocked() ? ' — and Money' : '') + '.</div>'; return; }
+  if (!q) { box.innerHTML = '<div class="empty">Type to search tasks, steps, notes, dates and documents (try “aadhar ruchi”), or ask: “when does Ruchi\'s passport expire?”, “birthdays this month”' + (finUnlocked() ? ', “spent on food in August” — and Money' : '') + '.</div>'; return; }
   const hits = [], has = s => String(s || '').toLowerCase().includes(q);
   all('task').forEach(t => {
     if (has(t.title)) hits.push({ k: 'Task', id: t.id, t: hl(t.title, q), s: t.status === 'done' ? 'done' : relDay(t.dueDate) });
@@ -6690,11 +6828,11 @@ const VaultLimit = {
   say(ms) { const s = Math.ceil(ms / 1000); return s >= 60 ? Math.ceil(s / 60) + ' min' : s + ' sec'; }
 };
 function afterFinanceUnlock() {
-  $('moneyTab').classList.remove('hidden');
+  $('moneyTab').classList.remove('hidden'); document.documentElement.classList.add('fin-open');
   if (typeof finAfterUnlock === 'function') finAfterUnlock();
   sealDocNumbers();
   setTimeout(() => AutoBackup.maybe(), 4000);
-  if (Fin.codeLen && Fin.codeLen < FIN_MIN_CODE && !window.__shortCodeNag) { window.__shortCodeNag = true; setTimeout(() => toast(`Your private code is short and could be guessed. Change it to ${FIN_MIN_CODE}+ characters — a short phrase works well.`, 'Change', () => openVault('change'), 9000), 2500); }
+  if (Fin.codeLen && Fin.codeLen < FIN_MIN_CODE && !window.__shortCodeNag) { window.__shortCodeNag = true; setTimeout(() => toast(`Your private code is short and could be guessed. Change it to ${FIN_MIN_CODE}+ characters — a short phrase works well.`, 'Change', () => openVault('change'), 9000, { once: 'shortCode' }), 2500); }
   flushPendingPosts(); healFileKeys(); rollAfterSync(); settleErasedWin().catch(e => RLOG.warn('erased win', e.message)); if (typeof syncAllAcctDates === 'function') setTimeout(() => { try { syncAllAcctDates(); } catch (e) { RLOG.warn('acct dates', e.message); } }, 2500); setTimeout(() => { try { sweepOrphans(); } catch (e) { RLOG.warn('sweep', e.message); } }, 8000); setTimeout(backupNudge, 1500);
   if (pendingGo === 'spend') { pendingGo = null; setTimeout(() => { showTab('money'); openAdd('money'); }, 350); }
   if (pendingAfterUnlock) { const f = pendingAfterUnlock; pendingAfterUnlock = null; docReturn = null; setTimeout(() => { try { f(); } catch (e) { RLOG.error('after unlock', e); } }, 350); return; }
@@ -6795,13 +6933,13 @@ function openSettings() {
   $('setBio').classList.toggle('hidden', !finUnlocked() || !Bio.supported()); $('setBioV').textContent = Bio.on() ? 'On' : 'Off';
   ['setAutoBkRow', 'setAutoBkNow', 'setAutoBkTest', 'setBackupEnc'].forEach(i => $(i).classList.toggle('hidden', !finUnlocked()));
   { const w = securityChecks().filter(c => c.state === 'warn').length; $('setSecCheckV').textContent = w ? w + ' to review' : '✓'; }
-  $('setIconBadge').checked = !!prefs.iconBadge; $('setDateDays').value = String(prefs.dateBadgeDays || 7);
+  $('setIconBadge').checked = !!prefs.iconBadge; $('setDateDays').value = String(prefs.dateBadgeDays || 7); $('setDateSoon').value = String(prefs.dateSoonDays || 30);
   $('setBioDiag').classList.add('hidden'); if (finUnlocked() && Bio.supported()) bioDiag().then(s => { if (s) { $('setBioDiag').textContent = s; $('setBioDiag').classList.remove('hidden'); } });
   $('setDictLang').value = prefs.dictLang || 'en-IN';
   $('setAutoBk').checked = !!prefs.autoBackup; $('setAutoBkInfo').textContent = AutoBackup.info();
   $('setUrl').value = prefs.cloudUrl; $('setToken').value = prefs.cloudToken; $('setDrive').value = prefs.driveFolder;
   $('setTheme').value = prefs.theme; $('setText').value = prefs.text; $('setContrast').checked = !!prefs.contrast; $('setLeft').checked = !!prefs.left;
-  $('setStart').value = prefs.startTab; $('setSteps').checked = !!prefs.stepsOpen; $('setNoteEdit').checked = !!prefs.noteEdit;
+  $('setStart').value = prefs.startTab; $('setTodayAuto').checked = prefs.todayAuto !== false; $('setSteps').checked = !!prefs.stepsOpen; $('setNoteEdit').checked = !!prefs.noteEdit;
   $('setVer').textContent = 'v' + APP_VERSION;
   const n = Object.keys(records).filter(id => !SEALED_TYPES.has(records[id].type)).length + Object.keys(sealed).length;
   $('setCount').textContent = n.toLocaleString('en-IN');
@@ -6823,6 +6961,8 @@ $('setText').addEventListener('change', () => { setPref('text', $('setText').val
 $('setContrast').addEventListener('change', () => { setPref('contrast', $('setContrast').checked); applyLook(); });
 $('setLeft').addEventListener('change', () => { setPref('left', $('setLeft').checked); applyLook(); });
 $('setStart').addEventListener('change', () => setPref('startTab', $('setStart').value));
+$('setTodayAuto').addEventListener('change', () => setPref('todayAuto', $('setTodayAuto').checked));
+$('setUnmute').addEventListener('click', () => { try { localStorage.removeItem('r2_toastMute'); } catch (e) {} toast('Hidden reminders will show again.'); });
 $('setSteps').addEventListener('change', () => { setPref('stepsOpen', $('setSteps').checked); openSteps.clear(); scheduleRender(); });
 $('setNoteEdit').addEventListener('change', () => setPref('noteEdit', $('setNoteEdit').checked));
 $('setDictLang').addEventListener('change', () => setPref('dictLang', $('setDictLang').value));
@@ -6886,7 +7026,7 @@ function backupRows() {
 }
 $('setBackup').addEventListener('click', () => {
   shareOrDownload(JSON.stringify(backupRows(), null, 1), 'register-backup-' + todayISO() + '.json', 'application/json');
-  $('setDataMsg').className = 'msg ok'; $('setDataMsg').textContent = 'Backup created. Money entries inside it stay encrypted.';
+  $('setDataMsg').className = 'msg ok'; $('setDataMsg').textContent = finUnlocked() ? 'Backup created. Money entries inside it stay encrypted.' : 'Backup created.';
 });
 $('setRestore').addEventListener('click', () => $('restoreFile').click());
 /* The whole backup (every record, money already sealed) is encrypted again with the private key, so the Drive file is unreadable without the code. */
@@ -6899,7 +7039,7 @@ const AutoBackup = {
   async pack(rows) { const fk = records[FINKEY_ID]; return JSON.stringify({ v: 1, app: APP_VERSION, at: Date.now(), salt: fk.salt, iters: fk.iters || FIN_ITERS, enc: await aesEnc(Fin.key, JSON.stringify(rows)) }); },
   async maybe() { if (prefs.autoBackup && Fin.key && driveOn() && navigator.onLine && this.due()) { try { await this.run(); } catch (e) { RLOG.warn('auto backup', e.message); } } },
   async run(say) {
-    if (!Fin.key) throw new Error('Unlock the private section first (the backup is encrypted with its key).');
+    if (!Fin.key) throw new Error('Unlock first.');
     if (!driveOn()) throw new Error('Set the Drive folder in Settings → Sync first.');
     const rows = backupRows(), body = await this.pack(rows);
     const name = 'register-backup-' + todayISO() + '.rgbk', data = b64(te.encode(body));
@@ -6914,7 +7054,7 @@ const AutoBackup = {
   },
   async test() {
     const last = this.list().slice(-1)[0]; if (!last) throw new Error('No Drive backup yet.');
-    if (!Fin.key) throw new Error('Unlock the private section first.');
+    if (!Fin.key) throw new Error('Unlock first.');
     const d = await Sync.call('driveGet', { fileId: last.fileId }, 240000);
     const pack = JSON.parse(td.decode(unb64(d.data)));
     const key = pack.salt === Fin.salt ? Fin.key : null; if (!key) throw new Error('This backup was made under your previous private code. Restore it (download it from Drive, then Restore) and enter that code.');
@@ -7162,7 +7302,7 @@ function spawnRepeat(t) {
 /* ---------- Recently deleted: restore / delete for good ---------- */
 function binRestoreV216(id) {
   const r = records[id]; if (!r) return;
-  if (r.type === 'docfile' && r.locked && !Fin.key) { toast('This file is locked. Open Money with your private code first, then restore it.'); return; }
+  if (r.type === 'docfile' && r.locked && !Fin.key) { toast('This file is locked — unlock first, then restore it.'); return; }
   restore(id);
   if (r.type === 'docfile') { if (r.keyId && records[r.keyId] && records[r.keyId].deleted) restore(r.keyId); if (Sync.on()) Sync.call('driveRestore', { fileId: r.fileId }).catch(() => {}); }
   if (r.type === 'fin' || r.type === 'snote') scheduleRender();
@@ -7259,7 +7399,7 @@ const YEARLY_CATS = ['birthday', 'anniv', 'remember'];
 function udhaarAsOf(iso) {
   if (iso >= todayISO()) return udhaarSplit();
   let owed = 0, owe = 0;
-  all('fin').filter(e => isUdhaar(e.kind) && finDate(e) && finDate(e) <= iso).forEach(e => {
+  all('fin').filter(e => isUdh(e) && finDate(e) && finDate(e) <= iso).forEach(e => {
     const pays = e.pays || [], pp = pays.reduce((t, p) => t + (+p.amt || 0), 0);
     const rest = Math.max(0, (+e.paidAmount || 0) - pp);                         // paid back before instalments were recorded: date unknown
     const left = Math.max(0, (+e.amount || 0) - pays.filter(p => (p.date || '') <= iso).reduce((t, p) => t + (+p.amt || 0), 0) - rest);
@@ -7282,8 +7422,80 @@ function rollRecurring() {
   if (made) toast(`${made} monthly entr${made === 1 ? 'y' : 'ies'} added for this month.`);
 }
 function rollAfterSync() {
-  if (Sync.on() && navigator.onLine && !window.GHOST) Sync.run().then(() => { if (Fin.key) rollRecurring(); }, () => { if (Fin.key) rollRecurring(); });
-  else rollRecurring();
+  const then = () => { if (Fin.key) { rollRecurring(); dropAfterUnlock(); } };
+  if (Sync.on() && navigator.onLine && !window.GHOST) Sync.run().then(then, then);
+  else { rollRecurring(); dropAfterUnlock(); }
+}
+
+/* ==========================================================================
+   v2.20 — Quick log: a spend noted while the private section is locked.
+   When the section is unlocked once, a key pair is made: the private half is stored encrypted with your code
+   (type 'dropkey', synced like other private items), the public half stays on this device. A quick log is
+   encrypted to that public half at once (ECDH P-256 + AES-GCM) and stored as type 'qlog'; nothing about it is
+   readable without your code — not on this phone, not in the Sheet. Unlocking moves each one into the Ledger
+   (its id is fixed, so two devices doing this make one entry) and removes it.
+   ======================================================================== */
+const DROP_LS = 'r2_qlKey', ECDH = { name: 'ECDH', namedCurve: 'P-256' };
+const qlReady = () => !window.GHOST && finConfigured() && !!lsGet(DROP_LS);
+let dropBusy = false;
+async function dropAfterUnlock() {
+  if (!Fin.key || window.GHOST || !(window.crypto && crypto.subtle)) return;
+  try {
+    let keys = all('dropkey').filter(k => k.pub && k.priv);
+    if (!keys.length) {
+      const kp = await crypto.subtle.generateKey(ECDH, true, ['deriveKey']), kid = uid('qk');
+      if (!Fin.key) return;
+      put({ id: 'dk-' + kid, type: 'dropkey', kid, pub: await crypto.subtle.exportKey('jwk', kp.publicKey), priv: await crypto.subtle.exportKey('jwk', kp.privateKey), createdAt: nowMs(), deleted: false }, { render: false });
+      keys = all('dropkey').filter(k => k.pub && k.priv);
+    }
+    const k = keys.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+    if (k) lsSet(DROP_LS, JSON.stringify({ kid: k.kid, pub: { kty: k.pub.kty, crv: k.pub.crv, x: k.pub.x, y: k.pub.y } }));
+    await dropDrain();
+  } catch (e) { RLOG.warn('quick log key', e && e.message); }
+}
+async function dropSeal(obj) {
+  const k = JSON.parse(lsGet(DROP_LS) || 'null'); if (!k || !k.pub) throw new Error('quick log not ready');
+  const pub = await crypto.subtle.importKey('jwk', { ...k.pub, ext: true }, ECDH, false, []);
+  const eph = await crypto.subtle.generateKey(ECDH, true, ['deriveKey']);
+  const aes = await crypto.subtle.deriveKey({ name: 'ECDH', public: pub }, eph.privateKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const epk = await crypto.subtle.exportKey('jwk', eph.publicKey);
+  return { kid: k.kid, epk: { x: epk.x, y: epk.y }, enc: await aesEnc(aes, JSON.stringify(obj)) };
+}
+async function dropOpen(r) {
+  const k = all('dropkey').find(x => x.kid === r.kid); if (!k) throw new Error('no key for ' + r.kid);
+  const priv = await crypto.subtle.importKey('jwk', { ...k.priv, key_ops: ['deriveKey'] }, ECDH, false, ['deriveKey']);
+  const epk = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', x: r.epk.x, y: r.epk.y, ext: true }, ECDH, false, []);
+  const aes = await crypto.subtle.deriveKey({ name: 'ECDH', public: epk }, priv, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  return JSON.parse(await aesDec(aes, r.enc));
+}
+/* the note is read the way the quick line in Money is: "chai", "lunch pb Ravi", "lent Ravi", "#travel" */
+function dropToFin(x, id) {
+  const amt = +x.v, note = String(x.n || '').trim(), q = parseMoneyLine(`${amt} ${note}`.trim());
+  const base = q.error || Math.abs((+q.amount || 0) - amt) > 0.005 ? { kind: 'expense', desc: note || 'Quick log', cat: guessFinCat(note) } : q;
+  return saveMoneyEntry({ ...base, amount: amt, date: ISO_DATE_RX.test(x.d || '') ? x.d : todayISO(), id });
+}
+async function dropDrain() {
+  if (!Fin.key || dropBusy || window.GHOST) return;
+  dropBusy = true; let n = 0, bad = 0;
+  try {
+    for (const r of all('qlog')) {
+      let x; try { x = await dropOpen(r); } catch (e) { bad++; continue; }
+      if (!Fin.key) break;
+      const id = 'f-' + r.id;
+      if (!records[id] && !sealed[id] && !dropToFin(x, id)) { bad++; continue; }
+      r.deleted = true; r.deletedAt = 1; put(r, { render: false }); n++;
+    }
+  } finally { dropBusy = false; }
+  if (n) { scheduleRender(); toast(`${n} quick log${n > 1 ? 's' : ''} added to the Ledger.`); RLOG.info('quick logs moved', n); }
+  if (bad) RLOG.warn('quick logs not opened', bad);
+}
+async function quickLogSave(val, note, date) {
+  if (window.GHOST) return true;
+  const x = { v: val, n: String(note || '').slice(0, 200), d: date };
+  if (Fin.key) return !!dropToFin(x, uid('f'));
+  const s = await dropSeal(x);
+  put({ id: uid('ql'), type: 'qlog', kid: s.kid, epk: s.epk, enc: s.enc, deleted: false });
+  return true;
 }
 const ARCH_START_WARN = 'Ledger entries from before the old start month were archived. With an earlier start they are left out of your balances until you bring those archives back (Settings → Archive old years). Move the start anyway?';
 
@@ -7328,7 +7540,7 @@ function openToday() {
   const row = (k, id, title, sub, when, neg) => `<button class="td-row" data-tdk="${k}" data-tdid="${esc(id)}"><span class="t">${title}${sub ? `<small>${sub}</small>` : ''}</span>${when ? `<span class="w${neg ? ' neg' : ''}">${when}</span>` : ''}</button>`;
   const sec = (h, rows) => rows.length ? `<div class="group-title">${h}</div><div class="group">${rows.join('')}</div>` : '';
   let html = `<div class="td-h">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>`;
-  html += sec(`☑︎ Tasks due (${D.tasks.length})`, D.tasks.map(x => row('task', x.id, esc(x.title), esc(x.category) + (x.priority === 'High' ? ' · High' : ''), (x.dueDate < t ? 'overdue · ' : '') + (x.dueTime ? fmtTime12(x.dueTime) : relDay(x.dueDate)), x.dueDate < t)));
+  html += sec(`☑︎ Tasks due (${D.tasks.length})`, D.tasks.map(x => row('task', x.id, esc(x.title), x.priority === 'High' ? 'High priority' : '', (x.dueDate < t ? 'overdue · ' : '') + (x.dueTime ? fmtTime12(x.dueTime) : relDay(x.dueDate)), x.dueDate < t)));
   html += sec(`↳ Steps due (${D.steps.length})`, D.steps.slice(0, 20).map(x => row('task', x.t.id, esc(x.s.text), 'in ' + esc(x.t.title), x.s.dueDate < t ? 'overdue' : 'today', x.s.dueDate < t)));
   html += sec(`📅 Dates · next 7 days (${D.dates.length})`, D.dates.map(x => row('date', x.d.id, esc(x.d.label), '', x.days === 0 ? 'today' : inDays(x.days), false)));
   html += sec(`🧾 Bills to pay (${D.bills.length})`, D.bills.map(x => row('bill', x.b.id, esc(x.b.label), x.late ? `${x.late} month${x.late > 1 ? 's' : ''} missed` : '', x.b.dueDay ? 'due on ' + x.b.dueDay : 'this month', !!x.late)));
@@ -7355,6 +7567,9 @@ function openToday() {
   if (!Sheets.isOpen('shToday')) Sheets.open('shToday');
 }
 $('todayFab').addEventListener('click', openToday);
+function updateTodayTile() { const n = $('todayNum'); if (n) n.textContent = String(new Date().getDate()); }
+updateTodayTile();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) updateTodayTile(); });
 
 /* ---------- 2. "Call CA tomorrow 5pm high" ---------- */
 const fmtTime12 = hm => { const [h, m] = String(hm).split(':').map(Number); if (isNaN(h)) return ''; return `${h % 12 || 12}:${String(m || 0).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
@@ -7386,7 +7601,7 @@ function taskGuess() {
   const cat = AF.cat !== 'auto' ? AF.cat : q.category || g.category;
   const prio = AF.prio !== 'auto' ? AF.prio : q.priority || g.priority;
   const due = q.dueDate || AF.due;
-  $('afGuess').innerHTML = q.title ? `<b>${esc(q.title)}</b><br>Files as <b style="color:${catColor(cat)}">${cat}</b> · ${prio}${due ? ' · 📅 ' + relDay(due) : ''}${q.dueTime ? ' · ⏰ ' + fmtTime12(q.dueTime) : ''}` : 'Type it the way you say it: “Call CA tomorrow 5pm high”, “Pay LIC on 15 Oct”, “Submit report Friday”.';
+  $('afGuess').innerHTML = q.title ? `<b>${esc(q.title)}</b><br>${prio} priority${due ? ' · 📅 ' + relDay(due) : ''}${q.dueTime ? ' · ⏰ ' + fmtTime12(q.dueTime) : ''}` : 'Type it the way you say it: “Call CA tomorrow 5pm high”, “Pay LIC on 15 Oct”, “Submit report Friday”.';
 }
 
 /* ---------- 3. Face ID for the whole app, and auto-lock times ---------- */
@@ -7563,7 +7778,7 @@ async function mergeDocs(keepId, ids) {
   docSel = null; scheduleRender();
   const loose = k.lockFiles && docFilesOf(k.id).some(f => !f.locked);
   if (loose && Fin.key) { try { await convertDocFiles(k); } catch (e) { RLOG.warn('merge lock', e.message); } }
-  toast(`Merged into "${k.title}" — ${docFilesOf(k.id).length} file${docFilesOf(k.id).length === 1 ? '' : 's'}.${loose && !Fin.key ? ' Some files are not locked yet: open Money, then “Finish locking” in the document.' : ''}`, 'Open', () => { showTab('docs'); showDoc(k.id); }, 7000);
+  toast(`Merged into "${k.title}" — ${docFilesOf(k.id).length} file${docFilesOf(k.id).length === 1 ? '' : 's'}.${loose && !Fin.key ? ' Some files are not locked yet: unlock, then “Finish locking” in the document.' : ''}`, 'Open', () => { showTab('docs'); showDoc(k.id); }, 7000);
 }
 function openDocMerge(ids) {
   const docs = ids.map(id => records[id]).filter(d => d && !d.deleted);
@@ -7713,7 +7928,7 @@ function dateSuggestions() {
     out.push({ key, iso: h.iso, noYear: h.noYear, label, src: src.id, kind, title: title || '' });
   });
   all('note').forEach(n => scan(n, 'note', n.title || 'Note', (n.title || '') + '\n' + (n.text || '')));
-  all('task').filter(x => x.status !== 'done').forEach(x => scan(x, 'task', x.title, [x.title, x.notes || '', ...(x.subs || []).map(s => (s.text || '') + ' ' + (s.notes || ''))].join('\n')));
+  all('task').filter(x => x.status !== 'done' && !x.fromDate).forEach(x => scan(x, 'task', x.title, [x.title, x.notes || '', ...(x.subs || []).map(s => (s.text || '') + ' ' + (s.notes || ''))].join('\n')));
   return out.sort((a, b) => a.iso.localeCompare(b.iso));
 }
 function dsugDecide(keys, how) {
@@ -7939,7 +8154,7 @@ setTimeout(() => { try { sweepOrphans(); } catch (e) { RLOG.warn('sweep', e.mess
    ======================================================================== */
 $('setBackupEnc').addEventListener('click', async () => {
   const m = $('setDataMsg');
-  if (!Fin.key) { m.className = 'msg err'; m.textContent = 'Unlock the private section first — the backup is encrypted with your private code.'; return; }
+  if (!Fin.key) { m.className = 'msg err'; m.textContent = 'Unlock first.'; return; }
   m.className = 'msg'; m.textContent = 'Encrypting…';
   try {
     const rows = backupRows(), body = await AutoBackup.pack(rows);
@@ -7974,7 +8189,7 @@ function confirmRestore(P, fileName) {
       <div class="rs-grid"><div><b>${P.fresh}</b>new on this device</div><div><b>${P.newer}</b>would replace an older copy here</div><div><b>${P.same}</b>already here, or newer here — kept</div>${P.unusable || P.ignored ? `<div><b>${P.unusable + P.ignored}</b>skipped (not usable)</div>` : ''}</div>
       <div class="group-title">What is inside</div>
       <div class="group">${types.map(([t, n]) => `<div class="chk-row"><div class="row-main"><div class="row-title">${esc(t)}</div></div><b>${n}</b></div>`).join('')}
-        ${P.sealedRows ? `<div class="chk-row"><div class="row-main"><div class="row-title">Money &amp; private items</div><div class="row-sub">${P.legacyMoney ? `${P.legacyMoney} from the old app will be encrypted with your private code` : 'stay encrypted'}</div></div><b>${P.sealedRows}</b></div>` : ''}</div>
+        ${P.sealedRows ? `<div class="chk-row"><div class="row-main"><div class="row-title">${finUnlocked() ? 'Money &amp; private items' : 'Encrypted items'}</div><div class="row-sub">${P.legacyMoney ? `${P.legacyMoney} from the old app will be encrypted with your private code` : 'stay encrypted'}</div></div><b>${P.sealedRows}</b></div>` : ''}</div>
       ${P.deleted ? `<p class="hint">${P.deleted} of these are items that were deleted when the backup was made; they come back as deleted.</p>` : ''}
       <p class="hint">Restoring never removes anything on this device. A copy is replaced only when the backup's copy is newer.</p>`;
     $('rsGo').disabled = !(P.fresh + P.newer); $('rsGo').textContent = P.fresh + P.newer ? `Restore ${P.fresh + P.newer}` : 'Nothing to restore';
@@ -7988,10 +8203,9 @@ function confirmRestore(P, fileName) {
 function securityChecks() {
   const out = [], unlocked = finUnlocked(), fk = records[FINKEY_ID];
   const add = (state, t, d, act) => out.push({ state, t, d, act });
-  if (!finConfigured()) add('info', 'Private section', 'Not set up yet. Tap “Register” three times to choose a code for Money and private notes.');
+  if (!unlocked) { /* v2.20: the private section is not mentioned while it is locked */ }
   else {
-    if (!unlocked) add('info', 'Private code strength', 'Unlock the private section to check it.');
-    else if (Fin.codeLen && Fin.codeLen < 12) add('warn', 'Private code is short', `It is ${Fin.codeLen} characters. A phrase of four or more words is much harder to guess.`, { label: 'Change code', fn: () => openVault('change') });
+    if (Fin.codeLen && Fin.codeLen < 12) add('warn', 'Private code is short', `It is ${Fin.codeLen} characters. A phrase of four or more words is much harder to guess.`, { label: 'Change code', fn: () => openVault('change') });
     else if (Fin.codeLen) add('ok', 'Private code length', `${Fin.codeLen} characters.`);
     const it = fk ? (+fk.iters || FIN_ITERS) : FIN_ITERS_NEW;
     if (it < FIN_ITERS_NEW) add('warn', 'Older key setting', `Your code is stretched ${it.toLocaleString('en-IN')} times; new codes use ${FIN_ITERS_NEW.toLocaleString('en-IN')}. Changing the code upgrades it — your other devices will ask for the new code.`, unlocked ? { label: 'Change code', fn: () => openVault('change') } : null);
@@ -7999,10 +8213,10 @@ function securityChecks() {
   }
   if (Sync.on()) {
     const tl = String(prefs.cloudToken || '').length;
-    if (tl < 24) add('warn', 'Sync token is short', `It is ${tl} characters, so it can be guessed. Anyone who has it can read everything in the Sheet that is not Money, and the Drive files. In Apps Script run makeToken, paste the long token into SECRET and into Settings → Token, then deploy a new version.`);
+    if (tl < 24) add('warn', 'Sync token is short', `It is ${tl} characters, so it can be guessed. Anyone who has it can read everything in the Sheet that is not encrypted, and the Drive files. In Apps Script run makeToken, paste the long token into SECRET and into Settings → Token, then deploy a new version.`);
     else add('ok', 'Sync token', 'Long enough.');
   } else add('info', 'Sync', 'Not connected — nothing leaves this device.');
-  add('info', 'What is encrypted', 'Money, Plan, private notes (PNote), the Emergency sheet, locked document files and locked document numbers are encrypted with your private code. Tasks, notes, dates and other document details are plain text in your Google Sheet — keep official case details out of them.');
+  if (unlocked) add('info', 'What is encrypted', 'Money, Plan, private notes (PNote), the Emergency sheet, locked document files and locked document numbers are encrypted with your private code. Tasks, notes, dates and other document details are plain text in your Google Sheet — keep official case details out of them.');
   if ((Fin.tampered || []).length) add('warn', `${Fin.tampered.length} private entr${Fin.tampered.length > 1 ? 'ies' : 'y'} failed the integrity check`, 'Their outer details in the Sheet do not match the encrypted copy. They are not shown. Review them in Settings → Backup & Data → Data health.', { label: 'Data health', fn: () => { Sheets.close('shSecCheck', true); openDataHealth(); } });
   const ids = all('doc').filter(d => d.docType === 'Identity' && !d.lockFiles && (d.number || docFilesOf(d.id).length));
   if (ids.length) add('warn', `${ids.length} ID document${ids.length > 1 ? 's' : ''} not locked`, 'Numbers (Aadhaar, PAN…) are in your Sheet as plain text and the files in Drive are not encrypted. Open each one and switch on “Lock files”: ' + ids.slice(0, 4).map(d => d.title).join(', ') + (ids.length > 4 ? '…' : '') + '.', { label: 'Open first', fn: () => { Sheets.close('shSecCheck', true); Sheets.close('shSettings', true); showTab('docs'); openDoc(ids[0].id); } });
@@ -8010,7 +8224,7 @@ function securityChecks() {
   const last = +(lsGet('r2_lastBackup') || 0), days = last ? Math.floor((Date.now() - last) / 86400000) : null;
   if (days == null || days > 30) add('warn', days == null ? 'No backup made on this device' : `Last backup ${days} days ago`, 'A backup file is your way back if the phone is lost.', unlocked ? { label: 'Encrypted backup', fn: () => $('setBackupEnc').click() } : { label: 'Download backup', fn: () => $('setBackup').click() });
   else add('ok', 'Backup', days === 0 ? 'Made today.' : `Made ${days} day${days > 1 ? 's' : ''} ago.`);
-  if (driveOn()) { if (prefs.autoBackup) add('ok', 'Weekly Drive backup', 'On.'); else add('warn', 'Weekly Drive backup is off', 'It keeps encrypted copies in your Drive folder. Turn it on in Settings → Data (needs Money unlocked).'); }
+  if (driveOn()) { if (prefs.autoBackup) add('ok', 'Weekly Drive backup', 'On.'); else add('warn', 'Weekly Drive backup is off', 'It keeps encrypted copies in your Drive folder. Turn it on in Settings → Data' + (unlocked ? ' (needs Money unlocked)' : '') + '.'); }
   if (AppLock.on()) add('ok', 'Face ID to open', 'On. It is a screen lock: it stops someone opening the app. What is stored on the phone is protected by the iPhone passcode, not by this lock.'); else add('warn', 'Face ID to open is off', 'Anyone who opens the app past the decoy screen sees your tasks, notes and documents.', { label: 'Turn on', fn: () => { Sheets.close('shSecCheck', true); $('setAppLock').click(); } });
   if (prefs.decoyLaunch) add('ok', 'Decoy screen', 'Shown when the app opens.'); else add('warn', 'Decoy screen is off at launch', 'The app opens straight onto your data.', { label: 'Turn on', fn: () => { setPref('decoyLaunch', true); if ($('setDecoy')) $('setDecoy').checked = true; } });
   if (+prefs.appIdle > 0) add('ok', 'Idle lock', `After ${prefs.appIdle} minute${+prefs.appIdle > 1 ? 's' : ''}.`); else add('warn', 'The app never locks when idle', 'If you leave it open, it stays open.', { label: 'Lock after 5 min', fn: () => { setPref('appIdle', 5); if ($('setAppIdle')) $('setAppIdle').value = '5'; } });
@@ -8047,7 +8261,7 @@ Sheets.onClose.shWork = () => { Job.stop = true; };
 /* ==========================================================================
    MONEY — quick text entry ("250 chai"), repeat-last / recent
    ======================================================================== */
-const MQ_KIND = { income: /^(received|recd|rcvd|got|income|salary|refund|cashback)$/i, lent: /^(lent|gave|diya|loaned)$/i, borrowed: /^(borrowed|took|liya)$/i, transfer: /^(transfer|tfr)$/i };
+const MQ_KIND = { income: /^(received|recd|rcvd|got|income|salary|refund|cashback)$/i, lent: /^(lent|gave|diya|loaned)$/i, borrowed: /^(borrowed|took|liya)$/i, paidby: /^(paidby|pb)$/i, transfer: /^(transfer|tfr)$/i };
 const MQ_KEEP = /^(salary|refund|cashback)$/i;                 // also a good description
 const MQ_FILL = /^(for|on|to|at|from|in|of|the)$/i;
 const MQ_MON = '(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*';
@@ -8147,8 +8361,13 @@ function saveMoneyEntry(x) {
   const amt = +x.amount;
   if (!isFinite(amt) || !(amt > 0)) return fail('Enter an amount.', 'afAmt');
   const kind = KINDS.some(k => k.v === x.kind) ? x.kind : 'expense', who = String(x.who || '').trim();
-  if (isUdhaar(kind) && !who) return fail('Who is it with?', 'afWho');
+  if (isUdhaar(kind) && !who) return fail(kind === 'paidby' ? 'Who paid for it?' : 'Who is it with?', 'afWho');
   let acct = x.acct || undefined, to = kind === 'transfer' ? (x.to || undefined) : undefined;
+  if (kind === 'paidby') {                                     // v2.20: someone else paid — no account moves today
+    const date = ISO_DATE_RX.test(x.date || '') ? x.date : todayISO();
+    return put({ id: x.id || uid('f'), type: 'fin', desc: String(x.desc || '').trim().slice(0, 200) || 'Spent', amount: Math.round(amt * 100) / 100, kind: 'expense', paidBy: 1,
+      category: FIN_CATS.includes(x.cat) ? x.cat : '', date, who, recurring: false, paidAmount: 0, settled: false, deleted: false });
+  }
   if (hasAccts()) {
     if (!acct || !acctById(acct)) { const l = lastAcct(isUdhaar(kind) ? 'udhaar' : kind), la = l && acctById(l); acct = la && !la.archived ? l : (defAcct(planCfg()) || undefined); }
     if (kind === 'transfer') { if (!to || !acctById(to)) return fail('A transfer needs two accounts.'); if (acct === to) return fail('Pick two different accounts.'); }
@@ -8156,7 +8375,7 @@ function saveMoneyEntry(x) {
   if (acct) { rememberAcct(isUdhaar(kind) ? 'udhaar' : kind, acct); if (to) rememberAcct('transferTo', to); }
   const date = ISO_DATE_RX.test(x.date || '') ? x.date : todayISO();
   const desc = String(x.desc || '').trim().slice(0, 200) || (kind === 'expense' ? 'Spent' : kind === 'income' ? 'Received' : kind === 'transfer' ? 'Transfer' : 'Udhaar');
-  return put({ id: uid('f'), type: 'fin', desc, amount: Math.round(amt * 100) / 100, kind, category: kind === 'transfer' ? '' : (FIN_CATS.includes(x.cat) ? x.cat : ''), date,
+  return put({ id: x.id || uid('f'), type: 'fin', desc, amount: Math.round(amt * 100) / 100, kind, category: kind === 'transfer' ? '' : (FIN_CATS.includes(x.cat) ? x.cat : ''), date,
     who: isUdhaar(kind) ? who : '', acct, to, recurring: !!x.recurring, paidAmount: 0, settled: false, deleted: false });
 }
 /* the last distinct entries you made (what, type, category, account), newest first */
@@ -8342,7 +8561,7 @@ function setShowPage(pg) {
   const b = $('shSettings').querySelector('.sheet-body'); if (b) b.scrollTop = 0;
 }
 function setRows() {
-  return $$('#shSettings .set-page').flatMap(pg => $$('.set-row, .switch-row', pg).filter(r => !r.classList.contains('hidden') && !r.closest('.hidden:not(.set-page)')).map(r => {
+  return $$('#shSettings .set-page').flatMap(pg => $$('.set-row, .switch-row', pg).filter(r => !r.classList.contains('hidden') && !r.closest('.hidden:not(.set-page)') && (finUnlocked() || !r.closest('.priv-only'))).map(r => {
     const c = r.cloneNode(true); $$('.v, select, input, small, .msg', c).forEach(x => x.remove());
     const sm = r.querySelector('small');
     return { r, page: pg.dataset.page, label: c.textContent.replace(/\s+/g, ' ').trim(), sub: sm ? sm.textContent.trim() : '' };
@@ -8402,7 +8621,7 @@ async function openDataHealth() {
   const dc = DriveChk.get(), bad = DriveChk.bad().length;
   if (driveOn()) add(bad ? 'warn' : 'ok', 'Files in Drive', `${dc ? 'Checked ' + timeAgo(dc.at) : 'Not checked yet'}${bad ? ` · ${bad} missing` : ''}.`, { label: bad ? 'Review' : 'Check now', fn: () => { Sheets.close('shHealth', true); openDriveChk(); if (!bad) DriveChk.run(true); } });
   if (finConfigured()) {
-    if (!Fin.key) add('info', 'Private entries', 'Unlock the private section to check Money, PNote and the Emergency sheet.', { label: 'Unlock', fn: () => { Sheets.close('shHealth', true); needUnlock(openDataHealth); } });
+    if (!Fin.key) { /* v2.20: nothing about the private section while it is locked */ }
     else {
       if (Fin.lockedOut.length) add('warn', `${Fin.lockedOut.length} private entr${Fin.lockedOut.length > 1 ? 'ies' : 'y'} under an older code`, 'Open Money — it asks for the older code once and brings them across.', { label: 'Open Money', fn: () => { Sheets.close('shHealth', true); showTab('money'); } });
       if (Fin.tampered.length) add('warn', `${Fin.tampered.length} private entr${Fin.tampered.length > 1 ? 'ies' : 'y'} failed the integrity check`, 'The details next to the encrypted copy in the Sheet do not match it (id, date, deleted). They are hidden. If you restored an old backup or edited the Sheet by hand, accepting is safe; otherwise someone may have changed the Sheet.', { label: 'Accept all', fn: async () => { let k = 0; for (const id of Fin.tampered.slice()) if (await acceptTampered(id)) k++; toast(`${k} accepted.`); scheduleRender(); openDataHealth(); } });
@@ -8442,13 +8661,13 @@ function openWeekly() {
     const subs = detectSubs().length;
     money = `<div class="group-title">₹ Money · last 7 days</div><div class="wk-grid"><div><span class="wk-n">${rsShort(M.out)}</span><br>spent</div><div><span class="wk-n">${rsShort(M.inc)}</span><br>received</div>${M.inv ? `<div><span class="wk-n">${rsShort(M.inv)}</span><br>into investments</div>` : ''}</div>
       ${top.length ? `<p class="hint" style="margin:-4px 4px 8px">Most on ${top.map(([c, a]) => `${esc(c)} ${rsShort(a)}`).join(' · ')}.</p>` : ''}${subs ? `<button class="linkbtn" id="wkSubs">${subs} payment${subs > 1 ? 's look' : ' looks'} like a subscription — review ›</button>` : ''}`;
-  } else if (finConfigured()) money = '<p class="hint" style="margin:10px 4px">Open Money (tap “Register” three times) to add the week\'s spending here.</p>';
+  }
   const last = +(lsGet('r2_lastReview') || 0);
   $('wkBody').innerHTML = `<div class="td-h">Week of ${fmtDate(wk, true)} – ${fmtDate(t, true)}</div>
     <div class="wk-grid"><div><span class="wk-n">${doneWk.length}</span><br>tasks done</div><div><span class="wk-n ${overdue.length ? 'neg' : ''}">${overdue.length}</span><br>overdue</div><div><span class="wk-n">${waiting.length}</span><br>waiting on others</div><div><span class="wk-n">${inbox}</span><br>in the Inbox</div></div>
-    ${sec(`⚠︎ Overdue (${overdue.length})`, overdue.slice(0, 15).map(x => row('task', x.id, esc(x.title), esc(x.category), fmtDate(x.dueDate), true)), 'Nothing overdue.')}
+    ${sec(`⚠︎ Overdue (${overdue.length})`, overdue.slice(0, 15).map(x => row('task', x.id, esc(x.title), x.priority === 'High' ? 'High priority' : '', fmtDate(x.dueDate), true)), 'Nothing overdue.')}
     ${sec(`⏳ Waiting on (${waiting.length})`, waiting.slice(0, 15).map(x => row('task', x.id, esc(x.title), x.waitingOn ? 'on ' + esc(x.waitingOn) : '', x.waitingSince ? waitAge(x) : '', x.waitingSince && -daysUntilISO(x.waitingSince) > 7)), 'Nobody to chase.')}
-    ${sec(`☑︎ Due in the next 7 days (${dueNext.length})`, dueNext.slice(0, 15).map(x => row('task', x.id, esc(x.title), esc(x.category), relDay(x.dueDate), false)), 'Nothing due.')}
+    ${sec(`☑︎ Due in the next 7 days (${dueNext.length})`, dueNext.slice(0, 15).map(x => row('task', x.id, esc(x.title), x.priority === 'High' ? 'High priority' : '', relDay(x.dueDate), false)), 'Nothing due.')}
     ${sec(`📅 Dates · next 14 days (${dates.length})`, dates.slice(0, 15).map(x => row('date', x.d.id, esc(x.d.label), '', x.days === 0 ? 'today' : inDays(x.days), false)), 'No dates coming up.')}
     ${docs.length ? sec(`📁 Documents expiring (${docs.length})`, docs.slice(0, 10).map(d => row('doc', d.id, esc(d.title), esc(docOwners(d).join(' & ')), daysUntilISO(d.expiry) < 0 ? 'expired' : inDays(daysUntilISO(d.expiry)), daysUntilISO(d.expiry) < 0)), '') : ''}
     ${money}
@@ -8494,19 +8713,19 @@ function savedSearchUI(q, box) {
 /* ==========================================================================
    v2.19 — what changed, and the long-press hint
    ======================================================================== */
+/* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
-  '<b>Money → Ledger</b> is simpler: a month header that stays on top, your balances as chips, this month\'s net with an in/out bar, and entries by day with a total for each day. Search and filter open from the funnel; the dashboard, net worth, budgets, subscriptions and exports from 📊.',
-  '<b>Quick entry</b>: tap + in Money and type a line — “250 chai”, “+50000 salary”, “lent 2000 Ravi”, “499 netflix @hdfc yday”. Your recent entries are one tap away.',
-  '<b>Investments</b> (category Investment) are shown on their own line, not as spending — the Ledger, dashboard and PDF report now agree. Budgets are back (in 📊).',
-  '<b>Reminders</b>: credit-card statement and due days, FD/PPF maturity and premiums can go into Dates.',
-  '<b>Family</b>: a document checklist for Papa, Mummy and Ruchi; an encrypted Emergency sheet (where originals are kept, nominees); one-tap .zip of a person\'s documents; words inside PDFs are now searchable.',
-  '<b>Tasks</b>: a “Waiting on” status, a Weekly review (in ☀︎ Today), and saved searches.',
-  '<b>Settings</b> are in five groups with a search box; <b>Data health</b> shows sync, backups, storage and anything that needs a look.',
-  '<b>Safety</b>: private entries are checked against tampering, very long notes now sync in parts, a note changed on two devices keeps both versions, and new private codes need 12+ characters.'
+  { t: '<b>Tasks</b> has a daily card: a greeting, how much of today is done (the ring), the last 7 days, your streak, and a box to add a task straight away. The one task to do next sits under it with a ✓ Done button.' },
+  { t: '<b>Tasks</b>: no more categories. Sort by date, priority, in progress, waiting, newest — and now <b>oldest</b>.' },
+  { t: '<b>Today</b> has a new button (a calendar with today\'s date) and opens by itself the first time you open Register each day. Turn that off in Settings → Look &amp; Feel.' },
+  { t: '<b>Dates</b>: choose how far ahead “Coming up” looks (Settings → Look &amp; Feel). Each upcoming date has <b>＋ Task</b>. A date sent to iPhone Calendar is marked, and “All to iPhone Calendar” leaves out the ones already sent.' },
+  { t: '<b>Messages</b> no longer cover each other — they show one after another. Reminders have <b>Don\'t show again</b>.' },
+  { t: '<b>Paid by someone</b>: when someone else pays for your purchase, record it once — it counts as your spending and shows under Udhaar as “you owe”. Pay it back from Udhaar → Settle.', priv: true },
+  { t: '<b>Quick log</b> on + works while Money is locked. It is encrypted at once and moves into the Ledger the next time you unlock. The note reads like a quick line: “chai”, “lunch pb Ravi” (paid by Ravi), “lent Ravi”.', priv: true },
+  { t: 'While Money is locked, Settings, the security check-up, Data health, search and this list no longer mention it.', priv: true }
 ];
 function showWhatsNew() {
-  $('nwBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">Register ${APP_VERSION}</p><ul class="nw-list">${WHATS_NEW.map(x => `<li>${x}</li>`).join('')}</ul>
-    <p class="hint">The 7 AM email has been switched off. Update the Apps Script to v25 for the email change and the stronger emergency erase.</p>`;
+  $('nwBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">Register ${APP_VERSION}</p><ul class="nw-list">${WHATS_NEW.filter(x => !x.priv || finUnlocked()).map(x => `<li>${x.t}</li>`).join('')}</ul>`;
   if (!Sheets.isOpen('shNews')) Sheets.open('shNews');
 }
 function afterAppShown() {
@@ -8514,6 +8733,9 @@ function afterAppShown() {
   const seen = lsGet('r2_seenVer'), had = !!seen || Object.keys(records).length > 3;
   if (seen !== APP_VERSION) { lsSet('r2_seenVer', APP_VERSION); if (had) setTimeout(() => { if (!Sheets.top()) showWhatsNew(); }, 900); return; }
   const n = (+(lsGet('r2_shown') || 0)) + 1; lsSet('r2_shown', String(n));
+  if (prefs.todayAuto !== false && lsGet('r2_todayAuto') !== todayISO()) {        // v2.20: Today opens by itself on the first open of each day
+    lsSet('r2_todayAuto', todayISO()); setTimeout(() => { if (!Sheets.top() && !document.documentElement.classList.contains('decoy-on')) openToday(); }, 700); return;
+  }
   if (n >= 2 && !lsFlag('r2_hintPlus')) setTimeout(showPlusHint, 1600);
 }
 function showPlusHint() {

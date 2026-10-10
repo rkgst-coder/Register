@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Register",
   "short_name": "Register",
-  "description": "Tasks, notes, dates, documents and a private ledger.",
+  "description": "Tasks, notes, dates and documents.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -42,9 +42,9 @@
       ]
     },
     {
-      "name": "Add spend",
-      "short_name": "Spend",
-      "url": "./index.html?go=spend",
+      "name": "Quick log",
+      "short_name": "Log",
+      "url": "./index.html?go=qlog",
       "icons": [
         {
           "src": "icon-192.png",
