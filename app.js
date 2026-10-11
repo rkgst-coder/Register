@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.20.0';
+const APP_VERSION = '2.21.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -189,12 +189,15 @@ function dl(blob, name) {
   setTimeout(() => URL.revokeObjectURL(u), 4000);
 }
 /* On iPhone the share sheet is the natural "Save to Files / send" path. Falls back to a download. */
+let shareBusy = false;                         // v2.21: a second tap while the share sheet is opening is ignored
 async function shareOrDownload(text, name, mime) {
+  if (shareBusy) return; shareBusy = true;
   const blob = new Blob([text], { type: mime || 'text/plain' });
   try {
     const file = new File([blob], name, { type: mime || 'text/plain' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
   } catch (e) { if (e && e.name === 'AbortError') return; RLOG.warn('share failed', e); }
+  finally { shareBusy = false; }
   dl(blob, name);
 }
 
@@ -285,9 +288,12 @@ if (window.visualViewport) {
 function swipeHtml(inner, rightLbl, leftLbl, attrs) {
   return `<div class="swipe" ${attrs || ''}><div class="swipe-bg"><span class="l">${rightLbl || ''}</span><span class="r">${leftLbl || ''}</span></div>${inner}</div>`;
 }
-function bindSwipe(wrap, right, left) {
+/* opt (v2.21): { short, shortLbl, farLbl } — a short swipe left does `short` (e.g. Snooze), a long one does `left` (Delete) */
+function bindSwipe(wrap, right, left, opt) {
   const row = wrap.querySelector('.row'); if (!row) return;
   let x0 = 0, y0 = 0, dx = 0, dir = null, on = false;
+  const FAR = 170, lblR = wrap.querySelector('.swipe-bg .r');
+  if (opt && opt.short) wrap.classList.add('two');
   row.addEventListener('touchstart', e => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; dx = 0; dir = null; on = true; row.classList.remove('anim'); }, { passive: true });
   row.addEventListener('touchmove', e => {
     if (!on) return;
@@ -300,19 +306,61 @@ function bindSwipe(wrap, right, left) {
     dx = mx; e.preventDefault();
     row.style.transform = `translateX(${dx}px)`;
     wrap.classList.toggle('go-r', dx > 0); wrap.classList.toggle('go-l', dx < 0);
+    if (opt && opt.short && lblR) { const far = dx < -FAR; wrap.classList.toggle('far', far); lblR.textContent = far ? opt.farLbl : opt.shortLbl; }
   }, { passive: false });
   row.addEventListener('touchend', () => {
     if (!on) return; on = false;
     row.classList.add('anim');
     if (Math.abs(dx) > 8) { wrap._swiped = true; setTimeout(() => { wrap._swiped = false; }, 400); }
     if (dx > 90 && right) { row.style.transform = ''; setTimeout(right, 160); }
-    else if (dx < -90 && left) { row.style.transform = `translateX(-${row.offsetWidth}px)`; setTimeout(left, 200); }
+    else if (opt && opt.short && dx < -FAR && left) { row.style.transform = `translateX(-${row.offsetWidth}px)`; setTimeout(left, 200); }
+    else if (opt && opt.short && dx < -70) { row.style.transform = ''; setTimeout(opt.short, 160); }
+    else if (!(opt && opt.short) && dx < -90 && left) { row.style.transform = `translateX(-${row.offsetWidth}px)`; setTimeout(left, 200); }
     else row.style.transform = '';
-    setTimeout(() => wrap.classList.remove('go-r', 'go-l'), 240);
+    setTimeout(() => { wrap.classList.remove('go-r', 'go-l', 'far'); if (opt && opt.short && lblR) lblR.textContent = opt.shortLbl; }, 240);
   });
 }
-/* Tap handler that ignores the click which ends a swipe. */
-function onTap(wrap, fn) { wrap.addEventListener('click', e => { if (wrap._swiped) return; fn(e); }); }
+/* Tap handler that ignores the click which ends a swipe. v2.21: while selecting, a tap picks the item instead. */
+function onTap(wrap, fn) { wrap.addEventListener('click', e => { if (wrap._swiped) return; if (Sel.kind && wrap.dataset.selk === Sel.kind) { selToggle(wrap.dataset.selid); return; } fn(e); }); }
+
+/* ==========================================================================
+   v2.21 — press and hold to select (tasks, notes, dates, Ledger); actions in a bar above the tabs
+   ======================================================================== */
+const Sel = { kind: null, ids: new Set() };
+const SEL_ACTS = {};          // kind → () => [{ l, fn(ids), danger }]
+function bindHold(el, kind, id) {
+  el.dataset.selk = kind; el.dataset.selid = id;
+  let t = null, x0 = 0, y0 = 0;
+  const go = () => { t = null; el._swiped = true; setTimeout(() => { el._swiped = false; }, 500); if (Sel.kind && Sel.kind !== kind) selEnd(); if (!Sel.kind) { Sel.kind = kind; Sel.ids = new Set(); } selToggle(id); try { navigator.vibrate && navigator.vibrate(15); } catch (e) {} };
+  el.addEventListener('touchstart', e => { const p = e.touches[0]; x0 = p.clientX; y0 = p.clientY; clearTimeout(t); t = setTimeout(go, 480); }, { passive: true });
+  el.addEventListener('touchmove', e => { const p = e.touches[0]; if (t && (Math.abs(p.clientX - x0) > 8 || Math.abs(p.clientY - y0) > 8)) { clearTimeout(t); t = null; } }, { passive: true });
+  ['touchend', 'touchcancel'].forEach(ev => el.addEventListener(ev, () => { clearTimeout(t); t = null; }, { passive: true }));
+  el.addEventListener('contextmenu', e => { e.preventDefault(); go(); });
+}
+function selToggle(id) {
+  if (!Sel.kind) return;
+  Sel.ids.has(id) ? Sel.ids.delete(id) : Sel.ids.add(id);
+  if (!Sel.ids.size) { selEnd(); return; }
+  selPaint();
+}
+function selPaint() {
+  $$('[data-selk]').forEach(el => el.classList.toggle('sel-on', !!Sel.kind && el.dataset.selk === Sel.kind && Sel.ids.has(el.dataset.selid)));
+  document.documentElement.classList.toggle('selecting', !!Sel.kind);
+  const bar = $('selBar'); if (!bar) return;
+  bar.classList.toggle('hidden', !Sel.kind);
+  if (!Sel.kind) return;
+  $('selN').textContent = `${Sel.ids.size} selected`;
+  const acts = (SEL_ACTS[Sel.kind] || (() => []))();
+  $('selActs').innerHTML = acts.map((a, i) => `<button type="button" data-sela="${i}" class="${a.danger ? 'danger' : ''}">${a.l}</button>`).join('');
+  $$('[data-sela]', bar).forEach(b => b.addEventListener('click', () => { const a = acts[+b.dataset.sela], ids = [...Sel.ids].filter(id => records[id]); a.fn(ids); }));
+}
+function selEnd() { Sel.kind = null; Sel.ids = new Set(); selPaint(); }
+function selAll(kind, ids) { Sel.kind = kind; Sel.ids = new Set(ids); selPaint(); }
+/* delete many at once, with one Undo */
+function deleteManyWithUndo(ids, what) {
+  ids.forEach(id => softDelete(id, { render: false })); selEnd(); scheduleRender();
+  toast(`Deleted ${ids.length} ${what}${ids.length === 1 ? '' : 's'}.`, 'Undo', () => { ids.forEach(id => restore(id)); scheduleRender(); }, 7000);
+}
 
 /* tiny chip-group helper: renders single-select chips into el */
 function chipGroup(el, options, value, onPick, colorFn) {
@@ -570,9 +618,12 @@ function cleanRec(r) {
     }
   } else if (r.type === 'date') {
     r.repeat = pick(r.repeat, DATE_REPEAT, 'once'); if (r.when != null && r.when !== '') r.when = dateOr(r.when, '');
+    if (r.lead != null && !(+r.lead > 0 && +r.lead <= 366)) delete r.lead;
   } else if (r.type === 'doc' || r.type === 'docfile') {
     if (r.fy != null && !(typeof r.fy === 'string' && FY_RX.test(r.fy))) r.fy = null;
     if (r.type === 'doc') { if (r.expiry != null && r.expiry !== '') r.expiry = dateOr(r.expiry, null); if (typeof r.docType !== 'string') r.docType = 'Other'; }
+    if (r.history != null) r.history = Array.isArray(r.history) ? r.history.filter(h => h && typeof h === 'object' && ISO_DATE_RX.test(h.expiry || '')).map(h => ({ expiry: h.expiry, number: typeof h.number === 'string' ? h.number : '', renewedOn: dateOr(h.renewedOn, '') })).slice(-10) : undefined;
+    if (r.prevUntil != null) r.prevUntil = dateOr(r.prevUntil, undefined);
   }
   return r;
 }
@@ -691,7 +742,13 @@ const Sync = {
         body: JSON.stringify({ action, token: prefs.cloudToken, ...(payload || {}) })
       });
       const txt = await res.text();
-      let d; try { d = JSON.parse(txt); } catch (e) { throw new Error('Not JSON from script (is the URL the /exec one, deployed for "Anyone"?)'); }
+      let d; try { d = JSON.parse(txt); } catch (e) {
+        // v2.21: say what Google actually sent (status + page title), so the log shows the real cause. No body or token is logged.
+        const ttl = (String(txt).match(/<title>([^<]{0,80})/i) || [])[1] || '', st = res.status || 0;
+        const err = new Error(`Not JSON from script (HTTP ${st}${ttl ? ' · ' + ttl.trim() : ''})`);
+        err.transient = st === 0 || st >= 500 || st === 429 || /error|busy|try again|too many|unavailable/i.test(ttl) || st === 200;
+        throw err;
+      }
       if (d.error) throw new Error(d.error);
       return d;
     } finally { clearTimeout(t); }
@@ -717,13 +774,16 @@ const Sync = {
       await this.push();
       const got = await this.pull();
       await this.push();                                   // anything re-sealed during the pull
-      this.lastOk = nowMs(); DB.set('lastSync', this.lastOk); window.__synced = true;
+      this.lastOk = nowMs(); DB.set('lastSync', this.lastOk); window.__synced = true; this.retried = false;
       if (!(await DB.get('firstSync'))) await DB.set('firstSync', this.lastOk);   // first time this device synced with this Sheet
       this.status('ok', 'Synced ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
       if (manual) toast(got ? `Synced — ${got} update${got === 1 ? '' : 's'} received.` : 'Synced — all up to date.');
       return true;
     } catch (e) {
-      RLOG.error('sync failed:', e.message || e);
+      // v2.21: a dropped connection or a busy Google server is tried once more, quietly, before it counts as an error
+      const msg = String(e && e.message || e || ''), net = e && e.transient || /load failed|fetch is aborted|aborted|failed to fetch|networkerror|network error/i.test(msg);
+      if (net && !manual && !this.retried) { this.retried = true; RLOG.warn('sync hiccup, trying again:', msg); this.status('busy', 'Syncing…'); setTimeout(() => this.run(), 6000); return false; }
+      RLOG.error('sync failed:', msg);
       this.status('err', 'Sync error — saved on this iPhone. ' + (e.message || ''));
       if (manual) toast('Sync failed: ' + (e.message || 'network error') + '. Your changes are safe here.');
       return false;
@@ -1212,13 +1272,15 @@ function taskRow(t, showCat) {
       </div>
       ${subs.length && open ? `<div class="steps">${subs.map((s, i) => stepHtml(s, i, t.id)).join('')}</div>` : ''}
     </div></div>`;
-  return swipeHtml(inner, t.status === 'done' ? '↺ Reopen' : '✓ Done', 'Delete 🗑', `data-task="${t.id}"`);
+  return swipeHtml(inner, t.status === 'done' ? '↺ Reopen' : '✓ Done', t.status === 'done' ? 'Delete 🗑' : '⏰ Snooze', `data-task="${t.id}"`);
 }
 function wireTaskRows(root) {
   $$('[data-task]', root).forEach(w => {
     const id = w.dataset.task;
+    const isDone = records[id] && records[id].status === 'done';
     bindSwipe(w, () => { const t = records[id]; if (!t) return; t.status === 'done' ? setStatus(t, 'active') : completeWithUndo(id); },
-                 () => deleteWithUndo(id));
+                 () => deleteWithUndo(id), isDone ? null : { short: () => snoozeSheet([id]), shortLbl: '⏰ Snooze', farLbl: 'Delete 🗑' });
+    bindHold(w, 'task', id);
     onTap(w, e => {
       if (e.target.closest('[data-cycle]')) { cycleTask(id); return; }
       const st = e.target.closest('[data-step]');
@@ -1277,7 +1339,7 @@ function renderTasks() {
   $('taskList').innerHTML = groups.length ? groups.map(([k, v]) =>
     `<div class="group-title">${k} <span class="gcount">${v.length}</span></div><div class="group">${v.map(t => taskRow(t, showCat)).join('')}</div>`).join('')
     : `<div class="empty"><b>${open.length ? 'Nothing here' : 'All clear'}</b>Tap + to add a task. Try “Draft ITC letter tomorrow high”.</div>`;
-  wireTaskRows($('taskList'));
+  wireTaskRows($('taskList')); selPaint();
 
   // stats + the daily card (v2.20)
   renderTaskHero(tasks, open);
@@ -1300,6 +1362,47 @@ function renderTasks() {
   $$('[data-restore]', $('trashList')).forEach(b => b.addEventListener('click', () => { restore(b.dataset.restore); toast('Restored.'); }));
 }
 
+/* ---------- v2.21: snooze (swipe a little left) and moving many tasks at once ---------- */
+function moveTasksTo(ids, iso) {
+  const prev = ids.map(id => [id, records[id] && records[id].dueDate]);
+  ids.forEach(id => { const t = records[id]; if (t) { t.dueDate = iso; put(t, { render: false }); } });
+  selEnd(); scheduleRender();
+  toast(`${ids.length === 1 ? 'Moved' : `Moved ${ids.length} tasks`} to ${relDay(iso)}.`, 'Undo', () => { prev.forEach(([id, d]) => { const t = records[id]; if (t) { t.dueDate = d || null; put(t, { render: false }); } }); scheduleRender(); }, 7000);
+}
+function nextWeekday(dow) { const d = new Date(); d.setHours(0, 0, 0, 0); do { d.setDate(d.getDate() + 1); } while (d.getDay() !== dow); return isoLocal(d); }
+function snoozeSheet(ids) {
+  if (!ids.length) return;
+  const opts = [['Tomorrow', addDays(1)], ['In 2 days', addDays(2)], ['Saturday', nextWeekday(6)], ['Next Monday', nextWeekday(1)], ['In a week', addDays(7)], ['In a month', addDays(30)]];
+  planSheet(ids.length === 1 ? 'Snooze' : `Snooze ${ids.length} tasks`, `<div class="snz">${opts.map(([l, d]) => `<button type="button" data-snz="${d}"><b>${l}</b><span>${fmtDate(d, true)}</span></button>`).join('')}</div>
+    <div class="field" style="margin-top:12px"><label>Or pick a day</label><input type="date" id="snzDate" min="${todayISO()}"></div>`,
+    () => { const d = $('snzDate').value; if (!d) { planMsg('Pick a day, or tap one above.', true); return false; } moveTasksTo(ids, d); return true; }, 'Move');
+  $$('[data-snz]', $('pshBody')).forEach(b => b.addEventListener('click', () => { Sheets.close('shPlan', true); moveTasksTo(ids, b.dataset.snz); }));
+}
+SEL_ACTS.task = () => [
+  { l: '✓ Done', fn: ids => { ids.forEach(id => { const t = records[id]; if (t && t.status !== 'done') setStatus(t, 'done'); }); selEnd(); toast(`${ids.length} marked done.`); } },
+  { l: '⏰ Snooze', fn: ids => snoozeSheet(ids) },
+  { l: 'Today', fn: ids => moveTasksTo(ids, todayISO()) },
+  { l: '! High', fn: ids => { ids.forEach(id => { const t = records[id]; if (t) { t.priority = t.priority === 'High' ? 'Medium' : 'High'; put(t, { render: false }); } }); selEnd(); scheduleRender(); } },
+  { l: '🗑', danger: true, fn: ids => deleteManyWithUndo(ids, 'task') }
+];
+SEL_ACTS.date = () => [
+  { l: '📅 To Calendar', fn: ids => { icsSaveNew(ids.map(id => records[id]).filter(d => d && d.when), 'Register dates'); selEnd(); } },
+  { l: '☑ As tasks', fn: ids => { let n = 0; ids.forEach(id => { const d = records[id]; if (d && d.when && !dateTask(d)) { const w = isoLocal(nextOccurrence(d)); const t = newTask({ title: d.label, dueDate: w, priority: 'Medium', notes: 'From Dates', fromDate: d.id }); d.taskId = t.id; put(d, { render: false }); n++; } }); selEnd(); scheduleRender(); toast(n ? `${n} added to Tasks.` : 'Nothing to add — they need a date, or are already in Tasks.'); } },
+  { l: '🗑', danger: true, fn: ids => deleteManyWithUndo(ids, 'date') }
+];
+SEL_ACTS.note = () => [
+  { l: '📌 Pin', fn: ids => { const pin = ids.some(id => records[id] && !records[id].pinned); ids.forEach(id => { const n = records[id]; if (n) { n.pinned = pin; put(n, { render: false }); } }); selEnd(); scheduleRender(); toast(pin ? 'Pinned.' : 'Unpinned.'); } },
+  { l: '📁 Move', fn: ids => { const fs = folderList(); planSheet(`Move ${ids.length} note${ids.length > 1 ? 's' : ''}`, `<div class="field"><label>Folder</label><select id="selFold"><option value="">— No folder —</option>${fs.map(f => `<option>${esc(f)}</option>`).join('')}</select></div><div class="field"><label>Or a new folder</label><input id="selFoldNew" placeholder="Folder name"></div>`,
+      () => { const f = ($('selFoldNew').value.trim() || $('selFold').value).slice(0, 60); ids.forEach(id => { const n = records[id]; if (n) { n.folder = f; put(n, { render: false }); } }); selEnd(); toast(f ? `Moved to ${f}.` : 'Moved out of folders.'); return true; }, 'Move'); } },
+  { l: '🗑', danger: true, fn: ids => deleteManyWithUndo(ids, 'note') }
+];
+SEL_ACTS.fin = () => [
+  { l: '🏷 Category', fn: ids => { planSheet(`Category for ${ids.length}`, `<div class="field"><select id="selCat"><option value="">— none —</option>${FIN_CATS.map(c => `<option>${c}</option>`).join('')}</select></div>`,
+      () => { const c = $('selCat').value; ids.forEach(id => { const e = records[id]; if (e && e.kind !== 'transfer') { e.category = c; put(e, { render: false }); } }); selEnd(); toast('Category changed.'); return true; }, 'Apply'); } },
+  { l: '🗑', danger: true, fn: ids => deleteManyWithUndo(ids, 'entry') }
+];
+SEL_ACTS.doc = () => [];
+
 /* ---------- v2.20: the daily card at the top of Tasks ---------- */
 function taskStreak(doneDays) {
   let n = 0, d = todayISO();
@@ -1311,39 +1414,31 @@ function renderTaskHero(tasks, open) {
   if (!$('tHero')) return;
   const today = todayISO(), doneToday = tasks.filter(t => t.completedOn === today).length;
   const od = open.filter(isOverdue), dueToday = open.filter(t => t.dueDate === today);
-  $('stActive').textContent = open.length; $('stToday').textContent = doneToday;
-  $('stOverdue').textContent = od.length; $('stOverdueBox').classList.toggle('warn', od.length > 0); $('stOverdueBox').classList.add('hidden');   // the message above already says it
-  const h = new Date().getHours();
-  $('tGreet').textContent = h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  $('stActive').textContent = open.length; $('stToday').textContent = doneToday; $('stOverdue').textContent = od.length;
   $('tDayLbl').textContent = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
   const left = od.length + dueToday.length, total = left + doneToday, pct = total ? doneToday / total : 0;
   $('tArc').style.strokeDashoffset = String(125.66 * (1 - pct));
   $('tRingN').textContent = total ? `${doneToday}/${total}` : doneToday ? '✓' : '—';
   $('tRing').classList.toggle('full', total > 0 && !left);
   $('tRing').setAttribute('aria-label', total ? `${doneToday} of ${total} done for today` : 'Nothing due today');
-  $('tMsg').innerHTML = od.length ? `<span class="warn">${od.length} overdue</span>${dueToday.length ? ` and ${dueToday.length} due today` : ''} — clear one first.`
-    : dueToday.length ? `${dueToday.length} left for today.${doneToday ? ' Keep going.' : ''}`
-    : doneToday ? 'All clear for today. Well done.'
-    : open.length ? 'Nothing due today — pick one below.' : 'Nothing open. Add one below.';
-  $('tHero').classList.toggle('all-clear', !left && doneToday > 0);
-  // last 7 days
-  const days = []; for (let i = 6; i >= 0; i--) days.push(addDays(-i));
   const cnt = {}; tasks.forEach(t => { if (t.completedOn) cnt[t.completedOn] = (cnt[t.completedOn] || 0) + 1; });
-  const max = Math.max(1, ...days.map(d => cnt[d] || 0));
-  $('tWeek').innerHTML = days.map(d => { const n = cnt[d] || 0, wd = new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'narrow' });
-    return `<div class="${d === today ? 'on' : ''}" title="${n} done"><i style="height:${n ? Math.max(8, Math.round(n / max * 30)) : 3}px"></i><small>${wd}</small></div>`; }).join('');
   const st = taskStreak(new Set(Object.keys(cnt)));
-  $('tStreak').classList.toggle('hidden', st < 2); $('tStreak').textContent = `🔥 ${st}-day streak`;
-  // up next: the one task to do now
-  const pick = [...od, ...dueToday].sort((a, b) => isOverdue(b) - isOverdue(a) || prioRank[a.priority] - prioRank[b.priority] || (a.dueDate || '').localeCompare(b.dueDate || ''))[0]
-    || open.filter(t => t.status === 'inprogress').sort(byDueThenPrio)[0];
-  const f = $('tFocus');
-  if (!pick) { f.innerHTML = ''; return; }
-  const late = isOverdue(pick);
-  f.innerHTML = `<div class="t-focus${late ? ' od' : ''}" role="button" tabindex="0" id="tfOpen"><div class="tf-main"><small>${late ? 'Overdue · do this first' : pick.status === 'inprogress' ? 'In progress' : 'Up next'}</small><b>${esc(pick.title)}</b>
-    <div class="tf-sub">${esc(pick.priority)} priority${pick.dueDate ? ' · ' + relDay(pick.dueDate) : ''}${pick.dueTime ? ' ' + fmtTime12(pick.dueTime) : ''}</div></div><button class="tf-done" id="tfDone">✓ Done</button></div>`;
-  $('tfDone').addEventListener('click', e => { e.stopPropagation(); completeWithUndo(pick.id); });
-  $('tfOpen').addEventListener('click', () => previewTask(pick.id));
+  const bits = [];
+  if (od.length) bits.push(`<span class="warn">${od.length} overdue</span>`);
+  if (dueToday.length) bits.push(`${dueToday.length} due today`);
+  if (!left) bits.push(doneToday ? 'all clear for today' : 'nothing due today');
+  bits.push(`${open.length} open`);
+  if (st >= 2) bits.push(`<span class="streak">🔥 ${st} days</span>`);
+  $('tMsg').innerHTML = bits.join(' · ');
+  $('tHero').classList.toggle('all-clear', !left && doneToday > 0);
+  // v2.21: many overdue at once — one decision instead of a pile of red
+  const c = $('tClean');
+  if (od.length >= 3) {
+    c.innerHTML = `<span>${od.length} overdue</span><button type="button" data-clean="today">Move all to today</button><button type="button" data-clean="pick">Snooze all…</button>`;
+    c.classList.remove('hidden');
+    c.querySelector('[data-clean="today"]').addEventListener('click', () => moveTasksTo(od.map(t => t.id), todayISO()));
+    c.querySelector('[data-clean="pick"]').addEventListener('click', () => snoozeSheet(od.map(t => t.id)));
+  } else { c.classList.add('hidden'); c.innerHTML = ''; }
 }
 function quickTaskAdd(raw) {
   const q = parseQuickAdd(raw || ''); if (!q.title) return null;
@@ -1642,7 +1737,8 @@ function renderNotes() {
   area.innerHTML = html;
   $$('[data-folder]', area).forEach(b => b.addEventListener('click', () => { activeFolder = b.dataset.folder; renderNotes(); $('main').scrollTop = 0; }));
   const back = $('folderBack'); if (back) back.addEventListener('click', () => { activeFolder = '__all__'; renderNotes(); });
-  $$('[data-note]', area).forEach(b => b.addEventListener('click', () => prefs.noteEdit ? openNoteEditor(b.dataset.note) : previewNote(b.dataset.note)));
+  $$('[data-note]', area).forEach(b => { bindHold(b, 'note', b.dataset.note); onTap(b, () => prefs.noteEdit ? openNoteEditor(b.dataset.note) : previewNote(b.dataset.note)); });
+  selPaint();
 }
 
 /* ---------- preview (read-only, typeset) ---------- */
@@ -2061,6 +2157,7 @@ function openDate(id) {
   editDateId = id;
   $('deLabel').value = d.label; $('deWhen').value = d.when || ''; $('deRepeat').value = d.repeat || 'once';
   $('deCat').innerHTML = dateCats().map(c => `<option value="${c[0]}"${c[0] === dateCat(d) ? ' selected' : ''}>${c[2]} ${esc(c[1])}</option>`).join('');
+  $('deLead').innerHTML = `<option value="0">As its category (${catLead(dateCat(d)) || +(prefs.dateSoonDays || 30)} days)</option>` + LEAD_OPTS.map(n => `<option value="${n}"${+d.lead === n ? ' selected' : ''}>${n} days ahead</option>`).join('');
   const w = d.when ? isoLocal(nextOccurrence(d)) : '', age = w ? dateAge(d, w) : '';
   $('deInfo').textContent = w ? `Next: ${fmtDate(w, true)} (${inDays(daysTo(w))})${age ? ', ' + age : ''}${d.docRef && records[d.docRef] ? ' · linked to the document “' + records[d.docRef].title + '”' : ''}` : 'No date yet — pick one above.';
   $('deIcs').textContent = inCal(d) ? `✓ In iPhone Calendar (sent ${fmtDate(d.calOn)}) — send again` : '📅 Add to iPhone Calendar (reminds you)';
@@ -2070,6 +2167,7 @@ function openDate(id) {
 $('deSave').addEventListener('click', () => {
   const d = records[editDateId]; if (!d) return;
   d.label = $('deLabel').value.trim() || d.label; d.when = $('deWhen').value || d.when || ''; d.repeat = $('deRepeat').value; d.cat = $('deCat').value; if (d.when) delete d.needsDetail;
+  { const L = +$('deLead').value; if (L) d.lead = L; else delete d.lead; }
   const doc = d.docRef && records[d.docRef]; if (doc && d.when && dateCat(d) === 'docexp' && doc.expiry !== d.when) { doc.expiry = d.when; put(doc, { render: false }); }
   put(d); Sheets.close('shDate'); toast('Saved.');
 });
@@ -2333,7 +2431,7 @@ function renderDocsBase() {
       ${docSel ? `<span class="sel-box${docSel.has(d.id) ? ' on' : ''}" aria-label="${docSel.has(d.id) ? 'selected' : 'not selected'}">${docSel.has(d.id) ? '✓' : ''}</span>` : '<span class="chev">›</span>'}</div>`, '', 'Delete 🗑', `data-doc="${d.id}"`);
   }).join('') || (!docs.length ? '<div class="empty"><b>No documents</b>Aadhaar, PAN, marksheets, ITRs, policies — tap + to add, 📷 Scan, or Import from Drive. Each person gets a folder, with groups inside.</div>' : '');
   $('docList').classList.toggle('hidden', !$('docList').innerHTML);
-  $$('[data-doc]', $('docList')).forEach(w => { const id = w.dataset.doc; bindSwipe(w, null, () => deleteWithUndo(id)); onTap(w, () => docSel ? toggleDocSel(id) : showDoc(id)); });
+  $$('[data-doc]', $('docList')).forEach(w => { const id = w.dataset.doc; bindSwipe(w, null, () => deleteWithUndo(id)); docHold(w, id); onTap(w, () => docSel ? toggleDocSel(id) : showDoc(id)); });
   if (docSel && docPath.grp && list.length) { fbox.insertAdjacentHTML('beforeend', '<button class="linkbtn" id="docSelAll" style="margin:0 4px 8px">Select all here</button>'); $('docSelAll').addEventListener('click', () => { list.forEach(d => docSel.add(d.id)); renderDocs(); }); }
   renderSelBar();
 }
@@ -2597,6 +2695,25 @@ $('doLock').addEventListener('change', () => {
 
 /* ---------- viewer ---------- */
 let viewDocId = null, docReturn = null;
+/* v2.21 (C1): a renewed document keeps its history — the old expiry and number are listed, its old files are marked "earlier copy" */
+function renewDoc(id) {
+  const d = records[id]; if (!d || !d.expiry) return;
+  const plainNo = !d.numEnc;
+  planSheet('Renewed — ' + d.title, `<p class="hint" style="margin:0 4px 10px">The current details move to “Earlier”, with its files marked as earlier copies. Nothing is deleted.</p>
+    <div class="field"><label>New ${esc(dueWord(d.dueKind || 'expiry'))} date</label><input type="date" id="rnExp" min="${todayISO()}"></div>
+    ${plainNo ? `<div class="field"><label>New number (leave blank if the same)</label><input id="rnNum" autocapitalize="characters" autocomplete="off"></div>` : ''}`,
+    () => {
+      const ex = $('rnExp').value; if (!ISO_DATE_RX.test(ex)) { planMsg('Pick the new date.', true); return false; }
+      if (ex <= d.expiry) { planMsg('The new date should be after ' + fmtDate(d.expiry, true) + '.', true); return false; }
+      const nn = plainNo && $('rnNum') ? $('rnNum').value.trim() : '', today = todayISO();
+      d.history = [...(d.history || []), { expiry: d.expiry, number: plainNo ? (d.number || '') : '', renewedOn: today }].slice(-10);
+      docFilesOf(id).forEach(f => { if (!f.prevUntil) { f.prevUntil = d.expiry; put(f, { render: false }); } });
+      d.expiry = ex; if (nn) d.number = nn;
+      put(d); try { syncDocDate(d); } catch (e) { RLOG.warn('renew date', e.message); }
+      setTimeout(() => { if (Sheets.isOpen('shDocView')) openDocView(id); toast('Renewed. Attach the new copy?', 'Add file', () => { Sheets.closeAll(); openDoc(id); }, 8000); }, 50);
+      return true;
+    }, 'Save');
+}
 function openDocView(id) {
   const d = records[id]; if (!d) return;
   viewDocId = id;
@@ -2604,13 +2721,15 @@ function openDocView(id) {
   const days = d.expiry ? daysUntilISO(d.expiry) : null;
   $('dvMeta').innerHTML = (d.who ? `<span>👤 ${esc(docOwners(d).join(' & '))}</span>` : '') + `<span>${esc(d.docType || '')}</span>` + (docNumShown(d) ? `<span class="mono" id="dvNum">${esc(docNumShown(d))}</span>`
       + (d.numEnc || maskNo(d.number) !== d.number ? '<button class="linkbtn" id="dvNumShow" style="padding:0 2px">Show</button>' : '') + '<button class="linkbtn" id="dvNumCopy" style="padding:0 2px">Copy</button>' : '')
-    + (d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : '');
+    + (d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span><button class="linkbtn" id="dvRenew" style="padding:0 2px">↻ Renewed</button>` : '')
+    + ((d.history || []).length ? `<span class="dv-hist">Earlier: ${d.history.slice().reverse().map(h => `till ${fmtDate(h.expiry, true)}${h.number ? ' · ' + esc(maskNo(h.number)) : ''}`).join('; ')}</span>` : '');
+  if ($('dvRenew')) $('dvRenew').addEventListener('click', () => renewDoc(id));
   const sh = $('dvNumShow'); if (sh) sh.addEventListener('click', async () => { const on = sh.textContent === 'Show';
     if (!on) { $('dvNum').textContent = docNumShown(d); sh.textContent = 'Show'; return; }
     try { $('dvNum').textContent = await docNumFull(d); sh.textContent = 'Hide'; } catch (e) { toast('Locked.'); } });
   const cp = $('dvNumCopy'); if (cp) cp.addEventListener('click', async () => { try { await navigator.clipboard.writeText(await docNumFull(d)); toast('Number copied.'); } catch (e) { toast('Could not copy — tap Show and select it.'); } });
-  const fs = docFilesOf(id);
-  $('dvFiles').innerHTML = fs.length ? fs.map(f => `<figure class="dv-file" data-dvf="${f.id}"><figcaption>${f.locked ? '🔒 ' : ''}${esc(f.name)}</figcaption>
+  const fs = docFilesOf(id).sort((a, b) => !!a.prevUntil - !!b.prevUntil);          // v2.21: the current copy first, earlier copies after
+  $('dvFiles').innerHTML = fs.length ? fs.map(f => `<figure class="dv-file" data-dvf="${f.id}"><figcaption>${f.locked ? '🔒 ' : ''}${esc(f.name)}${f.prevUntil ? ` <span class="pill">earlier copy · till ${fmtDate(f.prevUntil, true)}</span>` : ''}</figcaption>
       <div class="dv-body"><div class="dv-wait">${f.locked && !Fin.key ? 'Locked. Enter the code to view.' : 'Loading…'}</div></div></figure>`).join('')
     : '<div class="empty"><b>No files</b>Tap Edit to attach a photo or PDF.</div>';
   $('dvUnlock').classList.toggle('hidden', !(fs.some(f => f.locked) && !Fin.key));
@@ -2895,7 +3014,7 @@ function finRow(e, showDate) {
     <div class="row-end"><span class="amt ${cls}">${sign}${fmtMoney(e.amount)}</span></div></div>`, '', 'Delete 🗑', `data-fin="${e.id}"`);
 }
 function wireFinRows(root) {
-  $$('[data-fin]', root).forEach(w => { const id = w.dataset.fin; bindSwipe(w, null, () => deleteWithUndo(id)); onTap(w, () => openFin(id)); });
+  $$('[data-fin]', root).forEach(w => { const id = w.dataset.fin; bindSwipe(w, null, () => deleteWithUndo(id)); bindHold(w, 'fin', id); onTap(w, () => openFin(id)); });
 }
 /* v2.19 (B2): one rule everywhere — spending in the "Investment" category is money put into investments, shown on its own line, not as spending */
 function monthFigures(list) {
@@ -2937,7 +3056,66 @@ function renderLedger() {
   const month = all('fin').filter(e => (e.date || '').slice(0, 7) === finMonth);
   renderAcctStrip();
   renderLedHero(monthFigures(month));
+  renderLedFlags();
   renderLedgerList();
+}
+/* ---------- v2.21: D1 regular items not yet in the Ledger · D2 old udhaar · D3 last month's summary ---------- */
+function itemDay(it) {
+  const k = it.key || '', id = k.slice(k.indexOf(':') + 1);
+  if (k.startsWith('r:')) { const r = records[id]; return r && +r.day || 0; }
+  if (k.startsWith('sip:')) { const a = acctById(id); return a && a.sip && +a.sip.day || 0; }
+  if (k.startsWith('emi:')) { const a = acctById(id); return a && +a.emiDay || 0; }
+  return 0;
+}
+function ledgerPending(ym) {
+  const c = planCfg(); if (!c || ym < c.startMonth) return [];
+  const cur = isoMonth(new Date()), dom = new Date().getDate();
+  let items = []; try { items = planItems(c, ym); } catch (e) { RLOG.warn('pending', e.message); return []; }
+  return items.filter(it => !it.done && !it.budget && !it.extra && +it.a > 0 && it.kind !== 'udhback' && (ym < cur || !itemDay(it) || itemDay(it) <= dom));
+}
+const UDH_OLD_DAYS = 30;
+function oldUdhaar() {
+  const t = todayISO();
+  return all('fin').filter(e => isUdh(e) && !e.settled && outstanding(e) > 0 && e.date && -daysUntilISO(e.date) >= UDH_OLD_DAYS)
+    .map(e => ({ e, days: -daysUntilISO(e.date) })).sort((a, b) => b.days - a.days);
+}
+function renderLedFlags() {
+  const box = $('ledFlags'); if (!box) return;
+  const cur = isoMonth(new Date()), out = [];
+  if (finMonth === cur) {
+    const P = ledgerPending(cur);
+    if (P.length) out.push(`<button class="led-flag" data-lf="pend"><span>🔁 <b>${P.length} regular item${P.length > 1 ? 's' : ''} not in the Ledger yet</b><small>${P.slice(0, 3).map(it => esc(it.label) + ' ' + rsShort(it.a)).join(' · ')}${P.length > 3 ? ' …' : ''}</small></span><i>Record ›</i></button>`);
+    const O = oldUdhaar();
+    if (O.length) { const tot = O.reduce((s, x) => s + (x.e.kind === 'lent' ? 1 : -1) * outstanding(x.e), 0);
+      out.push(`<button class="led-flag udh" data-lf="udh"><span>⏳ <b>${O.length} udhaar open for ${UDH_OLD_DAYS}+ days</b><small>${O.slice(0, 3).map(x => `${esc(x.e.who || '?')} ${x.e.kind === 'lent' ? 'owes you' : 'you owe'} ${rsShort(outstanding(x.e))} · ${x.days} days`).join(' · ')}</small></span><i>Udhaar ›</i></button>`); }
+    const prev = monthAdd(cur, -1);
+    if (new Date().getDate() <= 10 && lsGet('r2_close_' + prev) !== '1' && all('fin').some(e => (e.date || '').slice(0, 7) === prev))
+      out.push(`<button class="led-flag close" data-lf="close"><span>📒 <b>${esc(monthLong(prev))} — month summary</b><small>Spending, budgets, top categories and open udhaar</small></span><i>Open ›</i></button>`);
+  }
+  box.innerHTML = out.join('');
+  $$('[data-lf]', box).forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.lf;
+    if (k === 'pend') planMonthSheet(cur);
+    else if (k === 'udh') { setPref('moneySeg', 'udhaar'); renderMoney(); }
+    else if (k === 'close') { const prev = monthAdd(cur, -1); lsSet('r2_close_' + prev, '1'); monthClose(prev); renderLedFlags(); }
+  }));
+}
+function monthClose(ym) {
+  const F = all('fin').filter(e => (e.date || '').slice(0, 7) === ym), M = monthFigures(F), bud = budgets(), byC = {};
+  F.filter(e => e.kind === 'expense' && e.category !== 'Investment').forEach(e => { const k = e.category || 'Other'; byC[k] = (byC[k] || 0) + (+e.amount || 0); });
+  const cats = Object.entries(byC).sort((a, b) => b[1] - a[1]);
+  const over = Object.entries(bud).filter(([k, b]) => (byC[k] || 0) > b).map(([k, b]) => `${esc(k)} ${rsShort(byC[k])} of ${rsShort(b)}`);
+  const budTot = Object.values(bud).reduce((s, x) => s + x, 0), U = udhaarSplit(), pend = ledgerPending(ym);
+  const prevM = monthFigures(all('fin').filter(e => (e.date || '').slice(0, 7) === monthAdd(ym, -1)));
+  const line = (k, v, cls) => `<div class="pl-row"><span class="r-name">${k}</span><b class="mono ${cls || ''}">${v}</b></div>`;
+  planSheet(monthLong(ym) + ' — summary', `<div class="group pl-group">
+      ${line('Received', rs(M.inc), 'pos')}${line('Spent', rs(M.out), 'neg')}${M.inv ? line('Into investments', rs(M.inv)) : ''}${line('Net', (M.net < 0 ? '−' : '') + rs(Math.abs(M.net)), M.net < 0 ? 'neg' : 'pos')}
+      ${prevM.out ? line('Spent vs the month before', (M.out >= prevM.out ? '+' : '−') + rs(Math.abs(M.out - prevM.out))) : ''}
+      ${budTot ? line('Budgets', `${rs(Object.keys(bud).reduce((s, k) => s + (byC[k] || 0), 0))} of ${rs(budTot)}`) : ''}</div>
+    ${over.length ? `<p class="hint" style="color:var(--seal)">Over budget: ${over.join(' · ')}</p>` : ''}
+    ${cats.length ? `<h4 class="plan-sub">Where it went</h4><div class="group pl-group">${cats.slice(0, 6).map(([k, v]) => line(esc(k), rs(v) + ` <small class="muted">${M.out ? Math.round(v / M.out * 100) : 0}%</small>`)).join('')}</div>` : ''}
+    <h4 class="plan-sub">Still open</h4><div class="group pl-group">${line('Owed to you', rs(U.owed), 'pos')}${line('You owe', rs(U.owe), 'neg')}${pend.length ? line('Regular items never recorded', String(pend.length)) : ''}</div>
+    <p class="hint">${F.length} Ledger entr${F.length === 1 ? 'y' : 'ies'} in ${esc(monthLong(ym))}. Investments are not counted as spending.</p>`, () => true, 'Done');
 }
 /* v2.19 (B4): typing in the search box redraws only the list, a moment after you stop typing */
 function renderLedgerList() {
@@ -2956,7 +3134,7 @@ function renderLedgerList() {
     return `<div class="day-head"><span>${FQ.allMonths ? fmtDate(d, true) : relDay(d)}</span><span class="day-tot">${sp ? `<b class="neg">−${fmtMoney(sp)}</b>` : ''}${rc ? `<b class="pos">+${fmtMoney(rc)}</b>` : ''}</span></div>`; };
   $('finList').innerHTML = days.length ? days.map(d => `${dayHead(d)}<div class="group fin-day">${byDay[d].map(e => finRow(e, false)).join('')}</div>`).join('')
     : filtering ? '<div class="empty"><b>No matches</b>Try a shorter word, or tick “Search all months”.</div>' : '<div class="empty"><b>Nothing this month</b>Tap + to record spending, income or udhaar.</div>';
-  wireFinRows($('finList'));
+  wireFinRows($('finList')); selPaint();
 }
 /* the filter lives in its own controls; locking Money clears it */
 function finFilterState() {
@@ -3001,7 +3179,7 @@ function renderUdhaar() {
         <div class="row-main"><div class="row-title">${esc(p)}</div><div class="row-sub">${bal >= 0 ? 'owes you' : 'you owe'} · ${list.length} entr${list.length > 1 ? 'ies' : 'y'}</div></div>
         <span class="amt ${bal >= 0 ? 'pos' : 'neg'}">${fmtMoney(bal)}</span></div>
       <div class="person-lines">${list.sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(e => `
-        <div class="pline"><span class="d">${fmtDate(e.date)} · ${esc(e.desc || '')}${isPaidBy(e) ? ' (paid for you)' : ''}${(e.paidAmount || 0) > 0 ? ` · ${fmtMoney(e.paidAmount)} back` : ''}</span>
+        <div class="pline"><span class="d">${fmtDate(e.date)}${e.date && -daysUntilISO(e.date) >= UDH_OLD_DAYS ? ` <b class="warn">· ${-daysUntilISO(e.date)} days</b>` : ''} · ${esc(e.desc || '')}${isPaidBy(e) ? ' (paid for you)' : ''}${(e.paidAmount || 0) > 0 ? ` · ${fmtMoney(e.paidAmount)} back` : ''}</span>
           <span class="amt ${e.kind === 'lent' ? 'pos' : 'neg'}" style="font-size:13.5px">${fmtMoney(outstanding(e))}</span>
           <button class="btn small ghost" data-settle="${e.id}">Settle</button><button class="icon-btn" data-fe="${e.id}" aria-label="Edit entry" style="width:32px;height:32px;font-size:14px">✎</button></div>`).join('')}
         ${list.length > 1 ? `<button class="linkbtn" data-settleall="${esc(p)}">Settle all with ${esc(p)}</button>` : ''}</div></div>`).join('')
@@ -3810,7 +3988,10 @@ function acctSheet(id) {
         const sipAmt = readAmt('asSip', 'SIP amount') || 0, sipStart = $('asSipStart').value, sipEnd = $('asSipEnd').value || null;
         if (sipAmt && !ymOk(sipStart)) throw new Error('Pick the month the SIP starts.');
         if (sipEnd && sipEnd < sipStart) throw new Error('SIP stop month is before the start.');
-        rec.ret = ret; rec.sip = sipAmt ? { amt: sipAmt, from: $('asSipFrom').value, start: sipStart, end: sipEnd } : null;
+        const sAuto = !!($('asSipAuto') && $('asSipAuto').checked), sDayRaw = $('asSipDay') ? $('asSipDay').value.trim() : '', sDay = clampDay(sDayRaw);
+        if (sAuto && !sDay) throw new Error('SIP day: the day of the month it is debited, 1 to 31.');
+        const was = rec.sip || {};
+        rec.ret = ret; rec.sip = sipAmt ? { amt: sipAmt, from: $('asSipFrom').value, start: sipStart, end: sipEnd, auto: sAuto || undefined, day: sDay || undefined, autoFrom: sAuto ? (was.auto && was.autoFrom ? was.autoFrom : isoMonth(new Date())) : undefined } : null;
         rec.values = readMonthRows('asVals');
       }
       if (kind === 'loan') {
@@ -3818,6 +3999,9 @@ function acctSheet(id) {
         if (emi && (!ymOk(start) || !ymOk(end))) throw new Error('Pick the first and last EMI months.');
         if (emi && end < start) throw new Error('Last EMI is before the first.');
         Object.assign(rec, { emi, amount: readAmt('asAmt', 'Loan amount') || 0, rate: readAmt('asRate', 'Interest rate') || 0, start: start || null, end: end || null, payFrom: $('asPay').value });
+        const eAuto = !!($('asEmiAuto') && $('asEmiAuto').checked), eDay = clampDay($('asEmiDay') ? $('asEmiDay').value.trim() : '');
+        if (eAuto && !eDay) throw new Error('EMI day: the day of the month it is debited, 1 to 31.');
+        if (eAuto) { rec.emiAutoFrom = rec.emiAuto && rec.emiAutoFrom ? rec.emiAutoFrom : isoMonth(new Date()); rec.emiAuto = true; rec.emiDay = eDay; } else { delete rec.emiAuto; delete rec.emiAutoFrom; if (eDay) rec.emiDay = eDay; else delete rec.emiDay; }
       }
       if (kind === 'card') {                                   // v2.19: statement and due days become monthly dates
         const sRaw = $('asStmt').value.trim(), dRaw = $('asDue').value.trim(), sd = clampDay(sRaw), dd = clampDay(dRaw);
@@ -3840,6 +4024,7 @@ function acctSheet(id) {
       h = (k === 'fd' ? `<h4 class="plan-sub">Maturity</h4><div class="field"><label>Matures on (FD, PPF, NPS…)</label><input type="date" id="asMat" value="${esc(a.matures || '')}"></div>
         <div class="group"><label class="switch-row"><span>Remind me in Dates<small>Adds the maturity date to Dates (Bank &amp; investments).</small></span><input type="checkbox" class="sw" id="asRemind"${a.remind === false ? '' : ' checked'}></label></div>` : '') + `<h4 class="plan-sub">SIP</h4><div class="grid2"><div class="field"><label>Monthly SIP ₹</label>${amtIn('asSip', s.amt)}</div><div class="field"><label>Debited from</label><select id="asSipFrom">${acctOptions(s.from || defAcct(c), x => isLiquid(x.kind) || x.kind === 'card')}</select></div></div>
         <div class="grid2"><div class="field"><label>SIP from</label>${monthIn('asSipStart', s.start || c.startMonth)}</div><div class="field"><label>SIP stops (optional)</label>${monthIn('asSipEnd', s.end)}</div></div>
+        <div class="grid2"><label class="switch-row" style="background:var(--card);border-radius:10px"><span>Auto-record<small>Written into the Ledger on its day</small></span><input type="checkbox" class="sw" id="asSipAuto"${s.auto ? ' checked' : ''}></label><div class="field"><label>SIP day</label><input id="asSipDay" inputmode="numeric" placeholder="1–31" value="${esc(String(s.day || ''))}"></div></div>
         <div class="field"><label>Expected return % a year (optional)</label>${amtIn('asRet', a.ret || '', '0 = no growth shown')}</div>
         <p class="hint" style="margin:-6px 4px 10px">An assumption, shown as an estimate. Market returns vary.</p>
         <h4 class="plan-sub">Value from your statement <small>replaces the estimate from that month</small></h4>
@@ -3847,6 +4032,7 @@ function acctSheet(id) {
     } else if (k === 'loan') {
       h = `<h4 class="plan-sub">Loan</h4><div class="grid2"><div class="field"><label>EMI ₹</label>${amtIn('asEmi', a.emi)}</div><div class="field"><label>EMI paid from</label><select id="asPay">${acctOptions(a.payFrom || defAcct(c), x => isLiquid(x.kind))}</select></div></div>
         <div class="grid2"><div class="field"><label>First EMI</label>${monthIn('asStart', a.start)}</div><div class="field"><label>Last EMI</label>${monthIn('asEnd', a.end)}</div></div>
+        <div class="grid2"><label class="switch-row" style="background:var(--card);border-radius:10px"><span>Auto-record<small>EMI goes out of the bank on its day</small></span><input type="checkbox" class="sw" id="asEmiAuto"${a.emiAuto ? ' checked' : ''}></label><div class="field"><label>EMI day</label><input id="asEmiDay" inputmode="numeric" placeholder="1–31" value="${esc(String(a.emiDay || ''))}"></div></div>
         <div class="grid2"><div class="field"><label>Loan amount ₹ (optional)</label>${amtIn('asAmt', a.amount || '')}</div><div class="field"><label>Interest % (optional)</label>${amtIn('asRate', a.rate || '', 'worked out if blank')}</div></div>
         <div class="group pl-group" id="asLoanInfo"></div>
         <p class="hint">With EMI and dates filled, the amount owed follows the loan schedule; the opening figure above is only used if they are blank.</p>`;
@@ -3962,6 +4148,24 @@ function autoRecord() {
       catch (e) { RLOG.warn('auto-record', r.id, ym, e.message); continue; }
       pm.items = { ...(pm.items || {}), [key]: o }; put(pm, { render: false }); n++;
     }
+  });
+  // v2.21 (A4): SIPs and EMIs set inside an account record themselves too, on their day, from the month auto-record was switched on
+  accts(true).forEach(a => {
+    const jobs = [];
+    if (isInvest(a.kind) && a.sip && a.sip.auto && +a.sip.amt && a.sip.day) jobs.push(['sip:' + a.id, a.sip.day, a.sip.autoFrom || a.sip.start]);
+    if (a.kind === 'loan' && a.emiAuto && +a.emi && a.emiDay) jobs.push(['emi:' + a.id, a.emiDay, a.emiAutoFrom || a.start]);
+    jobs.forEach(([key, day, from0]) => {
+      const from = [from0, c.startMonth].filter(Boolean).sort().pop();
+      for (let ym = from, i = 0; ym <= cur && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) {
+        const last = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(), d = ym + '-' + String(Math.min(day, last)).padStart(2, '0'); if (d > today) continue;
+        const it = planItems(c, ym).find(x => x.key === key); if (!it) continue;
+        const pm = pmGet(ym) || pmNew(ym), o = { ...((pm.items || {})[key] || {}) };
+        if (it.done || it.matched || o.skip || it.lost || !it.a) { if (it.lost && !o.skip) { pm.items = { ...(pm.items || {}), [key]: { ...o, skip: true } }; delete pm.items[key].done; delete pm.items[key].ledgerId; put(pm, { render: false }); } continue; }
+        try { o.ledgerId = writeTick(c, ym, { ...it, ledgerId: null, date: d, fixedId: 'fa' + ym.replace('-', '') + '_' + key.replace(/[^\w]/g, '') }, it.a); o.done = true; o.auto = true; }
+        catch (e) { RLOG.warn('auto-record', key, ym, e.message); continue; }
+        pm.items = { ...(pm.items || {}), [key]: o }; put(pm, { render: false }); n++;
+      }
+    });
   });
   return n;
 }
@@ -5046,6 +5250,15 @@ $('trashOpen').addEventListener('click', openBin);
 
 /* ---------- share several documents ---------- */
 let docSel = null, shareTitle = null;
+/* v2.21: press and hold a document to start selecting (the Documents tab keeps its own Share / Move / Merge bar) */
+function docHold(w, id) {
+  let t = null, x0 = 0, y0 = 0;
+  const go = () => { t = null; w._swiped = true; setTimeout(() => { w._swiped = false; }, 500); if (!docSel) docSel = new Set(); if (!docSel.has(id)) docSel.add(id); renderDocs(); };
+  w.addEventListener('touchstart', e => { const p = e.touches[0]; x0 = p.clientX; y0 = p.clientY; clearTimeout(t); t = setTimeout(go, 480); }, { passive: true });
+  w.addEventListener('touchmove', e => { const p = e.touches[0]; if (t && (Math.abs(p.clientX - x0) > 8 || Math.abs(p.clientY - y0) > 8)) { clearTimeout(t); t = null; } }, { passive: true });
+  ['touchend', 'touchcancel'].forEach(ev => w.addEventListener(ev, () => { clearTimeout(t); t = null; }, { passive: true }));
+  w.addEventListener('contextmenu', e => { e.preventDefault(); go(); });
+}
 function toggleDocSel(id) { if (!docSel) return; docSel.has(id) ? docSel.delete(id) : docSel.add(id); renderDocs(); }
 function renderSelBarBase() {
   const bar = $('docSelBar'); bar.classList.toggle('hidden', !docSel);
@@ -5334,6 +5547,11 @@ function guessDateCat(d) {
   return 'other';
 }
 const dateCat = d => d.cat && allDateCatKeys().includes(d.cat) ? d.cat : guessDateCat(d);
+/* v2.21 (C2): how many days ahead a date shows in “Coming up” — its own setting, else its category's, else Settings */
+const LEAD_OPTS = [3, 7, 15, 30, 45, 60, 90];
+const catLead = k => +((dateCfg().lead || {})[k] || 0);
+const dateLead = d => +(d.lead || 0) || catLead(dateCat(d)) || +(prefs.dateSoonDays || 30);
+function setCatLead(k, n) { const c = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false }; c.lead = { ...(c.lead || {}) }; if (n) c.lead[k] = n; else delete c.lead[k]; put(c); }
 function dateAge(d, w) {
   if (d.repeat !== 'yearly' || !d.when || !/birthday|anniversar/i.test(d.label)) return '';
   const y0 = +d.when.slice(0, 4), y1 = +w.slice(0, 4); if (y0 <= 1904 || y1 <= y0) return '';
@@ -5395,8 +5613,8 @@ function renderDatesBase() {
   if (datePath && !cats.some(c => c[0] === datePath)) datePath = null;
   let list = [];
   if (!datePath) {
-    const days = +(prefs.dateBadgeDays || 7), soonN = +(prefs.dateSoonDays || 30), soon = dateRows(dates.filter(d => d.when)).filter(x => x.days >= 0 && x.days <= soonN);
-    home.innerHTML = `<div class="date-top">${soon.length ? `<div class="group-title">Coming up · next ${soonN} days</div><div class="group" id="dateSoon">${soon.map(x => dateRowHtml(x, true, true)).join('')}</div>` : `<p class="hint" style="margin:0 4px 8px">Nothing in the next ${soonN} days.</p>`}</div>`;
+    const days = +(prefs.dateBadgeDays || 7), soonN = +(prefs.dateSoonDays || 30), soon = dateRows(dates.filter(d => d.when)).filter(x => x.days >= 0 && x.days <= dateLead(x.d));
+    home.innerHTML = `<div class="date-top">${soon.length ? `<div class="group-title">Coming up</div><div class="group" id="dateSoon">${soon.map(x => dateRowHtml(x, true, true)).join('')}</div>` : `<p class="hint" style="margin:0 4px 8px">Nothing in the next ${soonN} days.</p>`}</div>`;
     home.innerHTML += `<div class="group-title" id="dateCatTitle" style="margin-top:4px">Categories</div><div class="folders">${cats.map(([k, n, i]) => { const own = dates.filter(d => dateCat(d) === k), set = own.filter(d => d.when).length, near = dateRows(own.filter(d => d.when)).filter(x => x.days >= 0 && x.days <= days).length;
       return `<button class="folder" data-dcat="${k}"><b>${i} ${esc(n)}</b><span>${own.length} · ${set} dated</span>${near ? `<small class="warn">${near} within ${days} days</small>` : ''}</button>`; }).join('')}</div>
       <div class="date-cat-actions"><button class="btn ghost small" id="dateNewCat">＋ New category</button><button class="btn ghost small" id="dateIcsAll">📅 All to iPhone Calendar</button><button class="btn ghost small" id="dateImp">⤓ Import / export (CSV)</button></div>`;
@@ -5404,15 +5622,17 @@ function renderDatesBase() {
     const c = cats.find(x => x[0] === datePath);
     list = dateRows(dates.filter(d => dateCat(d) === datePath));
     home.innerHTML = `<div class="doc-crumb"><button class="chip" data-dback="1">‹ All categories</button><b>${c[2]} ${esc(c[1])}</b><span class="muted">${list.length}</span></div>
+      <div class="set-row date-lead"><span>Show in Coming up</span><select id="dateCatLead"><option value="0">Default (${+(prefs.dateSoonDays || 30)} days)</option>${LEAD_OPTS.map(n => `<option value="${n}"${catLead(datePath) === n ? ' selected' : ''}>${n} days ahead</option>`).join('')}</select></div>
       <div class="date-cat-actions"><button class="btn ghost small" id="dateAddHere">＋ Add here</button><button class="btn ghost small" id="dateIcsCat">📅 To Calendar</button><button class="btn ghost small" id="dateDelCat" style="color:var(--seal)">Delete category</button></div>`;
   }
   $('dateList').innerHTML = list.map(x => dateRowHtml(x, !datePath)).join('') || (datePath ? '<div class="empty">Nothing here yet — tap “Add here”.</div>' : '');
-  $('dateList').classList.toggle('hidden', !$('dateList').innerHTML);
-  $$('[data-date]', $('datesPane')).forEach(w => { const id = w.dataset.date; bindSwipe(w, null, () => deleteWithUndo(id)); onTap(w, e => { if (e && e.target && e.target.closest('[data-dtask]')) { dateToTask(id); return; } openDate(id); }); });
+  $('dateList').classList.toggle('hidden', !$('dateList').innerHTML); setTimeout(selPaint, 0);
+  $$('[data-date]', $('datesPane')).forEach(w => { const id = w.dataset.date; bindSwipe(w, null, () => deleteWithUndo(id)); bindHold(w, 'date', id); onTap(w, e => { if (e && e.target && e.target.closest('[data-dtask]')) { dateToTask(id); return; } openDate(id); }); });
   $$('[data-dcat]', home).forEach(b => b.addEventListener('click', () => { datePath = b.dataset.dcat; renderDates(); $('main').scrollTop = 0; }));
   $$('[data-dback]', home).forEach(b => b.addEventListener('click', () => { datePath = null; renderDates(); }));
   const on = (id, f) => { if ($(id)) $(id).addEventListener('click', f); };
   on('dateAddHere', () => openAdd('date'));
+  if ($('dateCatLead')) $('dateCatLead').addEventListener('change', () => { setCatLead(datePath, +$('dateCatLead').value); toast('Saved.'); });
   on('dateNewCat', newDateCat);
   on('dateUnhide', () => { const c = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false }; c.hidden = []; put(c); toast('Hidden categories are back.'); });
   on('dateDelCat', () => deleteDateCat(datePath));
@@ -6517,12 +6737,13 @@ function renderAddForm0(focus) {
       <div class="field" style="margin-top:10px"><div class="wrapchips" id="afKind"></div></div>
       <div class="field"><label>For</label><input id="afTitle" list="descDl" placeholder="What was it?" autocomplete="off"><datalist id="descDl">${descs.map(d => `<option value="${esc(d)}">`).join('')}</datalist></div>
       <div class="field hidden" id="afWhoWrap"><label id="afWhoLbl">Person</label><input id="afWho" list="peopleDl" placeholder="Who?" autocomplete="off"></div>
+      <div class="field" id="afSplitWrap"><label>Split with (optional)</label><input id="afSplit" placeholder="e.g. Ravi, Amit — each owes you an equal share" autocomplete="off"><div class="guess" id="afSplitHint"></div></div>
       <div class="grid2 hidden" id="afAcctWrap"><div class="field"><label id="afAcctLbl">Paid from</label><select id="afAcct"></select></div><div class="field hidden" id="afToWrap"><label>To</label><select id="afTo"></select></div></div>
       <div class="field" id="afCatWrap"><label>Category</label><div class="wrapchips" id="afCat"></div></div>
       <div class="field"><label>Date</label><div class="wrapchips" id="afWhen"></div><input type="date" id="afDate" class="hidden" style="margin-top:8px"></div>
       <div class="group"><label class="switch-row">Repeats every month<input type="checkbox" class="sw" id="afRecur"></label></div>`;
     AF.kind = 'expense'; AF.cat = ''; AF.when = todayISO();
-    const kindChips = sel => chipGroup($('afKind'), KINDS, sel, v => { AF.kind = v; $('afWhoWrap').classList.toggle('hidden', !isUdhaar(v)); acctPick('af', v); if (v === 'paidby') $('afAcctWrap').classList.add('hidden'); { const g = $('afRecur') && $('afRecur').closest('.group'); if (g) g.classList.toggle('hidden', v === 'paidby'); } $('afWhoLbl') && ($('afWhoLbl').textContent = v === 'paidby' ? 'Who paid for it' : 'Person'); });
+    const kindChips = sel => chipGroup($('afKind'), KINDS, sel, v => { AF.kind = v; $('afWhoWrap').classList.toggle('hidden', !isUdhaar(v)); acctPick('af', v); if (v === 'paidby') $('afAcctWrap').classList.add('hidden'); if ($('afSplitWrap')) $('afSplitWrap').classList.toggle('hidden', v !== 'expense'); { const g = $('afRecur') && $('afRecur').closest('.group'); if (g) g.classList.toggle('hidden', v === 'paidby'); } $('afWhoLbl') && ($('afWhoLbl').textContent = v === 'paidby' ? 'Who paid for it' : 'Person'); });
     kindChips('expense');
     acctPick('af', 'expense');
     const catChips = sel => chipGroup($('afCat'), [{ v: '', l: 'None' }, ...FIN_CATS.map(c => ({ v: c, l: c }))], sel, v => { AF.cat = v; AF.catTouched = true; }, c => FIN_COLORS[c]);
@@ -6533,6 +6754,8 @@ function renderAddForm0(focus) {
     whenChips(todayISO());
     $('afDate').addEventListener('change', () => { AF.when = $('afDate').value || todayISO(); });
     wireCalc($('afAmt'), $('afAmtHint'));
+    { const sh = () => { const n = splitNames().length, T = calcAmount($('afAmt').value); $('afSplitHint').textContent = n && T > 0 ? (({ share, mine }) => `You ${rs(mine)} · ${n === 1 ? 'they' : 'each'} ${rs(share)} (recorded as udhaar diya)`)(splitShares(T, n)) : ''; };
+      $('afSplit').addEventListener('input', sh); $('afAmt').addEventListener('input', sh); }
     /* fill the form from a parsed line or a recent entry; the date shown is the one used */
     AF.fill = (x) => {
       $('afAmt').value = x.amount > 0 ? x.amount : ''; $('afAmt').dispatchEvent(new Event('input'));
@@ -6601,6 +6824,9 @@ function saveAdd(another) {
     const val = calcAmount(v('afQlVal'));
     if (isNaN(val) || !(val > 0)) { $('afQlVal').focus(); return; }
     quickLogSave(Math.round(val * 100) / 100, v('afTitle'), AF.when || todayISO()).then(ok => toast(ok ? 'Logged.' : 'Could not log — try again.'), e => { RLOG.error('quick log', e); toast('Could not log — try again.'); });
+  } else if (k === 'money' && AF.kind === 'expense' && splitNames().length) {
+    const useAcct = !$('afAcctWrap').classList.contains('hidden');
+    if (!splitSave({ amount: calcAmount(v('afAmt')), desc: v('afTitle'), cat: AF.cat || '', date: AF.when || todayISO(), acct: useAcct ? $('afAcct').value : undefined })) return;
   } else if (k === 'money') {
     const useAcct = !$('afAcctWrap').classList.contains('hidden');
     const rec = saveMoneyEntry({ amount: calcAmount(v('afAmt')), kind: AF.kind, desc: v('afTitle'), who: v('afWho'), cat: AF.kind === 'transfer' ? '' : AF.cat || '',
@@ -6625,6 +6851,8 @@ function showTab(tab) {
   currentTab = tab;
   if (tab !== 'money') setPref('lastTab', tab);
   Object.entries(TAB_SCREENS).forEach(([k, id]) => $(id).classList.toggle('on', k === tab));
+  document.documentElement.classList.toggle('on-money', tab === 'money');
+  if (Sel.kind) selEnd(); document.documentElement.classList.remove('fab-hide');   // v2.20: Money's section bar sits fixed above the tab bar
   $$('.tab').forEach(t => { const on = t.dataset.tab === tab; t.classList.toggle('on', on); t.setAttribute('aria-current', on ? 'page' : 'false'); });
   renderAll();
 }
@@ -6941,8 +7169,7 @@ function openSettings() {
   $('setTheme').value = prefs.theme; $('setText').value = prefs.text; $('setContrast').checked = !!prefs.contrast; $('setLeft').checked = !!prefs.left;
   $('setStart').value = prefs.startTab; $('setTodayAuto').checked = prefs.todayAuto !== false; $('setSteps').checked = !!prefs.stepsOpen; $('setNoteEdit').checked = !!prefs.noteEdit;
   $('setVer').textContent = 'v' + APP_VERSION;
-  const n = Object.keys(records).filter(id => !SEALED_TYPES.has(records[id].type)).length + Object.keys(sealed).length;
-  $('setCount').textContent = n.toLocaleString('en-IN');
+  { const c = recordSplit(); $('setCount').textContent = `${c.live.toLocaleString('en-IN')} items · ${c.trash} in trash · ${c.sys + c.enc} other`; }
   const dirty = Object.values(records).filter(r => r._dirty && !SEALED_TYPES.has(r.type)).length + Object.values(sealed).filter(s => s._dirty).length;
   const big = Object.values(records).filter(r => r._tooBig && !r.deleted && !SEALED_TYPES.has(r.type)).length + Object.values(sealed).filter(s => s._tooBig && !s.deleted).length;
   $('setSyncInfo').textContent = Sync.on() ? `Last synced ${Sync.lastOk ? timeAgo(Sync.lastOk) : 'never'}${dirty ? ` · ${dirty} change${dirty > 1 ? 's' : ''} waiting to upload` : big ? ` · ${big} item${big > 1 ? 's are' : ' is'} too large for the Sheet and only on this iPhone (shorten or split ${big > 1 ? 'them' : 'it'})` : ' · everything uploaded'}` : 'Not connected — everything stays on this iPhone.';
@@ -8199,6 +8426,17 @@ function confirmRestore(P, fileName) {
   });
 }
 
+/* v2.21 (A5): what the record count is made of — your items, trash, and the app's own records */
+const RECORD_WORDS = { task: 'tasks', note: 'notes', date: 'dates', doc: 'documents', docfile: 'document files', inbox: 'inbox items', template: 'templates', bill: 'bills' };
+function recordSplit() {
+  const out = { live: 0, trash: 0, sys: 0, enc: Object.keys(sealed).length, byType: {} };
+  Object.values(records).forEach(r => {
+    if (SEALED_TYPES.has(r.type)) return;
+    if (r.deleted) { if (r.deletedAt > 1 && RECORD_WORDS[r.type]) out.trash++; else out.sys++; return; }
+    if (RECORD_WORDS[r.type]) { out.live++; out.byType[r.type] = (out.byType[r.type] || 0) + 1; } else out.sys++;
+  });
+  return out;
+}
 /* Looks only at this device: nothing is sent anywhere. */
 function securityChecks() {
   const out = [], unlocked = finUnlocked(), fk = records[FINKEY_ID];
@@ -8354,6 +8592,20 @@ function moneyLineText(q) {
   const k = (KINDS.find(x => x.v === q.kind) || KINDS[0]).l.replace(/ \(.*\)$/, '');
   const route = q.kind === 'transfer' ? `${acctName(q.acct)} → ${acctName(q.to)}` : q.acct ? (q.kind === 'expense' || q.kind === 'lent' ? 'from ' : 'into ') + acctName(q.acct) : '';
   return [`<b>${esc(k)} ${esc(fmtMoney(q.amount))}</b>`, q.desc ? esc(q.desc) : '', q.who ? '👤 ' + esc(q.who) : '', q.cat ? esc(q.cat) : '', q.date !== todayISO() ? '📅 ' + esc(fmtDate(q.date, true)) : '', route ? esc(route) : ''].filter(Boolean).join(' · ');
+}
+/* v2.21 (D4): split a bill — you paid the whole amount; your share is spending, each other share is udhaar diya */
+const splitNames = () => [...new Set(String(($('afSplit') && $('afSplit').value) || '').split(/[,;&]+|\band\b/i).map(x => x.trim()).filter(Boolean).map(x => x.charAt(0).toUpperCase() + x.slice(1)))].slice(0, 12);
+function splitShares(total, n) { const share = Math.floor(total / (n + 1) * 100) / 100; return { share, mine: Math.round((total - share * n) * 100) / 100 }; }
+function splitSave(x) {
+  const names = splitNames(), T = +x.amount;
+  if (!(T > 0)) { toast('Enter an amount.'); return null; }
+  const { share, mine } = splitShares(T, names.length), desc = String(x.desc || '').trim() || 'Shared bill';
+  const me = saveMoneyEntry({ amount: mine, kind: 'expense', desc: desc + ` (my share of ${rs(T)})`, cat: x.cat, date: x.date, acct: x.acct });
+  if (!me) return null;
+  const made = [me.id];
+  names.forEach(p => { const e = saveMoneyEntry({ amount: share, kind: 'lent', desc: desc + ' (split)', who: p, date: x.date, acct: me.acct || x.acct }); if (e) made.push(e.id); });
+  toast(`Split ${rs(T)}: your share ${rs(mine)}, ${names.join(', ')} owe${names.length === 1 ? 's' : ''} ${rs(share)} each.`, 'Undo', () => { made.forEach(id => softDelete(id, { render: false })); scheduleRender(); }, 8000);
+  return me;
 }
 /* one place that writes a Ledger entry — used by the quick line and the form */
 function saveMoneyEntry(x) {
@@ -8630,7 +8882,8 @@ async function openDataHealth() {
   }
   const sc = scanIdxStats();
   if (sc.total) add(sc.todo ? 'info' : 'ok', 'Searchable PDFs', `${sc.done} of ${sc.total} PDFs can be searched by their words${sc.none ? ` (${sc.none} are photos without text)` : ''}${sc.locked ? `; ${sc.locked} locked PDF${sc.locked > 1 ? 's are' : ' is'} not indexed` : ''}.`, sc.todo ? { label: 'Index ' + sc.todo, fn: () => { Sheets.close('shHealth', true); indexAllScans(); } } : null);
-  add('info', 'This device', `Register v${APP_VERSION} · ${(Object.keys(records).filter(id => !SEALED_TYPES.has(records[id].type) && !LOCAL_ONLY_TYPES.has(records[id].type)).length + Object.keys(sealed).length).toLocaleString('en-IN')} records.`);
+  { const c = recordSplit(), by = Object.entries(c.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${n} ${RECORD_WORDS[t] || t}`).join(', ');
+    add('info', 'This device', `Register v${APP_VERSION}. Your items: ${c.live.toLocaleString('en-IN')}${by ? ' (' + by + ')' : ''}. In Recently deleted: ${c.trash}. App and system records (pictures, settings, sync pieces${finUnlocked() ? ', private entries' : ''}): ${(c.sys + c.enc).toLocaleString('en-IN')}.`); }
   const warn = rows.filter(r => r.state === 'warn').length;
   $('hlBody').innerHTML = `<div class="sc-sum">${warn ? `${warn} thing${warn > 1 ? 's' : ''} to look at` : 'All good'}</div><div class="group">${rows.map((c, i) => `<div class="hl-row"><span class="sc-ic ${c.state}" aria-hidden="true">${c.state === 'ok' ? '✓' : c.state === 'warn' ? '!' : 'i'}</span><div class="row-main"><div class="row-title">${esc(c.t)}</div><div class="row-sub">${esc(c.d)}</div></div>${c.act ? `<button class="btn small ghost" data-hla="${i}">${esc(c.act.label)}</button>` : ''}</div>`).join('')}</div>
     <p class="hint">Looks at this device and its last sync. Nothing is sent anywhere.</p>`;
@@ -8715,14 +8968,16 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
-  { t: '<b>Tasks</b> has a daily card: a greeting, how much of today is done (the ring), the last 7 days, your streak, and a box to add a task straight away. The one task to do next sits under it with a ✓ Done button.' },
-  { t: '<b>Tasks</b>: no more categories. Sort by date, priority, in progress, waiting, newest — and now <b>oldest</b>.' },
-  { t: '<b>Today</b> has a new button (a calendar with today\'s date) and opens by itself the first time you open Register each day. Turn that off in Settings → Look &amp; Feel.' },
-  { t: '<b>Dates</b>: choose how far ahead “Coming up” looks (Settings → Look &amp; Feel). Each upcoming date has <b>＋ Task</b>. A date sent to iPhone Calendar is marked, and “All to iPhone Calendar” leaves out the ones already sent.' },
-  { t: '<b>Messages</b> no longer cover each other — they show one after another. Reminders have <b>Don\'t show again</b>.' },
-  { t: '<b>Paid by someone</b>: when someone else pays for your purchase, record it once — it counts as your spending and shows under Udhaar as “you owe”. Pay it back from Udhaar → Settle.', priv: true },
-  { t: '<b>Quick log</b> on + works while Money is locked. It is encrypted at once and moves into the Ledger the next time you unlock. The note reads like a quick line: “chai”, “lunch pb Ravi” (paid by Ravi), “lent Ravi”.', priv: true },
-  { t: 'While Money is locked, Settings, the security check-up, Data health, search and this list no longer mention it.', priv: true }
+  { t: '<b>Tasks</b> fits more on the screen: a slimmer card on top (no bar graph), tighter rows. With 3 or more overdue, one tap moves them all to today or snoozes them.' },
+  { t: '<b>Swipe a task left a little</b> to snooze it (tomorrow, Saturday, next week…); swipe further to delete. Swipe right still marks it done.' },
+  { t: '<b>Press and hold</b> a task, note, date or document to select several, then act on all of them at once from the bar above the tabs.' },
+  { t: '<b>Dates</b>: each date — or a whole category — can have its own “Show in Coming up” time (e.g. insurance 60 days ahead, birthdays 7).' },
+  { t: '<b>Documents</b>: tap <b>↻ Renewed</b> on an expiring document. The old expiry and number are kept as history and its files marked as earlier copies.' },
+  { t: 'The <b>+</b> button slides away while you scroll down, so it no longer sits on top of an amount. Data health now splits your items, trash and the app\'s own records.' },
+  { t: '<b>Sync</b>: a dropped connection or a busy Google server is tried once more before it shows as an error, and the log now records what Google actually replied.' },
+  { t: '<b>SIPs and EMIs</b> set inside an account can auto-record on their day, so the bank balance falls when they are debited.', priv: true },
+  { t: '<b>Ledger</b> flags regular items not yet recorded this month and udhaar open for 30+ days; early in a month it offers last month\'s summary.', priv: true },
+  { t: '<b>Split a bill</b>: in a spend, fill “Split with” — your share is spending, each other share becomes udhaar diya.', priv: true }
 ];
 function showWhatsNew() {
   $('nwBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">Register ${APP_VERSION}</p><ul class="nw-list">${WHATS_NEW.filter(x => !x.priv || finUnlocked()).map(x => `<li>${x.t}</li>`).join('')}</ul>`;
@@ -9040,3 +9295,14 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   }).catch(e => RLOG.warn('sw register failed', e.message));
 }
 
+
+/* v2.21: selection bar buttons */
+if ($('selX')) $('selX').addEventListener('click', selEnd);
+
+/* v2.21 (A3): hide + while scrolling down, show it on the way up or near the top/bottom */
+{ let lastY = 0, tick = false; const m = $('main');
+  m.addEventListener('scroll', () => { if (tick) return; tick = true; requestAnimationFrame(() => { tick = false;
+    const y = m.scrollTop, dy = y - lastY, nearEnd = y + m.clientHeight >= m.scrollHeight - 4;
+    if (y < 60 || dy < -6) document.documentElement.classList.remove('fab-hide');
+    else if (dy > 6 && !nearEnd) document.documentElement.classList.add('fab-hide');
+    lastY = y; }); }, { passive: true }); }
