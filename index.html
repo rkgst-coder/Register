@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.21.0">
+<meta name="app-version" content="2.22.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -1001,6 +1001,48 @@ html.fab-hide #fab{transform:translateY(170px);opacity:0;pointer-events:none}
 .led-flag small{display:block;color:var(--ink-faint);font-size:.8125rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .led-flag i{font-style:normal;color:var(--brass);font-weight:700;font-size:.8125rem;white-space:nowrap}
 .led-flag.udh{border-left-color:var(--seal)}.led-flag.close{border-left-color:var(--forest)}
+
+/* v2.22 — Documents: selection bar at the bottom (like Dates); no iPhone text-selection pop-up on cards, rows and buttons */
+#docSelBar{position:fixed;left:10px;right:10px;bottom:calc(var(--tabbar-h) + var(--safe-b) + 8px);z-index:30;margin:0 auto;max-width:640px;background:var(--ink);color:var(--paper);border:0;flex-wrap:wrap}
+#docSelBar span{color:var(--paper)}
+#docSelBar .btn{background:transparent;color:var(--paper);border:1px solid rgba(255,255,255,.3)}
+#docSelBar .btn.brass{background:var(--brass);border-color:var(--brass);color:#fff}
+html.doc-selecting #fab{display:none}
+.folder,.chip,.btn,.row,.note-card,.tab,.led-flag,.td-row,.plan-li,.person,.count{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+
+/* v2.22 — recurring items under your own categories */
+.rc-grp{margin:0 0 8px}
+.rc-grp summary{display:flex;align-items:center;gap:8px;padding:8px 4px;cursor:pointer;list-style:none}
+.rc-grp summary::-webkit-details-marker{display:none}
+.rc-grp summary::before{content:'▸';color:var(--ink-faint);font-size:.8125rem;transition:transform .15s}
+.rc-grp[open] summary::before{transform:rotate(90deg)}
+.rc-grp summary b{font-size:.9375rem}
+.rc-grp summary .muted{font-size:.8125rem}
+.rc-grp summary .amt{margin-left:auto;font-size:.875rem}
+.rc-grp summary .linkbtn{padding:0 4px;margin-left:4px}
+.rc-grp .group{margin-bottom:4px}
+
+/* v2.22 — formatted note editor */
+.note-rich{outline:none;overflow-y:auto;white-space:pre-wrap;word-break:break-word;-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+.note-rich:empty::before,.note-rich>div:only-child:has(>br:only-child)::before{content:attr(data-ph);color:var(--ink-faint);pointer-events:none}
+.note-rich>div:only-child:has(>br:only-child)::before{content:'Start writing… type 1. or - and a space for a list'}
+.note-rich div{min-height:1.6em}
+.note-rich h1,.note-rich h2,.note-rich h3{margin:.4em 0 .2em}
+.note-rich ul,.note-rich ol{margin:.2em 0;padding-left:1.6em}
+.note-rich li.ck{list-style:none;position:relative}
+.note-rich li.ck::before{content:'☐';position:absolute;left:-1.35em;top:0;font-size:1.05em;color:var(--brass);cursor:pointer}
+.note-rich li.ck[data-ck="1"]::before{content:'☑'}
+.note-rich li.ck[data-ck="1"]{color:var(--ink-faint);text-decoration:line-through}
+.note-rich table{border-collapse:collapse;margin:.4em 0;width:100%}
+.note-rich td{border:1px solid var(--line-strong);padding:4px 6px;min-width:3em;vertical-align:top}
+.note-rich tr:first-child td{font-weight:600;background:rgba(128,128,128,.08)}
+.note-rich mark{background:#fff3a3;color:inherit}
+html[data-theme="dark"] .note-rich mark{background:#6b5a16}
+.note-rich blockquote{margin:.3em 0}
+.note-rich pre{white-space:pre-wrap}
+.md u{text-decoration:underline}
+
+.d-copy{border:1px solid var(--line);border-radius:10px;padding:1px 7px;font-size:.75rem;font-weight:600;color:var(--brass);background:var(--field)}
 </style>
 </head>
 <body>
@@ -1084,7 +1126,8 @@ html.fab-hide #fab{transform:translateY(170px);opacity:0;pointer-events:none}
     <!-- DOCUMENTS -->
     <section class="screen" id="scr-docs">
       <div class="large-title">Documents</div>
-      <div class="btn-row" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn ghost small hidden" id="docQuickBtn">＋ Common documents</button><button class="btn ghost small" id="docImportBtn">⤓ Import from Drive</button><button class="btn ghost small" id="docScanBtn">📷 Scan</button><button class="btn ghost small" id="docSelBtn">☑ Select</button><button class="btn ghost small" id="docFoldersBtn">🗂 People &amp; categories</button><button class="btn ghost small" id="docFamBtn">✅ Family checklist</button></div>
+      <div class="btn-row doc-top" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn brass small" id="docAddBtn">＋ Add document</button><button class="btn ghost small" id="docFoldersBtn">🗂 People &amp; categories</button><button class="btn ghost small" id="docFamBtn">✅ Family checklist</button>
+        <span class="hidden"><button id="docQuickBtn"></button><button id="docImportBtn"></button><button id="docScanBtn"></button><button id="docSelBtn"></button></span></div>
       <div class="chips" id="docChips"></div>
       <div id="docChkNote"></div>
       <div id="docAttn"></div>
@@ -1240,14 +1283,14 @@ html.fab-hide #fab{transform:translateY(170px);opacity:0;pointer-events:none}
       <div class="ne-folder"><span aria-hidden="true">📁</span><select id="neFolder" aria-label="Folder"></select><input id="neFolderNew" class="hidden" placeholder="New folder name" enterkeyhint="done"></div>
       <div class="md-bar" id="neBar">
         <button id="neUndo" aria-label="Undo">↶</button><button id="neRedo" aria-label="Redo">↷</button>
-        <button data-md="bold" aria-label="Bold"><b>B</b></button><button data-md="italic" aria-label="Italic"><i>I</i></button>
+        <button data-md="bold" aria-label="Bold"><b>B</b></button><button data-md="italic" aria-label="Italic"><i>I</i></button><button data-md="underline" aria-label="Underline"><u>U</u></button>
         <button data-md="strike" aria-label="Strikethrough"><s>S</s></button><button data-md="mark" aria-label="Highlight">🖍</button>
         <button data-md="h2" aria-label="Heading">H</button><button data-md="ul" aria-label="Bullet list">•</button>
         <button data-md="ol" aria-label="Numbered list">1.</button><button data-md="check" aria-label="Checklist">☐</button>
         <button data-md="outdent" aria-label="Outdent">⇤</button><button data-md="indent" aria-label="Indent">⇥</button>
         <button data-md="quote" aria-label="Quote">❝</button><button data-md="code" aria-label="Code">&lt;/&gt;</button>
         <button data-md="link" aria-label="Link">🔗</button><button data-md="hr" aria-label="Divider line">―</button>
-        <button data-md="table" aria-label="Table">▦</button><button data-md="stamp" aria-label="Insert date and time">🕒</button>
+        <button data-md="table" aria-label="Table">▦</button><button data-md="clear" aria-label="Clear formatting">⌫ꜰ</button><button data-md="stamp" aria-label="Insert date and time">🕒</button>
         <button id="neMic" aria-label="Speak to type" aria-pressed="false">🎤</button><button id="neFindBtn" aria-label="Find and replace">🔎</button>
         <button id="neImgBtn" aria-label="Add picture">🖼</button><button id="nePrevBtn" aria-label="Preview">👁</button>
       </div>
@@ -1261,6 +1304,7 @@ html.fab-hide #fab{transform:translateY(170px);opacity:0;pointer-events:none}
       <input type="file" id="neImgFile" accept="image/*" multiple class="hidden">
       <div class="mic-live"></div>
       <textarea class="note-body" id="neBody" placeholder="Start writing… markdown works"></textarea>
+      <div class="note-body note-rich md" id="neRich" contenteditable="true" spellcheck="true" autocapitalize="sentences" role="textbox" aria-multiline="true" aria-label="Note text" data-ph="Start writing… type 1. or - and a space for a list" style="display:none"></div>
       <div class="md" id="nePreview" style="display:none;min-height:45vh;padding:8px 2px"></div>
       <div class="wc" id="neCount" aria-live="polite"></div>
       <div class="imgs" id="neImgs"></div>
@@ -1287,6 +1331,7 @@ html.fab-hide #fab{transform:translateY(170px);opacity:0;pointer-events:none}
         <button id="nmVersions"><b>🕘</b>Versions</button>
         <button id="nmClone"><b>⧉</b>Duplicate</button>
         <button id="nmTxt"><b>📄</b>.txt</button>
+        <button id="nmMode"><b>Aa</b><span>Plain text</span></button>
         <button id="nmDup"><b>≋</b>Find dupes</button>
         <button id="nmDelete" class="danger"><b>🗑</b>Delete</button>
       </div>
@@ -1378,6 +1423,7 @@ html.fab-hide #fab{transform:translateY(170px);opacity:0;pointer-events:none}
       <div class="grid2"><div class="field"><label>Year (FY)</label><select id="doFy"></select></div>
         <div class="field"><label>Yearly files</label><label class="switch-row" style="padding:6px 0;min-height:0"><span style="font-size:.8125rem">Files by year<small>ITR, statements…</small></span><input type="checkbox" class="sw" id="doByYear"></label></div></div>
       <div class="field"><label>Notes</label><textarea id="doNotes" rows="3"></textarea></div>
+      <div class="group"><label class="switch-row"><span>Details only — no file needed<small>For a card number, policy number or date you keep without a photo or PDF. It won’t show under “No file attached”.</small></span><input type="checkbox" class="sw" id="doNoFile"></label></div>
       <div class="field"><label>Files</label>
         <div class="dfiles" id="doFiles"></div>
         <div class="field hidden" id="doFileFyW" style="margin:6px 0"><label>Year for the next files</label><select id="doFileFy"></select></div>
@@ -1877,6 +1923,6 @@ html.fab-hide #fab{transform:translateY(170px);opacity:0;pointer-events:none}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.21.0"></script>
+<script src="app.js?v=2.22.0"></script>
 </body>
 </html>

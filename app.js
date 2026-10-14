@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.21.0';
+const APP_VERSION = '2.22.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -1629,7 +1629,7 @@ function mdInline(s) {
   s = s.replace(/(^|[\s(])(\+?\d[\d -]{8,}\d)(?=$|[\s),.])/g, (m, p, n) => !telOk(n) ? m : p + hold(`<a href="tel:${n.replace(/[ -]/g, '')}">${n}</a>`));
   s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>')
        .replace(/(^|\s)_([^_\n]+)_(?=\s|$|[.,;:!?])/g, '$1<i>$2</i>')
-       .replace(/~~([^~]+)~~/g, '<del>$1</del>').replace(/==([^=]+)==/g, '<mark>$1</mark>');
+       .replace(/~~([^~]+)~~/g, '<del>$1</del>').replace(/==([^=]+)==/g, '<mark>$1</mark>').replace(/\+\+([^+\n]+)\+\+/g, '<u>$1</u>');
   return s.replace(/\u0000(\d+)\u0000/g, (m, i) => keep[+i]);
 }
 function md(src) {
@@ -1711,7 +1711,7 @@ function noteCard(n, dups) {
   return `<button class="note-card ${ncls(n.color)} ${n.pinned ? 'pinned' : ''}" data-note="${n.id}" aria-label="Note: ${esc(title || 'untitled')}">
     <div class="nt">${title ? esc(title) : '<span class="muted" style="font-style:italic;font-weight:400">Untitled</span>'}</div>
     ${snip ? `<div class="nx">${esc(snip)}</div>` : ''}
-    <div class="nf">${n.folder && activeFolder === '__all__' ? `<span class="pill">📁 ${esc(n.folder)}</span>` : ''}${(n.imgs || []).length ? `<span>🖼 ${n.imgs.length}</span>` : ''}${(n.docRefs || []).length ? `<span>📎 ${n.docRefs.length}</span>` : ''}${dups.has(n.id) ? '<span class="pill neg">duplicate?</span>' : ''}<span>${timeAgo(n.updatedAt)}</span></div>
+    <div class="nf">${n.folder && activeFolder === '__all__' ? `<span class="pill">📁 ${esc(n.folder)}</span>` : ''}${(n.imgs || []).length ? `<span>🖼 ${n.imgs.length}</span>` : ''}${(n.docRefs || []).length ? `<span>📎 ${n.docRefs.length}</span>` : ''}${(() => { const all_ = (String(n.text || '').match(/^\s*[-*+] \[[ xX]\]/gm) || []).length, done = (String(n.text || '').match(/^\s*[-*+] \[[xX]\]/gm) || []).length; return all_ ? `<span class="${done === all_ ? 'pos' : ''}">☑ ${done}/${all_}</span>` : ''; })()}${dups.has(n.id) ? '<span class="pill neg">duplicate?</span>' : ''}<span>${timeAgo(n.updatedAt)}</span></div>
   </button>`;
 }
 function renderNotes() {
@@ -1814,7 +1814,7 @@ function openNoteEditor(id) {
   ta().style.display = ''; $('nePreview').style.display = 'none';
   $('neSaved').textContent = 'Note';
   $('neFind').classList.add('hidden');
-  resetUndo(); renderEditorImgs(); updateCount(); neFolderInit();
+  resetUndo(); renderEditorImgs(); updateCount(); neFolderInit(); richSetup();
   Sheets.open('shNote');
   if (!n.text && !n.title) setTimeout(() => $('neTitle').focus(), 350);
 }
@@ -1852,12 +1852,12 @@ function undoPush(v) { undoStack.push(v); if (undoStack.length > 200) undoStack.
 function undoCommit() { clearTimeout(undoT); const v = ta().value; if (v !== undoPrev) { undoPush(undoPrev); undoPrev = v; } }
 function undoOnType() { clearTimeout(undoT); undoT = setTimeout(undoCommit, 600); }
 function setBody(v, selStart, selEnd) {
-  ta().value = v; undoPrev = v;
+  ta().value = v; undoPrev = v; if (richActive()) richRender();
   if (selStart != null) ta().setSelectionRange(selStart, selEnd != null ? selEnd : selStart);
   neQueue(); updateCount();
 }
-$('neUndo').addEventListener('click', () => { undoCommit(); if (!undoStack.length) return toast('Nothing to undo.'); redoStack.push(ta().value); const p = undoStack.pop(); setBody(p, p.length); });
-$('neRedo').addEventListener('click', () => { if (!redoStack.length) return toast('Nothing to redo.'); undoStack.push(ta().value); const n = redoStack.pop(); setBody(n, n.length); });
+$('neUndo').addEventListener('click', () => { if (richActive()) { richFocus(); document.execCommand('undo'); richSync(); return; } undoCommit(); if (!undoStack.length) return toast('Nothing to undo.'); redoStack.push(ta().value); const p = undoStack.pop(); setBody(p, p.length); });
+$('neRedo').addEventListener('click', () => { if (richActive()) { richFocus(); document.execCommand('redo'); richSync(); return; } if (!redoStack.length) return toast('Nothing to redo.'); undoStack.push(ta().value); const n = redoStack.pop(); setBody(n, n.length); });
 
 /* ---- formatting toolbar (keeps focus + selection in the textarea) ---- */
 $$('#neBar button').forEach(b => {
@@ -1890,7 +1890,8 @@ const stampNow = () => new Date().toLocaleString('en-IN', { day: 'numeric', mont
 $$('#neBar [data-md]').forEach(b => b.addEventListener('click', () => {
   if (nePreview) togglePreview();
   const k = b.dataset.md;
-  if (k === 'bold') wrapSel('**', '**'); else if (k === 'italic') wrapSel('*', '*');
+  if (richActive()) { richCmd(k); return; }
+  if (k === 'bold') wrapSel('**', '**'); else if (k === 'italic') wrapSel('*', '*'); else if (k === 'underline') wrapSel('++', '++');
   else if (k === 'strike') wrapSel('~~', '~~'); else if (k === 'mark') wrapSel('==', '==');
   else if (k === 'code') wrapSel('`', '`'); else if (k === 'link') wrapSel('[', '](https://)', 'link text');
   else if (k === 'h2') prefixLines(l => l.startsWith('## ') ? l.slice(3) : '## ' + l.replace(/^#+\s*/, ''));
@@ -1939,7 +1940,7 @@ ta().addEventListener('keydown', e => {
 function togglePreview() {
   nePreview = !nePreview;
   if (nePreview) { $('nePreview').innerHTML = md(ta().value); $$('li.cb', $('nePreview')).forEach(li => li.addEventListener('click', () => { const lines = ta().value.split('\n'); const ln = +li.dataset.ln; lines[ln] = lines[ln].replace(/\[([ xX])\]/, (m, c) => c === ' ' ? '[x]' : '[ ]'); setBody(lines.join('\n')); $('nePreview').innerHTML = md(ta().value); togglePreview(); togglePreview(); })); }
-  $('nePreview').style.display = nePreview ? '' : 'none'; ta().style.display = nePreview ? 'none' : '';
+  $('nePreview').style.display = nePreview ? '' : 'none'; ta().style.display = nePreview || richActive() ? 'none' : ''; $('neRich').style.display = nePreview || !richActive() ? 'none' : '';
   $('nePrevBtn').textContent = nePreview ? '✎' : '👁';
 }
 $('nePrevBtn').addEventListener('click', togglePreview);
@@ -1953,11 +1954,13 @@ function openFind() {
   $('neFindIn').focus(); runFind();
 }
 function runFind() {
+  if (richActive()) { richFindRun(); return; }
   const q = $('neFindIn').value; findHits = []; findIdx = -1;
   if (q) { const v = ta().value.toLowerCase(), ql = q.toLowerCase(); let p = v.indexOf(ql); while (p >= 0) { findHits.push(p); p = v.indexOf(ql, p + Math.max(1, ql.length)); } }
   $('neFindCount').textContent = q ? (findHits.length ? `0/${findHits.length}` : 'none') : '';
 }
 function gotoHit(dir) {
+  if (richActive()) { richFindGo(dir); return; }
   if (!findHits.length) return;
   findIdx = (findIdx + dir + findHits.length) % findHits.length;
   const p = findHits[findIdx], len = $('neFindIn').value.length, el = ta();
@@ -1974,6 +1977,7 @@ $('neFindNext').addEventListener('click', () => gotoHit(1));
 $('neFindPrev').addEventListener('click', () => gotoHit(-1));
 $('neFindClose').addEventListener('click', () => $('neFind').classList.add('hidden'));
 $('neRepl').addEventListener('click', () => {
+  if (richActive()) { richReplaceOne(); return; }
   const q = $('neFindIn').value; if (!q || !findHits.length) return;
   if (findIdx < 0) findIdx = 0;
   const p = findHits[findIdx], v = ta().value, r = $('neReplIn').value;
@@ -2427,11 +2431,11 @@ function renderDocsBase() {
     return swipeHtml(`<div class="row" style="border-left:4px solid ${DOC_COLORS[d.docType] || '#77818E'}">
       ${d.expiry ? countHtml(days, 'expired') : '<div class="count past" aria-label="no expiry">∞<small>no expiry</small></div>'}
       <div class="row-main"><div class="row-title">${esc(d.title)}${showWho ? ` <span class="muted" style="font-weight:400">· ${esc(docOwners(d).join(' & '))}</span>` : ''}</div>
-        <div class="row-sub"><span>${esc(d.docType)}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
+        <div class="row-sub"><span>${esc(d.docType)}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span><button type="button" class="d-copy" data-dcopy="${d.id}" aria-label="Copy number of ${esc(d.title)}">⧉ Copy</button>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
       ${docSel ? `<span class="sel-box${docSel.has(d.id) ? ' on' : ''}" aria-label="${docSel.has(d.id) ? 'selected' : 'not selected'}">${docSel.has(d.id) ? '✓' : ''}</span>` : '<span class="chev">›</span>'}</div>`, '', 'Delete 🗑', `data-doc="${d.id}"`);
-  }).join('') || (!docs.length ? '<div class="empty"><b>No documents</b>Aadhaar, PAN, marksheets, ITRs, policies — tap + to add, 📷 Scan, or Import from Drive. Each person gets a folder, with groups inside.</div>' : '');
+  }).join('') || (!docs.length ? '<div class="empty"><b>No documents</b>Aadhaar, PAN, marksheets, ITRs, policies — tap ＋ Add document. Attach a photo or PDF, scan it, or keep just the details. Each person gets a folder, with categories inside.</div>' : '');
   $('docList').classList.toggle('hidden', !$('docList').innerHTML);
-  $$('[data-doc]', $('docList')).forEach(w => { const id = w.dataset.doc; bindSwipe(w, null, () => deleteWithUndo(id)); docHold(w, id); onTap(w, () => docSel ? toggleDocSel(id) : showDoc(id)); });
+  $$('[data-doc]', $('docList')).forEach(w => { const id = w.dataset.doc; bindSwipe(w, null, () => deleteWithUndo(id)); docHold(w, id); onTap(w, e => { if (!docSel && e && e.target && e.target.closest('[data-dcopy]')) { copyDocNumber(id); return; } docSel ? toggleDocSel(id) : showDoc(id); }); });
   if (docSel && docPath.grp && list.length) { fbox.insertAdjacentHTML('beforeend', '<button class="linkbtn" id="docSelAll" style="margin:0 4px 8px">Select all here</button>'); $('docSelAll').addEventListener('click', () => { list.forEach(d => docSel.add(d.id)); renderDocs(); }); }
   renderSelBar();
 }
@@ -2451,7 +2455,7 @@ function openDocBase(id) {
   $('doFileFy').innerHTML = fyOptions((docYear !== 'All' ? docYear : null) || docYears(d)[0] || fyOf(todayISO()));
   $('doFileFyW').classList.toggle('hidden', !d.byYear); $('docFolderDl').innerHTML = docFolderList().map(f => `<option value="${esc(f)}">`).join('');
   chipGroup($('doType'), DOC_TYPES, d.docType, () => {}, t => DOC_COLORS[t]);
-  $('doFileMsg').textContent = ''; renderDocEditFiles();
+  $('doFileMsg').textContent = ''; renderDocEditFiles(); $('doNoFile').checked = !!d.noFile;
   Sheets.open('shDoc');
 }
 $('doSave').addEventListener('click', async () => {
@@ -2464,6 +2468,7 @@ $('doSave').addEventListener('click', async () => {
   d.who = normWho($('doWho').value);
   d.fy = $('doFy').value || null; d.byYear = $('doByYear').checked;
   d.dueKind = $('doDueKind').value || 'expiry';
+  if ($('doNoFile').checked) d.noFile = true; else delete d.noFile;
   if (d.lockFiles && d.number) await sealDocNumber(d);
   put(d); const dx = syncDocDate(d); Sheets.close('shDoc'); toast(d.expiry && dx ? 'Saved — the ' + dueWord(d.dueKind) + ' is in Dates.' : 'Saved.');
 });
@@ -2696,6 +2701,12 @@ $('doLock').addEventListener('change', () => {
 /* ---------- viewer ---------- */
 let viewDocId = null, docReturn = null;
 /* v2.21 (C1): a renewed document keeps its history — the old expiry and number are listed, its old files are marked "earlier copy" */
+/* v2.22: copy a document's number straight from the list (a locked number needs the private section open) */
+async function copyDocNumber(id) {
+  const d = records[id]; if (!d) return;
+  try { const n = await docNumFull(d); if (!n) { toast('No number saved.'); return; } await navigator.clipboard.writeText(n); toast(`Copied ${d.title.slice(0, 28)} number.`); }
+  catch (e) { toast(e && e.code === 'LOCKED' || d.numEnc ? 'This number is locked — unlock first.' : 'Could not copy — open the document and tap Show.'); }
+}
 function renewDoc(id) {
   const d = records[id]; if (!d || !d.expiry) return;
   const plainNo = !d.numEnc;
@@ -3408,6 +3419,19 @@ function acctOptions(sel, filter) {
   return accts(true).filter(a => a.id === sel || (!a.archived && (!filter || filter(a)))).map(a => `<option value="${a.id}"${a.id === sel ? ' selected' : ''}>${esc(a.name)}${a.archived ? ' (archived)' : ''}</option>`).join('');   // the entry's own account is always listed
 }
 const RK_ORDER = ['income', 'udhback', 'transfer', 'expense'];
+/* v2.22: recurring items under your own categories (e.g. "Salary" → Rahul's salary, Ruchi's salary) */
+const recurGroups = () => [...new Set(all('recur').map(r => String(r.group || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+function recurGroupedHtml(rowFn, cur) {
+  const L = recurs(), gs = recurGroups(), monthly = r => { const a = recurAmt(r, cur < r.start ? r.start : cur) / (+r.every || 1); return r.kind === 'income' || r.kind === 'udhback' ? a : r.kind === 'expense' ? -a : 0; };
+  if (!gs.length) return `<div class="group">${L.map(rowFn).join('')}</div>`;
+  const sec = (name, items) => { const net = items.reduce((t, r) => t + monthly(r), 0);
+    return `<details class="rc-grp" open><summary><b>${esc(name || 'Not in a category')}</b><span class="muted">${items.length} item${items.length > 1 ? 's' : ''}</span>${net ? `<span class="amt ${net > 0 ? 'pos' : 'neg'}">${net > 0 ? '+' : '−'}${rsShort(Math.abs(net))}/mo</span>` : ''}${name ? `<button type="button" class="linkbtn" data-rcgren="${esc(name)}">✎</button>` : ''}</summary><div class="group">${items.map(rowFn).join('')}</div></details>`; };
+  return gs.map(g => sec(g, L.filter(r => r.group === g))).join('') + (L.some(r => !r.group) ? sec('', L.filter(r => !r.group)) : '');
+}
+function renameRecurGroup(old) {
+  catNameSheet('Rename category', old, '', (n) => { all('recur').filter(r => r.group === old).forEach(r => { r.group = n; put(r, { render: false }); }); toast('Renamed.'); });
+  const ic = $('cnIcon'); if (ic) ic.closest('.field').classList.add('hidden');
+}
 const recurs = () => all('recur').sort((a, b) => RK_ORDER.indexOf(a.kind) - RK_ORDER.indexOf(b.kind) || (a.createdAt || 0) - (b.createdAt || 0));
 function recurDue(r, ym) {
   if (!r.start || ym < r.start || (r.end && ym > r.end)) return false;
@@ -3889,10 +3913,10 @@ function renderAccts() {
     <button class="btn ghost small" id="acAdd">＋ Add account</button>
     ${archived.length ? `<details class="fold"><summary>Archived accounts (${archived.length})</summary><div class="group">${archived.map(row).join('')}</div></details>` : ''}
     <div class="plan-sec"><h3 class="plan-h">Recurring</h3>
-      ${recurs().length ? `<div class="group">${recurs().map(r => `<button class="row plan-li" data-recur="${r.id}"><div class="row-main"><div class="row-title">${esc(r.name)}${r.budget ? ' <span class="pill">estimate</span>' : ''}</div>
+      ${recurs().length ? recurGroupedHtml(r => `<button class="row plan-li" data-recur="${r.id}"><div class="row-main"><div class="row-title">${esc(r.name)}${r.budget ? ' <span class="pill">estimate</span>' : ''}</div>
         <div class="row-sub">${dupEmiOf(r) ? `<span class="st st-late">same as ${esc(dupEmiOf(r).name)} EMI — counted twice</span>` : ''}<span>${r.kind === 'udhback' ? 'udhaar back from ' + esc(r.who || '?') + ' into ' + esc(acctName(r.to)) + ' · ' + esc(rs(udhOwedBy(r.who))) + ' still owed' : r.kind === 'income' ? 'into ' + esc(acctName(r.to)) : r.kind === 'expense' ? 'from ' + esc(acctName(r.from)) : esc(acctName(r.from)) + ' → ' + esc(acctName(r.to))}</span>
         <span>${['', 'monthly', '', 'every 3 months', '', '', 'every 6 months', '', '', '', '', '', 'yearly'][+r.every || 1] || 'every ' + r.every + ' months'}</span><span>${monthShort(r.start)}${r.end ? ' – ' + monthShort(r.end) : ' onwards'}</span>${(r.steps || []).length ? `<span>then ${esc(recurStepsText(r))}</span>` : ''}</div></div>
-        <span class="amt ${r.kind === 'income' || r.kind === 'udhback' ? 'pos' : r.kind === 'expense' ? 'neg' : ''}">${rs(recurAmt(r, cur < r.start ? r.start : cur))}</span></button>`).join('')}</div>` : '<p class="hint" style="margin:0 4px 8px">Nothing yet. Add salary, rent, household spending, monthly transfers or the credit-card bill.</p>'}
+        <span class="amt ${r.kind === 'income' || r.kind === 'udhback' ? 'pos' : r.kind === 'expense' ? 'neg' : ''}">${rs(recurAmt(r, cur < r.start ? r.start : cur))}</span></button>`, cur) : '<p class="hint" style="margin:0 4px 8px">Nothing yet. Add salary, rent, household spending, monthly transfers or the credit-card bill.</p>'}
       <button class="btn ghost small" id="acRecAdd">＋ Add recurring item</button>
       <p class="hint">SIPs and EMIs are set inside their mutual fund and loan accounts. "Estimate" items (like household spending) are replaced by what you actually spend in the Ledger.</p></div>`;
   if ($('acPend')) $('acPend').addEventListener('click', () => planMonthSheet(pend[0]));
@@ -3905,6 +3929,7 @@ function renderAccts() {
   $('acRecAdd').addEventListener('click', () => recurSheet(null));
   $$('[data-acct]', body).forEach(b => b.addEventListener('click', () => acctSheet(b.dataset.acct)));
   $$('[data-recur]', body).forEach(b => b.addEventListener('click', () => recurSheet(b.dataset.recur)));
+  $$('[data-rcgren]', body).forEach(b => b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); renameRecurGroup(b.dataset.rcgren); }));
 }
 
 /* ---------- one reusable sheet ---------- */
@@ -4076,7 +4101,8 @@ function recurSheet(id, preset) {
   const presets = [['Salary', { name: 'Salary', kind: 'income' }], ['Household spending', { name: 'Household spending', kind: 'expense', budget: true }], ['Rent', { name: 'Rent', kind: 'expense' }],
     ['Monthly transfer', { name: 'Transfer', kind: 'transfer' }], ['Credit-card bill', { name: 'Credit-card bill', kind: 'transfer', to: (accts().find(a => a.kind === 'card') || {}).id }], ['Yearly premium', { name: 'Insurance premium', kind: 'expense', every: 12, remind: true }]];
   const html = `${id ? '' : `<div class="wrapchips" style="margin-bottom:12px">${presets.map(([l], i) => `<button class="chip" data-pre="${i}">${l}</button>`).join('')}</div>`}
-    <div class="field"><label>Name</label><input id="rcName" value="${esc(r.name)}"></div>
+    <div class="grid2"><div class="field"><label>Category (your own name)</label><input id="rcGroup" list="rcGroupDl" value="${esc(r.group || '')}" placeholder="e.g. Salary, House" autocomplete="off"><datalist id="rcGroupDl">${recurGroups().map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>
+      <div class="field"><label>Name</label><input id="rcName" value="${esc(r.name)}" placeholder="e.g. Rahul's salary"></div></div>
     <div class="field"><label>Type</label><div class="seg" id="rcKind" style="margin:0">${[['income', 'Income'], ['expense', 'Expense'], ['transfer', 'Transfer'], ['udhback', 'Udhaar back']].map(([k, l]) => `<button data-k="${k}" class="${r.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <div class="field" id="rcWhoW"><label>Who is paying back</label><select id="rcWho">${(() => { const ps = udhPersons(); if (r.who && !ps.some(x => x[0] === r.who)) ps.unshift([r.who, 0]); return ps.length ? ps.map(([n, a]) => `<option value="${esc(n)}"${n === r.who ? ' selected' : ''}>${esc(n)} · owes ${rs(a)}</option>`).join('') : '<option value="">Nobody owes you in Udhaar</option>'; })()}</select>
       <p class="hint" style="margin:4px 0 0">Each instalment you tick in the check-up is recorded as money paid back in Udhaar: the account goes up and what they owe goes down. It is not counted as income.</p></div>
@@ -4115,6 +4141,7 @@ function recurSheet(id, preset) {
       if (dup && !Plan.dupOk) { Plan.dupOk = true; throw new Error(`This looks like the EMI already set inside the "${dup.name}" account (${rs(dup.emi)} from ${acctName(dup.payFrom)}). Saving it would count the EMI twice. Tap Save again only if this is a different payment.`); }
       Plan.dupOk = false;
       Object.assign(rec, draft);
+      { const g = $('rcGroup').value.trim().slice(0, 40); const hit = recurGroups().find(x => x.toLowerCase() === g.toLowerCase()); if (g) rec.group = hit || g; else delete rec.group; }
       put(rec, { render: false }); sysDate('rd-' + rec.id, recurDateWant(rec), true); toast(rec.remind ? 'Saved — the next due date is in Dates.' : 'Saved.');
       if (rec.auto) setTimeout(() => { const n = autoRecord(); if (n) { toast(`${n} month${n > 1 ? 's' : ''} recorded automatically.`); scheduleRender(); } }, 50);
       return true;
@@ -5176,7 +5203,7 @@ async function bioDiag() {
   try { if (PublicKeyCredential.getClientCapabilities) { const c = await PublicKeyCredential.getClientCapabilities(); if (c && c['extension:prf'] === false) out.push('This browser cannot do passkey PRF (needs iOS 18+ Safari / home-screen app).'); } } catch (e) {}
   return out.join(' ');
 }
-$('neMic').addEventListener('click', () => Dictate.start(ta(), $('neMic'), txt => insertText(txt)));
+$('neMic').addEventListener('click', () => Dictate.start(ta(), $('neMic'), txt => { if (richActive()) { richFocus(); document.execCommand('insertText', false, txt); richSync(); } else insertText(txt); }));
 addMic($('teNotes'));
 
 /* ==========================================================================
@@ -5261,7 +5288,7 @@ function docHold(w, id) {
 }
 function toggleDocSel(id) { if (!docSel) return; docSel.has(id) ? docSel.delete(id) : docSel.add(id); renderDocs(); }
 function renderSelBarBase() {
-  const bar = $('docSelBar'); bar.classList.toggle('hidden', !docSel);
+  const bar = $('docSelBar'); bar.classList.toggle('hidden', !docSel); document.documentElement.classList.toggle('doc-selecting', !!docSel);
   $('docSelBtn').textContent = docSel ? '✕ Stop selecting' : '☑ Select';
   if (!docSel) return;
   const n = docSel.size, files = [...docSel].reduce((s, id) => s + docFilesOf(id).length, 0);
@@ -5522,7 +5549,24 @@ const DATE_SEEDS = {
 };
 const DATE_CFG = 'date-cfg';
 const dateCfg = () => !window.GHOST && records[DATE_CFG] && !records[DATE_CFG].deleted ? records[DATE_CFG] : { hidden: [], custom: [] };
-const dateCats = () => { const c = dateCfg(); return [...DATE_CATS.slice(0, -1), ...(c.custom || []).map(x => [x.k, x.n, x.i || '📁']), DATE_CATS[DATE_CATS.length - 1]].filter(x => !(c.hidden || []).includes(x[0])); };
+const dateCats = () => { const c = dateCfg(), nm = c.names || {}, ic = c.icons || {}; return [...DATE_CATS.slice(0, -1), ...(c.custom || []).map(x => [x.k, x.n, x.i || '📁']), DATE_CATS[DATE_CATS.length - 1]].filter(x => !(c.hidden || []).includes(x[0])).map(x => [x[0], nm[x[0]] || x[1], ic[x[0]] || x[2]]); };
+/* v2.22: one small sheet to name (or rename) a category, with an optional emoji */
+function catNameSheet(title, name, icon, onSave) {
+  planSheet(title, `<div class="grid2" style="grid-template-columns:72px 1fr"><div class="field"><label>Icon</label><input id="cnIcon" value="${esc(icon || '📁')}" maxlength="4" style="text-align:center;font-size:1.25rem" autocomplete="off"></div>
+    <div class="field"><label>Name</label><input id="cnName" value="${esc(name || '')}" maxlength="40" autocomplete="off" enterkeyhint="done"></div></div>`,
+    () => { const n = $('cnName').value.trim(), i = [...($('cnIcon').value.trim() || '📁')].slice(0, 2).join(''); if (!n) { planMsg('Type a name.', true); return false; } return onSave(n, i) !== false; }, 'Save');
+  setTimeout(() => { const el = $('cnName'); if (el) { el.focus(); el.select(); } }, 300);
+}
+function renameDateCat(key) {
+  const c0 = dateCats().find(x => x[0] === key); if (!c0) return;
+  catNameSheet('Rename category', c0[1], c0[2], (n, i) => {
+    if (dateCats().some(x => x[0] !== key && x[1].toLowerCase() === n.toLowerCase())) { planMsg('That name is already used.', true); return false; }
+    const cfg = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false };
+    if ((cfg.custom || []).some(x => x.k === key)) cfg.custom = cfg.custom.map(x => x.k === key ? { ...x, n, i } : x);
+    else { cfg.names = { ...(cfg.names || {}), [key]: n }; cfg.icons = { ...(cfg.icons || {}), [key]: i }; }
+    put(cfg); toast('Renamed.');
+  });
+}
 const allDateCatKeys = () => [...DATE_CATS.map(x => x[0]), ...(dateCfg().custom || []).map(x => x.k)];
 function guessDateCat(d) {
   const l = String(d.label || '').toLowerCase();
@@ -5623,7 +5667,7 @@ function renderDatesBase() {
     list = dateRows(dates.filter(d => dateCat(d) === datePath));
     home.innerHTML = `<div class="doc-crumb"><button class="chip" data-dback="1">‹ All categories</button><b>${c[2]} ${esc(c[1])}</b><span class="muted">${list.length}</span></div>
       <div class="set-row date-lead"><span>Show in Coming up</span><select id="dateCatLead"><option value="0">Default (${+(prefs.dateSoonDays || 30)} days)</option>${LEAD_OPTS.map(n => `<option value="${n}"${catLead(datePath) === n ? ' selected' : ''}>${n} days ahead</option>`).join('')}</select></div>
-      <div class="date-cat-actions"><button class="btn ghost small" id="dateAddHere">＋ Add here</button><button class="btn ghost small" id="dateIcsCat">📅 To Calendar</button><button class="btn ghost small" id="dateDelCat" style="color:var(--seal)">Delete category</button></div>`;
+      <div class="date-cat-actions"><button class="btn ghost small" id="dateAddHere">＋ Add here</button><button class="btn ghost small" id="dateIcsCat">📅 To Calendar</button><button class="btn ghost small" id="dateRenCat">✎ Rename</button><button class="btn ghost small" id="dateDelCat" style="color:var(--seal)">Delete category</button></div>`;
   }
   $('dateList').innerHTML = list.map(x => dateRowHtml(x, !datePath)).join('') || (datePath ? '<div class="empty">Nothing here yet — tap “Add here”.</div>' : '');
   $('dateList').classList.toggle('hidden', !$('dateList').innerHTML); setTimeout(selPaint, 0);
@@ -5634,6 +5678,7 @@ function renderDatesBase() {
   on('dateAddHere', () => openAdd('date'));
   if ($('dateCatLead')) $('dateCatLead').addEventListener('change', () => { setCatLead(datePath, +$('dateCatLead').value); toast('Saved.'); });
   on('dateNewCat', newDateCat);
+  on('dateRenCat', () => renameDateCat(datePath));
   on('dateUnhide', () => { const c = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false }; c.hidden = []; put(c); toast('Hidden categories are back.'); });
   on('dateDelCat', () => deleteDateCat(datePath));
   on('dateDelCatOld', () => {
@@ -6408,7 +6453,7 @@ function attnListsAll() {
   return [
     ['inbox', 'Inbox to sort', all('inbox')],
     ['exp', 'Expired', docs.filter(d => d.expiry && d.expiry < t)],
-    ['nofile', 'No file attached', docs.filter(d => !docFilesOf(d.id).length)],
+    ['nofile', 'No file attached', docs.filter(d => !d.noFile && !docFilesOf(d.id).length)],
     ['unlocked', 'ID documents not locked', docs.filter(d => d.docType === 'Identity' && docFilesOf(d.id).length && !d.lockFiles)],
     ['noexp', 'Usually expire, but no expiry date saved', docs.filter(d => !d.expiry && expiryKind(d))],
     ['datefill', 'Dates still to fill in', all('date').filter(d => !d.when && !d.sys)]
@@ -6724,8 +6769,16 @@ function renderAddForm0(focus) {
       <div class="grid2"><div class="field"><label>Number / ID</label><input id="afNum" autocapitalize="characters"></div>
         <div class="field"><label><select id="afDueKind" style="width:auto;padding:0;border:0;background:none;font:inherit;color:inherit">${dueKindOpts()}</select> (optional)</label><input type="date" id="afDate"></div></div>
       <div class="grid2"><div class="field"><label>Belongs to</label><input id="afDocWho" list="afWhoDl" autocomplete="off" placeholder="Blank = Rahul" value="${esc(docPath.who && docPath.who !== DOC_ME ? docPath.who : '')}"><datalist id="afWhoDl">${docPeople().map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
-        <div class="field"><label>Year (FY, optional)</label><select id="afFy">${fyOptions('', '— none —')}</select></div></div>`;
+        <div class="field"><label>Year (FY, optional)</label><select id="afFy">${fyOptions('', '— none —')}</select></div></div>
+      <div class="field"><label>File (optional)</label><div class="btn-row" style="margin:0;flex-wrap:wrap"><button type="button" class="btn ghost small" id="afDocFileBtn">＋ Photo or PDF</button><button type="button" class="btn ghost small" id="afDocScanBtn">📷 Scan</button><span class="hint" id="afDocFileN" style="margin:0;align-self:center"></span></div>
+        <input type="file" id="afDocFile" class="vh" accept="image/*,application/pdf,.pdf" multiple tabindex="-1" aria-hidden="true"></div>
+      <div class="group"><label class="switch-row"><span>Details only — no file needed<small>e.g. a debit card's number and expiry. It won’t show under “No file attached”.</small></span><input type="checkbox" class="sw" id="afNoFile"></label></div>`;
+    AF.files = [];
+    $('afDocFileBtn').addEventListener('click', () => $('afDocFile').click());
+    $('afDocFile').addEventListener('change', e => { AF.files = [...e.target.files]; $('afDocFileN').textContent = AF.files.length ? `${AF.files.length} file${AF.files.length > 1 ? 's' : ''} chosen` : ''; if (AF.files.length) $('afNoFile').checked = false; });
+    $('afDocScanBtn').addEventListener('click', () => { const t = $('afTitle').value.trim(); if (!t) { $('afTitle').focus(); toast('Type the document name first.'); return; } saveAdd(false, true); });
     AF.type = docNewType(); chipGroup($('afType'), DOC_TYPES, AF.type, v => AF.type = v, t => DOC_COLORS[t]);
+    if (docPath.who) f.insertAdjacentHTML('afterbegin', `<p class="hint" style="margin:0 4px 8px">Adding to <b>👤 ${esc(docPath.who)}</b>${docPath.grp ? ` › <b>${groupIcon(docPath.grp)} ${esc(docPath.grp)}</b>` : ''} — change below if needed.</p>`);   // v2.22: the folder you are in fills the person and type
   } else if (k === 'money') {
     const descs = [...new Set(all('fin').sort((a, b) => b.createdAt - a.createdAt).map(e => e.desc).filter(Boolean))].slice(0, 40);
     const recent = moneyRecents();
@@ -6794,7 +6847,7 @@ function taskGuessOld() {
   $('afGuess').innerHTML = q.title ? `Files as <b style="color:${catColor(cat)}">${cat}</b> · ${prio}${due ? ' · due ' + relDay(due) : ''}` : 'Tip: type #work, !high or @tomorrow — or use the chips.';
 }
 
-function saveAdd(another) {
+function saveAdd(another, thenScan) {
   const k = addKind, v = id => ($(id) ? $(id).value.trim() : '');
   if (k === 'task') {
     const q = parseQuickAdd(v('afTitle')); if (!q.title) { $('afTitle').focus(); return; }
@@ -6818,7 +6871,10 @@ function saveAdd(another) {
     toast('Bill added.');
   } else if (k === 'doc') {
     const l = v('afTitle'); if (!l) { $('afTitle').focus(); return; }
-    put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, who: normWho(v('afDocWho')), dueKind: $('afDueKind') ? $('afDueKind').value : 'expiry', deleted: false }); { const nd = all('doc').sort((a, b) => b.createdAt - a.createdAt)[0]; if (nd && nd.expiry) { syncDocDate(nd); toast('Document added — the ' + dueWord(nd.dueKind) + ' is in Dates too.'); } }
+    const files = AF.files || [], noFile = !!($('afNoFile') && $('afNoFile').checked) && !files.length && !thenScan;
+    const newDoc = put({ id: uid('doc'), type: 'doc', title: l, docType: AF.type, number: v('afNum'), expiry: v('afDate') || null, issuer: '', notes: '', folder: docFolderForNew(), fy: v('afFy') || null, who: normWho(v('afDocWho')), dueKind: $('afDueKind') ? $('afDueKind').value : 'expiry', ...(noFile ? { noFile: true } : {}), deleted: false });
+    if (files.length) setTimeout(() => { openDoc(newDoc.id); addDocFiles(newDoc.id, files).catch(e => { RLOG.error('add doc files', e); toast('The file could not be added — try again here.'); }); }, 400);   // the editor shows the upload progress
+    if (thenScan) setTimeout(() => Scan.open(newDoc.id), 400); { const nd = all('doc').sort((a, b) => b.createdAt - a.createdAt)[0]; if (nd && nd.expiry) { syncDocDate(nd); toast('Document added — the ' + dueWord(nd.dueKind) + ' is in Dates too.'); } }
     toast(docFolderForNew() ? 'Document added to ' + docFolderForNew() + '.' : 'Document added.');
   } else if (k === 'qlog') {
     const val = calcAmount(v('afQlVal'));
@@ -8049,10 +8105,10 @@ function renderDocs() {
   const crumb = fbox.querySelector('.doc-crumb'); if (!crumb) return;
   const acts = document.createElement('div'); acts.className = 'crumb-acts';
   if (docPath.who && !docPath.grp) {
-    acts.innerHTML = `<button data-ca="ren">✎ Rename</button><button data-ca="mv">⇢ Move all…</button><button data-ca="new">＋ Document here</button>${FAM_PEOPLE.includes(docPath.who) ? '<button data-ca="chk">✅ Checklist</button>' : ''}<button data-ca="em">🆘 Emergency sheet</button><button data-ca="zip">⤓ All as .zip</button>`;
+    acts.innerHTML = `<button data-ca="new">＋ Document here</button><button data-ca="gnew">＋ New category</button><button data-ca="ren">✎ Rename</button><button data-ca="mv">⇢ Move all…</button>${FAM_PEOPLE.includes(docPath.who) ? '<button data-ca="chk">✅ Checklist</button>' : ''}<button data-ca="em">🆘 Emergency sheet</button><button data-ca="zip">⤓ All as .zip</button>`;
     if (!all('doc').some(d => docOwners(d).includes(docPath.who))) fbox.insertAdjacentHTML('beforeend', '<div class="empty">No documents for this person yet.</div>');
   } else if (docPath.grp) {
-    acts.innerHTML = `<button data-ca="gren">✎ Rename category</button><button data-ca="gmv">⇢ Move these…</button><button data-ca="gdel">🗑 Delete category</button>`;
+    acts.innerHTML = `<button data-ca="gnew2">＋ Document here</button><button data-ca="gren">✎ Rename category</button><button data-ca="gmv">⇢ Move these…</button><button data-ca="gdel">🗑 Delete category</button>`;
   }
   crumb.after(acts);
   const who = docPath.who, grp = docPath.grp, here = () => all('doc').filter(d => docOwners(d).includes(who) && (!grp || docGroup(d) === grp)).map(d => d.id);
@@ -8060,8 +8116,10 @@ function renderDocs() {
     const a = b.dataset.ca;
     if (a === 'ren') { const nu = prompt(`New name for ${who}`, who); if (nu) renamePerson(who, nu); }
     else if (a === 'mv') movePersonAll(who);
-    else if (a === 'new') { const d = put({ id: uid('doc'), type: 'doc', title: '', who: who === DOC_ME ? '' : who, docType: docNewType(), number: '', expiry: null, issuer: '', notes: '', folder: '', fy: null, deleted: false }); openDoc(d.id); }
-    else if (a === 'gren') { const nu = prompt(`New name for "${grp}"`, grp); if (nu) renameDocGroup(grp, nu); }
+    else if (a === 'new') openAdd('doc');
+    else if (a === 'gren') { const g = DOC_GROUPS.find(x => x[0] === grp); catNameSheet('Rename category', grp, g ? g[2] : '📁', (n, i) => { renameDocGroup(grp, n); docCfgEdit(c => { const x = c.groups.find(y => y.n === n); if (x) x.i = i; }); toast('Renamed.'); }); }
+    else if (a === 'gnew') catNameSheet('New document category', '', '📁', (n, i) => { addDocGroup(n, i); toast(`Added "${n}". Documents of type “${n}” go here.`); });
+    else if (a === 'gnew2') openAdd('doc');
     else if (a === 'gmv') openDocMove(here(), `${who}'s ${grp}`);
     else if (a === 'gdel') deleteDocGroup(grp);
     else if (a === 'chk') openFamily(who);
@@ -8078,6 +8136,7 @@ $('docSelMove').addEventListener('click', () => docSel && openDocMove([...docSel
 $('docSelMerge').addEventListener('click', () => docSel && openDocMerge([...docSel]));
 $('docFoldersBtn').addEventListener('click', openDocFolders);
 $('docFamBtn').addEventListener('click', () => openFamily());
+$('docAddBtn').addEventListener('click', () => openAdd('doc'));
 function openDoc(id) {
   syncDocCfg(); openDocBase(id);
   const d = records[id]; if (!d) return;
@@ -8283,13 +8342,13 @@ function deleteDateCat(key) {
   if (custom) cfg.custom = cfg.custom.filter(x => x.k !== key); else cfg.hidden = [...new Set([...(cfg.hidden || []), key])];
   datePath = null; put(cfg); toast(`Deleted "${c[1]}".`, 'Undo', () => restoreCatbin(records[bin.id]));
 }
-function newDateCat() {
-  const n = (prompt('Name of the new category (or a deleted built-in one, to bring it back)') || '').trim(); if (!n) return;
+function newDateCat() { catNameSheet('New category', '', '📁', (n, i) => newDateCatNamed(n, i)); }
+function newDateCatNamed(n, icon) {
   const cfg = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false };
   const builtin = DATE_CATS.find(x => x[1].toLowerCase() === n.toLowerCase());
   if (builtin && (cfg.hidden || []).includes(builtin[0])) { cfg.hidden = cfg.hidden.filter(h => h !== builtin[0]); put(cfg); toast(`"${builtin[1]}" is back.`); return; }
   if (dateCats().some(x => x[1].toLowerCase() === n.toLowerCase())) { toast('That category already exists.'); return; }
-  cfg.custom = [...(cfg.custom || []), { k: 'c' + Date.now().toString(36), n, i: '📁' }]; put(cfg);
+  cfg.custom = [...(cfg.custom || []), { k: 'c' + Date.now().toString(36), n, i: icon || '📁' }]; put(cfg); toast(`Added "${n}".`);
 }
 /* categories hidden by older versions show up in Recently deleted once, so they can be restored */
 function migrateHiddenCats() {
@@ -8968,16 +9027,13 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
-  { t: '<b>Tasks</b> fits more on the screen: a slimmer card on top (no bar graph), tighter rows. With 3 or more overdue, one tap moves them all to today or snoozes them.' },
-  { t: '<b>Swipe a task left a little</b> to snooze it (tomorrow, Saturday, next week…); swipe further to delete. Swipe right still marks it done.' },
-  { t: '<b>Press and hold</b> a task, note, date or document to select several, then act on all of them at once from the bar above the tabs.' },
-  { t: '<b>Dates</b>: each date — or a whole category — can have its own “Show in Coming up” time (e.g. insurance 60 days ahead, birthdays 7).' },
-  { t: '<b>Documents</b>: tap <b>↻ Renewed</b> on an expiring document. The old expiry and number are kept as history and its files marked as earlier copies.' },
-  { t: 'The <b>+</b> button slides away while you scroll down, so it no longer sits on top of an amount. Data health now splits your items, trash and the app\'s own records.' },
-  { t: '<b>Sync</b>: a dropped connection or a busy Google server is tried once more before it shows as an error, and the log now records what Google actually replied.' },
-  { t: '<b>SIPs and EMIs</b> set inside an account can auto-record on their day, so the bank balance falls when they are debited.', priv: true },
-  { t: '<b>Ledger</b> flags regular items not yet recorded this month and udhaar open for 30+ days; early in a month it offers last month\'s summary.', priv: true },
-  { t: '<b>Split a bill</b>: in a spend, fill “Split with” — your share is spending, each other share becomes udhaar diya.', priv: true }
+  { t: '<b>Notes</b> now edit like Word: bold looks bold while you write, lists are real lists. Type <b>1.</b> or <b>-</b> and a space (or Tab) to start a list, <b>[]</b> for a checklist, <b>#</b> for a heading. Tab / Shift+Tab move a list item in and out; Ctrl/⌘ + B, I, U, K work. Notes are still saved as plain text, so nothing changes for sync or export. Prefer the old way? ••• → <b>Plain text</b>.' },
+  { t: '<b>Documents</b>: a clear <b>＋ Add document</b> button. In the form you can attach a photo or PDF, scan, or tick <b>Details only</b> (e.g. a debit card number) so it never shows under “No file attached”. Import from Drive is in Settings → Sync &amp; Drive; Select is press-and-hold.' },
+  { t: 'Selecting documents now shows its bar at the bottom, like Dates. Pressing on cards and buttons no longer brings up the iPhone text-selection menu.' },
+  { t: '<b>Categories</b>: add and rename them in Dates (open a category → ✎ Rename) and in Documents (in a person → ＋ New category; in a category → ✎ Rename), each with its own icon.' },
+  { t: 'Notes with a checklist show their progress (☑ 3/5) on the card.' },
+  { t: '<b>⧉ Copy</b> next to a document number copies it straight from the list. ＋ Add document inside a person or category fills in that person and type for you.' },
+  { t: '<b>Recurring items</b> can sit under your own categories — e.g. “Salary” holding each person’s salary — with a monthly total per category. Tap ✎ next to a category to rename it.', priv: true }
 ];
 function showWhatsNew() {
   $('nwBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">Register ${APP_VERSION}</p><ul class="nw-list">${WHATS_NEW.filter(x => !x.priv || finUnlocked()).map(x => `<li>${x.t}</li>`).join('')}</ul>`;
@@ -9306,3 +9362,292 @@ if ($('selX')) $('selX').addEventListener('click', selEnd);
     if (y < 60 || dy < -6) document.documentElement.classList.remove('fab-hide');
     else if (dy > 6 && !nearEnd) document.documentElement.classList.add('fab-hide');
     lastY = y; }); }, { passive: true }); }
+
+/* ==========================================================================
+   v2.22 — Notes: a Word-like editor. What you see while writing is the formatted text (bold is bold, lists are
+   lists). The note is still saved as the same plain markdown as before, so sync, search, versions, export and
+   older devices are unchanged. Settings live in the note's ••• menu (switch back to plain markdown any time).
+   ======================================================================== */
+const richActive = () => prefs.noteRich !== false && !!$('neRich');
+const RICH = { busy: false, hits: [], idx: -1 };
+function richFocus() { const r = $('neRich'); if (r && document.activeElement !== r) r.focus(); }
+function richSetup() {
+  const r = $('neRich'); if (!r) return;
+  const on = richActive();
+  r.style.display = on ? '' : 'none'; ta().style.display = on ? 'none' : '';
+  $('nePrevBtn').classList.toggle('hidden', on);
+  if (on) richRender();
+  if ($('nmMode')) $('nmMode').querySelector('span').textContent = on ? 'Plain text' : 'Formatted';
+}
+function richRender() {
+  const r = $('neRich'); if (!r) return;
+  r.innerHTML = mdToRich(ta().value) || '<div><br></div>';
+}
+function richSync() {
+  if (RICH.busy) return;
+  const v = richToMd($('neRich'));
+  if (v === ta().value) return;
+  ta().value = v; neQueue(); undoOnType(); updateCount();
+}
+
+/* ---- markdown → editable HTML (one block per line, so line breaks survive the round trip) ---- */
+function mdToRich(src) {
+  const L = String(src || '').replace(/\r/g, '').split('\n'), out = [];
+  const isList = l => /^(\s*)([-*+]|\d+[.)])\s+/.test(l), isSep = l => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+  const inl = t => mdInline(t).replace(/ target="_blank" rel="noopener noreferrer"/g, '');
+  let i = 0;
+  while (i < L.length) {
+    const line = L[i];
+    if (/^```/.test(line)) { const b = []; i++; while (i < L.length && !/^```/.test(L[i])) b.push(L[i++]); i++; out.push(`<pre>${esc(b.join('\n')) || '<br>'}</pre>`); continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { out.push('<hr>'); i++; continue; }
+    let m = line.match(/^(#{1,3})\s+(.*)$/);
+    if (m) { out.push(`<h${m[1].length}>${inl(m[2]) || '<br>'}</h${m[1].length}>`); i++; continue; }
+    if (/^>\s?/.test(line)) { const b = []; while (i < L.length && /^>\s?/.test(L[i])) b.push(`<div>${inl(L[i++].replace(/^>\s?/, '')) || '<br>'}</div>`); out.push(`<blockquote>${b.join('')}</blockquote>`); continue; }
+    if (line.includes('|') && i + 1 < L.length && isSep(L[i + 1])) {
+      const cells = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => inl(c.trim()) || '<br>');
+      const rows = [cells(line)]; i += 2; while (i < L.length && L[i].includes('|') && L[i].trim()) rows.push(cells(L[i++]));
+      out.push(`<table><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`); continue;
+    }
+    if (isList(line)) {
+      // build nested lists; a deeper list goes inside the item above it
+      const stack = []; let html = '';
+      const close = () => { html += `</li></${stack.pop().tag}>`; };
+      while (i < L.length && (isList(L[i]) || (/^\s{2,}\S/.test(L[i]) && stack.length))) {
+        const lm = L[i].match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
+        if (!lm) { html += '<br>' + inl(L[i].trim()); i++; continue; }
+        const lvl = Math.floor(lm[1].replace(/\t/g, '  ').length / 2), tag = /\d/.test(lm[2]) ? 'ol' : 'ul';
+        while (stack.length > lvl + 1) close();
+        if (stack.length === lvl + 1 && stack[lvl].tag !== tag) close();
+        if (stack.length < lvl + 1) { while (stack.length < lvl + 1) { html += `<${tag}${tag === 'ol' && stack.length === lvl && parseInt(lm[2], 10) > 1 ? ` start="${parseInt(lm[2], 10)}"` : ''}>`; stack.push({ tag }); } }
+        else html += '</li>';
+        const cb = lm[3].match(/^\[([ xX])\]\s?(.*)$/);
+        html += cb ? `<li class="ck" data-ck="${cb[1] === ' ' ? 0 : 1}">${inl(cb[2]) || '<br>'}` : `<li>${inl(lm[3]) || '<br>'}`;
+        i++;
+      }
+      while (stack.length) close();
+      out.push(html); continue;
+    }
+    out.push(`<div>${inl(line) || '<br>'}</div>`); i++;
+  }
+  return out.join('');
+}
+
+/* ---- editable HTML → markdown ---- */
+const RICH_BLOCK = /^(DIV|P|H[1-6]|UL|OL|LI|BLOCKQUOTE|PRE|TABLE|HR|SECTION|ARTICLE|HEADER|FOOTER)$/;
+function richInline(n) {
+  if (n.nodeType === 3) return n.nodeValue.replace(/ /g, ' ').replace(/​/g, '');
+  if (n.nodeType !== 1) return '';
+  const tag = n.tagName, kids = () => [...n.childNodes].map(richInline).join('');
+  if (tag === 'BR') return '\n';
+  if (tag === 'IMG' || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'META' || tag === 'TITLE') return '';
+  if (tag === 'CODE' && n.parentNode && n.parentNode.tagName !== 'PRE') return '`' + n.textContent.replace(/`/g, "'") + '`';
+  const wrap = (mk, inner, mk2) => { const m = inner.match(/^(\s*)([\s\S]*?)(\s*)$/); return m[2] ? m[1] + mk + m[2] + (mk2 || mk) + m[3] : inner; };
+  if (tag === 'A') { const href = n.getAttribute('href') || '', t = kids(); if (!href || /^tel:/i.test(href) || t.replace(/\s/g, '') === href.replace(/\s/g, '') || !/^(https?:|mailto:)/i.test(href)) return t; return `[${t}](${href})`; }
+  const st = n.style || {}, fw = String(st.fontWeight || ''), bg = String(st.backgroundColor || '');
+  let inner = kids();
+  if (RICH_BLOCK.test(tag)) inner = '\n' + inner;                       // a block inside a line starts a new line
+  if (tag === 'B' || tag === 'STRONG' || fw === 'bold' || +fw >= 600) inner = wrap('**', inner);
+  if (tag === 'I' || tag === 'EM' || st.fontStyle === 'italic') inner = wrap('*', inner);
+  if (tag === 'U' || /underline/.test(st.textDecoration || st.textDecorationLine || '')) inner = wrap('++', inner);
+  if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL' || /line-through/.test(st.textDecoration || st.textDecorationLine || '')) inner = wrap('~~', inner);
+  if (tag === 'MARK' || (bg && !/transparent|rgba\(0, 0, 0, 0\)|inherit|initial/.test(bg))) inner = wrap('==', inner);
+  return inner;
+}
+const richKids = el => [...el.childNodes].map(richInline).join('');
+function richLines(el) {
+  const lines = [];
+  let buf = null;                                                        // loose inline content waiting to become a line
+  const flush = () => { if (buf != null) { lines.push(...buf.split('\n')); buf = null; } };
+  const addInline = t => { buf = (buf == null ? '' : buf) + t; };
+  [...el.childNodes].forEach(c => {
+    if (c.nodeType === 3 || (c.nodeType === 1 && !RICH_BLOCK.test(c.tagName))) {
+      if (c.nodeType === 1 && c.tagName === 'BR') { addInline(''); flush(); return; }
+      addInline(richInline(c)); return;
+    }
+    if (c.nodeType !== 1) return;
+    flush();
+    const tag = c.tagName;
+    if (tag === 'HR') { lines.push('---'); return; }
+    if (/^H[1-6]$/.test(tag)) { const lv = Math.min(3, +tag[1]); lines.push('#'.repeat(lv) + ' ' + richKids(c).replace(/\n+/g, ' ').trim()); return; }
+    if (tag === 'UL' || tag === 'OL') { lines.push(...richList(c, 0)); return; }
+    if (tag === 'BLOCKQUOTE') { richLines(c).forEach(l => lines.push('> ' + l)); return; }
+    if (tag === 'PRE') { lines.push('```', ...c.textContent.replace(/\n$/, '').split('\n'), '```'); return; }
+    if (tag === 'TABLE') {
+      const rows = [...c.querySelectorAll('tr')].map(tr => [...tr.children].map(td => richInline(td).replace(/\n+/g, ' ').replace(/\|/g, '/').trim()));
+      if (rows.length) { const w = Math.max(...rows.map(r => r.length)); const fix = r => '| ' + [...r, ...Array(w - r.length).fill('')].join(' | ') + ' |';
+        lines.push(fix(rows[0]), '| ' + Array(w).fill('---').join(' | ') + ' |', ...rows.slice(1).map(fix)); }
+      return;
+    }
+    if (tag === 'LI') { lines.push(...richList({ tagName: 'UL', children: [c], getAttribute: () => null }, 0)); return; }
+    // DIV / P: a line (or several, if it holds blocks or line breaks)
+    if ([...c.children].some(k => RICH_BLOCK.test(k.tagName))) { lines.push(...richLines(c)); return; }
+    let t = richKids(c); if (c.lastChild && c.lastChild.nodeType === 1 && c.lastChild.tagName === 'BR') t = t.replace(/\n$/, '');
+    lines.push(...t.split('\n'));
+  });
+  flush();
+  return lines;
+}
+function richList(list, level) {
+  const out = [], pad = '  '.repeat(level), ol = list.tagName === 'OL';
+  let n = parseInt(list.getAttribute && list.getAttribute('start'), 10) || 1;
+  [...list.children].forEach(li => {
+    if (li.tagName === 'UL' || li.tagName === 'OL') { out.push(...richList(li, level + 1)); return; }
+    if (li.tagName !== 'LI') return;
+    const subs = [], text = [...li.childNodes].map(k => { if (k.nodeType === 1 && (k.tagName === 'UL' || k.tagName === 'OL')) { subs.push(k); return ''; } return richInline(k); }).join('').replace(/\n+$/, '');
+    const ck = li.classList && li.classList.contains('ck');
+    const mk = ol ? `${n++}. ` : ck ? `- [${li.dataset.ck === '1' ? 'x' : ' '}] ` : '- ';
+    out.push(pad + mk + text.trim().replace(/\n/g, '\n' + pad + '  '));
+    subs.forEach(sl => out.push(...richList(sl, level + 1)));
+  });
+  return out;
+}
+function richToMd(root) {
+  if (!root) return '';
+  const lines = richLines(root);
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  return lines.join('\n');
+}
+
+/* ---- the block the caret is in ---- */
+function richBlock() {
+  const r = $('neRich'), sel = getSelection(); if (!sel.rangeCount) return null;
+  let n = sel.anchorNode; if (!n || !r.contains(n)) return null;
+  while (n && n !== r && !(n.nodeType === 1 && /^(DIV|P|LI|H[1-6]|BLOCKQUOTE|PRE|TD)$/.test(n.tagName))) n = n.parentNode;
+  return n;
+}
+function richTextBeforeCaret(block) {
+  const sel = getSelection(); if (!sel.rangeCount || !block) return '';
+  const rg = document.createRange(); rg.setStart(block, 0); rg.setEnd(sel.anchorNode, sel.anchorOffset);
+  return rg.toString();
+}
+function richDeleteBeforeCaret(block) {
+  const sel = getSelection(); const rg = document.createRange(); rg.setStart(block, 0); rg.setEnd(sel.anchorNode, sel.anchorOffset);
+  sel.removeAllRanges(); sel.addRange(rg); document.execCommand('delete');
+}
+function richMakeCheck() {
+  const li = richBlock(); if (li && li.tagName === 'LI') { li.className = 'ck'; li.dataset.ck = '0'; }
+}
+/* "1." / "-" / "[]" / "#" / ">" at the start of a line, then space or Tab → list, checklist, heading or quote (like Word) */
+function richAutoFormat(trigger) {
+  const b = richBlock(); if (!b) return false;
+  const pre = richTextBeforeCaret(b).replace(/ /g, ' ');
+  const m = (trigger === 'tab' ? pre + ' ' : pre).match(/^(\d+[.)]|[-*•]|\[ ?\]|#{1,3}|>) $/);
+  if (!m) return false;
+  const k = m[1], inList = !!b.closest('li');
+  if (inList && !/^#|^>/.test(k)) return false;
+  richDeleteBeforeCaret(b);
+  if (/^\d/.test(k)) document.execCommand('insertOrderedList');
+  else if (/^\[/.test(k)) { document.execCommand('insertUnorderedList'); richMakeCheck(); }
+  else if (/^[-*•]$/.test(k)) document.execCommand('insertUnorderedList');
+  else if (k[0] === '#') document.execCommand('formatBlock', false, 'h' + k.length);
+  else if (k === '>') document.execCommand('formatBlock', false, 'blockquote');
+  return true;
+}
+function richToggleBlock(tag) {
+  const b = richBlock(), cur = b && b.closest && b.closest(tag);
+  document.execCommand('formatBlock', false, cur ? 'div' : tag);
+}
+function richCmd(k) {
+  richFocus();
+  const sel = getSelection(), txt = sel.rangeCount ? sel.toString() : '';
+  const ex = (c, v) => document.execCommand(c, false, v);
+  if (k === 'bold') ex('bold'); else if (k === 'italic') ex('italic'); else if (k === 'underline') ex('underline');
+  else if (k === 'strike') ex('strikeThrough');
+  else if (k === 'mark') { if (txt) ex('insertHTML', `<mark>${esc(txt)}</mark>`); else toast('Select some text to highlight.'); }
+  else if (k === 'code') { if (txt) ex('insertHTML', `<code>${esc(txt)}</code>`); else ex('insertHTML', '<code>code</code>'); }
+  else if (k === 'link') { const u = (prompt('Link address', 'https://') || '').trim(); if (/^(https?:|mailto:)/i.test(u) && u.length > 8) { if (txt) ex('createLink', u); else ex('insertHTML', `<a href="${esc(u)}">${esc(u)}</a>`); } }
+  else if (k === 'h2') richToggleBlock('h2');
+  else if (k === 'h1') richToggleBlock('h1');
+  else if (k === 'ul') ex('insertUnorderedList');
+  else if (k === 'ol') ex('insertOrderedList');
+  else if (k === 'check') { const b = richBlock(); if (b && b.tagName === 'LI' && b.classList.contains('ck')) { b.classList.remove('ck'); delete b.dataset.ck; } else { if (!(b && b.closest('ul'))) ex('insertUnorderedList'); richMakeCheck(); } }
+  else if (k === 'quote') richToggleBlock('blockquote');
+  else if (k === 'indent') ex('indent'); else if (k === 'outdent') ex('outdent');
+  else if (k === 'hr') ex('insertHTML', '<hr><div><br></div>');
+  else if (k === 'table') ex('insertHTML', '<table><tbody>' + '<tr><td><br></td><td><br></td><td><br></td></tr>'.repeat(3) + '</tbody></table><div><br></div>');
+  else if (k === 'stamp') ex('insertText', stampNow() + ' — ');
+  else if (k === 'clear') ex('removeFormat');
+  richSync();
+}
+if ($('neRich')) {
+  const r = $('neRich');
+  r.addEventListener('input', e => {
+    if (e.inputType === 'insertText' && e.data === ' ') richAutoFormat('space');
+    if (e.inputType === 'insertParagraph') { const b = richBlock(); if (b && b.tagName === 'LI' && b.classList.contains('ck') && !b.textContent.trim()) b.dataset.ck = '0'; }
+    if (!r.firstChild) r.innerHTML = '<div><br></div>';
+    richSync();
+  });
+  r.addEventListener('keydown', e => {
+    const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      if (!e.shiftKey && richAutoFormat('tab')) { richSync(); return; }
+      const inList = !!(richBlock() && richBlock().closest('li'));
+      if (inList) document.execCommand(e.shiftKey ? 'outdent' : 'indent');
+      else if (!e.shiftKey) document.execCommand('insertText', false, '    ');
+      richSync(); return;
+    }
+    if (!mod) return;
+    const map = { b: 'bold', i: 'italic', u: 'underline', k: 'link' };
+    if (map[k]) { e.preventDefault(); richCmd(map[k]); return; }
+    if (e.shiftKey && (k === 'x' || k === '5')) { e.preventDefault(); richCmd('strike'); return; }
+    if (e.shiftKey && k === 'h') { e.preventDefault(); richCmd('mark'); return; }
+    if (e.shiftKey && (k === '7' || k === '&')) { e.preventDefault(); richCmd('ol'); return; }
+    if (e.shiftKey && (k === '8' || k === '*')) { e.preventDefault(); richCmd('ul'); return; }
+    if (e.altKey && ['1', '2', '3'].includes(k)) { e.preventDefault(); richToggleBlock('h' + k); richSync(); return; }
+    if (k === 'f') { e.preventDefault(); openFind(); return; }
+    if (k === 'z') { setTimeout(richSync, 0); }
+  });
+  // tick a checklist item by tapping its box
+  r.addEventListener('click', e => {
+    const li = e.target.closest && e.target.closest('li.ck'); if (!li) return;
+    if (e.clientX - li.getBoundingClientRect().left < 2) { li.dataset.ck = li.dataset.ck === '1' ? '0' : '1'; richSync(); }
+  });
+  r.addEventListener('paste', e => {
+    const cd = e.clipboardData; if (!cd) return;
+    const files = [...(cd.items || [])].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean);
+    if (files.length) { e.preventDefault(); addNoteImages(files); return; }
+    const html = cd.getData('text/html'), text = cd.getData('text/plain');
+    e.preventDefault();
+    let mdText = text;
+    if (html) { try { const doc = document.implementation.createHTMLDocument(''); doc.body.innerHTML = html; mdText = richToMd(doc.body); } catch (err) { mdText = text; } }
+    if (!mdText) return;
+    if (!/\n/.test(mdText) && !/[*_~=`#>\[]/.test(mdText)) document.execCommand('insertText', false, mdText);
+    else document.execCommand('insertHTML', false, mdToRich(mdText));
+    richSync();
+  });
+  document.addEventListener('selectionchange', () => { if (document.activeElement === r) { const t = getSelection().toString(); const s = wordStats(ta().value); $('neCount').textContent = `${s.words.toLocaleString('en-IN')} words · ${s.chars.toLocaleString('en-IN')} characters · ${s.mins} min read${t ? ` · ${wordStats(t).words} selected` : ''}`; } });
+}
+/* ---- find & replace inside the formatted editor ---- */
+function richTextNodes() { const r = $('neRich'), w = document.createTreeWalker(r, NodeFilter.SHOW_TEXT), L = []; let n, pos = 0; while ((n = w.nextNode())) { L.push({ n, s: pos }); pos += n.nodeValue.length; } return { L, all: L.map(x => x.n.nodeValue).join('') }; }
+function richFindRun() {
+  const q = $('neFindIn').value.toLowerCase(); RICH.hits = []; RICH.idx = -1;
+  if (q) { const { all } = richTextNodes(), v = all.toLowerCase(); let p = v.indexOf(q); while (p >= 0) { RICH.hits.push(p); p = v.indexOf(q, p + Math.max(1, q.length)); } }
+  findHits = RICH.hits;
+  $('neFindCount').textContent = q ? (RICH.hits.length ? `0/${RICH.hits.length}` : 'none') : '';
+}
+function richSelectAt(p, len) {
+  const { L } = richTextNodes(), at = off => { for (const x of L) if (off <= x.s + x.n.nodeValue.length) return [x.n, off - x.s]; const z = L[L.length - 1]; return [z.n, z.n.nodeValue.length]; };
+  const [a, ao] = at(p), [b, bo] = at(p + len), rg = document.createRange(); rg.setStart(a, ao); rg.setEnd(b, bo);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(rg);
+  (a.parentElement || $('neRich')).scrollIntoView({ block: 'center' });
+}
+function richFindGo(dir) {
+  if (!RICH.hits.length) return;
+  RICH.idx = (RICH.idx + dir + RICH.hits.length) % RICH.hits.length;
+  richSelectAt(RICH.hits[RICH.idx], $('neFindIn').value.length);
+  $('neFindCount').textContent = `${RICH.idx + 1}/${RICH.hits.length}`;
+}
+function richReplaceOne() {
+  const q = $('neFindIn').value; if (!q || !RICH.hits.length) return;
+  if (RICH.idx < 0) RICH.idx = 0;
+  richFocus(); richSelectAt(RICH.hits[RICH.idx], q.length);
+  document.execCommand('insertText', false, $('neReplIn').value); richSync();
+  const keep = RICH.idx; richFindRun(); if (RICH.hits.length) { RICH.idx = Math.min(keep, RICH.hits.length) - 1; richFindGo(1); }
+}
+/* ---- switch between formatted and plain markdown (per device) ---- */
+if ($('nmMode')) $('nmMode').addEventListener('click', () => {
+  if (richActive()) richSync();
+  setPref('noteRich', !richActive()); richSetup();
+  toast(richActive() ? 'Formatted editing — bold shows as bold while you write.' : 'Plain text editing — formatting shows as markdown (**bold**).');
+});
