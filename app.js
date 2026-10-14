@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.22.0';
+const APP_VERSION = '2.23.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -328,6 +328,9 @@ function onTap(wrap, fn) { wrap.addEventListener('click', e => { if (wrap._swipe
    ======================================================================== */
 const Sel = { kind: null, ids: new Set() };
 const SEL_ACTS = {};          // kind → () => [{ l, fn(ids), danger }]
+const SEL_RAW = new Set(['dgrp', 'dwho', 'dcat', 'nfold']);   // v2.23: categories / folders — their ids are names, not records
+/* a folder button: press and hold selects it; while selecting, a tap adds it instead of opening it */
+function folderSkip(b) { if (b._swiped) return true; if (Sel.kind && b.dataset.selk === Sel.kind) { selToggle(b.dataset.selid); return true; } return false; }
 function bindHold(el, kind, id) {
   el.dataset.selk = kind; el.dataset.selid = id;
   let t = null, x0 = 0, y0 = 0;
@@ -352,7 +355,7 @@ function selPaint() {
   $('selN').textContent = `${Sel.ids.size} selected`;
   const acts = (SEL_ACTS[Sel.kind] || (() => []))();
   $('selActs').innerHTML = acts.map((a, i) => `<button type="button" data-sela="${i}" class="${a.danger ? 'danger' : ''}">${a.l}</button>`).join('');
-  $$('[data-sela]', bar).forEach(b => b.addEventListener('click', () => { const a = acts[+b.dataset.sela], ids = [...Sel.ids].filter(id => records[id]); a.fn(ids); }));
+  $$('[data-sela]', bar).forEach(b => b.addEventListener('click', () => { const a = acts[+b.dataset.sela], ids = [...Sel.ids].filter(id => SEL_RAW.has(Sel.kind) || records[id]); a.fn(ids); }));
 }
 function selEnd() { Sel.kind = null; Sel.ids = new Set(); selPaint(); }
 function selAll(kind, ids) { Sel.kind = kind; Sel.ids = new Set(ids); selPaint(); }
@@ -464,7 +467,7 @@ function setPref(k, v) {
    cleared after the server has accepted that exact version — so an edit made
    offline, or during a failed upload, is never skipped.
    ======================================================================== */
-const SEALED_TYPES = new Set(['fin', 'budget', 'filekey', 'snote', 'plancfg', 'planmonth', 'invest', 'loan', 'goal', 'acct', 'recur', 'subscfg', 'emerg', 'dropkey']);   // v2.20: + the quick-log opening key   // v2.19: + subscriptions settings, Emergency sheet
+const SEALED_TYPES = new Set(['fin', 'budget', 'filekey', 'snote', 'plancfg', 'planmonth', 'invest', 'loan', 'goal', 'acct', 'recur', 'subscfg', 'emerg', 'dropkey', 'vault']);   // v2.23: + Card & account details   // v2.20: + the quick-log opening key   // v2.19: + subscriptions settings, Emergency sheet
 const FINKEY_ID = '__finkey__';
 let records = {};          // id -> plaintext record (money records only while unlocked)
 let sealed = {};           // id -> sealed form of money records (always present)
@@ -601,7 +604,11 @@ function lockFinance(silent) {
    year …) are printed in lists. Anything outside the shapes the app itself creates is dropped or reset. */
 const REC_ID_RX = /^[A-Za-z0-9_.:@\-]{1,120}$/, REC_TYPE_RX = /^[a-z][a-z0-9_]{0,30}$/;
 const ISO_DATE_RX = /^\d{4}-\d{2}-\d{2}$/, FY_RX = /^\d{4}-\d{2}$/, HM_RX = /^\d{2}:\d{2}$/;
-const TASK_STATUS = ['active', 'inprogress', 'waiting', 'done'], TASK_REPEAT = ['none', 'daily', 'weekly', 'monthly'], DATE_REPEAT = ['once', 'yearly', 'monthly'];
+const TASK_STATUS = ['active', 'inprogress', 'waiting', 'done'], TASK_REPEAT = ['none', 'daily', 'weekly', 'monthly'], DATE_REPEAT = ['once', 'yearly', 'monthly', 'm2', 'm3', 'm6'];
+/* v2.23: every 2, 3 and 6 months */
+const REP_MONTHS = { monthly: 1, m2: 2, m3: 3, m6: 6, yearly: 12 };
+const REP_OPTS = [['once', 'Once'], ['yearly', 'Every year'], ['monthly', 'Every month'], ['m2', 'Every 2 months'], ['m3', 'Every 3 months (quarterly)'], ['m6', 'Every 6 months']];
+const repWord = r => ({ yearly: 'yearly', monthly: 'monthly', m2: 'every 2 months', m3: 'quarterly', m6: 'every 6 months' })[r] || '';
 /* Returns the record (fixed in place) or null when it must not be kept. */
 function cleanRec(r) {
   if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
@@ -778,6 +785,7 @@ const Sync = {
       if (!(await DB.get('firstSync'))) await DB.set('firstSync', this.lastOk);   // first time this device synced with this Sheet
       this.status('ok', 'Synced ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
       if (manual) toast(got ? `Synced — ${got} update${got === 1 ? '' : 's'} received.` : 'Synced — all up to date.');
+      if (got) purgeOldTrash().catch(() => {});            // v2.23: "Empty" done on another device clears it here too
       return true;
     } catch (e) {
       // v2.21: a dropped connection or a busy Google server is tried once more, quietly, before it counts as an error
@@ -1735,7 +1743,7 @@ function renderNotes() {
     html += list.length ? `<div class="notes-grid">${list.map(n => noteCard(n, dups)).join('')}</div>` : '<div class="empty">This folder is empty.</div>';
   }
   area.innerHTML = html;
-  $$('[data-folder]', area).forEach(b => b.addEventListener('click', () => { activeFolder = b.dataset.folder; renderNotes(); $('main').scrollTop = 0; }));
+  $$('[data-folder]', area).forEach(b => { if (!window.GHOST) bindHold(b, 'nfold', b.dataset.folder); b.addEventListener('click', () => { if (folderSkip(b)) return; activeFolder = b.dataset.folder; renderNotes(); $('main').scrollTop = 0; }); });
   const back = $('folderBack'); if (back) back.addEventListener('click', () => { activeFolder = '__all__'; renderNotes(); });
   $$('[data-note]', area).forEach(b => { bindHold(b, 'note', b.dataset.note); onTap(b, () => prefs.noteEdit ? openNoteEditor(b.dataset.note) : previewNote(b.dataset.note)); });
   selPaint();
@@ -2143,8 +2151,8 @@ function nextOccurrence(d) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const w = new Date(d.when + 'T00:00:00'); if (isNaN(w)) return today;
   const day = w.getDate(), base = new Date(w);
-  if (d.repeat === 'yearly') { for (let k = 1; w < today && k < 500; k++) { const x = addMonthsKeep(base, 12 * k, day); w.setTime(x.getTime()); } }
-  else if (d.repeat === 'monthly') { for (let k = 1; w < today && k < 6000; k++) { const x = addMonthsKeep(base, k, day); w.setTime(x.getTime()); } }
+  const step = REP_MONTHS[d.repeat];
+  if (step) { for (let k = 1; w < today && k < 6000; k++) { const x = addMonthsKeep(base, step * k, day); w.setTime(x.getTime()); } }
   return w;
 }
 function countHtml(days, pastWord) {
@@ -2423,9 +2431,10 @@ function renderDocsBase() {
     list = mine.filter(d => docGroup(d) === docPath.grp).sort((a, b) => a.docType.localeCompare(b.docType) || a.title.localeCompare(b.title) || String(b.fy || '').localeCompare(String(a.fy || '')));
     showWho = list.some(d => docOwners(d).length > 1);
   }
-  $$('[data-dwho]', fbox).forEach(b => b.addEventListener('click', () => { docPath = { who: b.dataset.dwho, grp: null }; renderDocs(); $('main').scrollTop = 0; }));
-  $$('[data-dgrp]', fbox).forEach(b => b.addEventListener('click', () => { docPath.grp = b.dataset.dgrp; renderDocs(); $('main').scrollTop = 0; }));
-  $$('[data-dback]', fbox).forEach(b => b.addEventListener('click', () => { if (b.dataset.dback === 'home') docPath = { who: null, grp: null }; else docPath.grp = null; renderDocs(); }));
+  $$('[data-dwho]', fbox).forEach(b => { if (!window.GHOST) bindHold(b, 'dwho', b.dataset.dwho); b.addEventListener('click', () => { if (folderSkip(b)) return; docPath = { who: b.dataset.dwho, grp: null }; renderDocs(); $('main').scrollTop = 0; }); });
+  $$('[data-dgrp]', fbox).forEach(b => { if (!window.GHOST) bindHold(b, 'dgrp', b.dataset.dgrp); b.addEventListener('click', () => { if (folderSkip(b)) return; docPath.grp = b.dataset.dgrp; renderDocs(); $('main').scrollTop = 0; }); });
+  $$('[data-dback]', fbox).forEach(b => b.addEventListener('click', () => { if (SEL_RAW.has(Sel.kind)) selEnd(); if (b.dataset.dback === 'home') docPath = { who: null, grp: null }; else docPath.grp = null; renderDocs(); }));
+  setTimeout(selPaint, 0);
   $('docList').innerHTML = list.map(d => {
     const days = d.expiry ? daysUntilISO(d.expiry) : null;
     return swipeHtml(`<div class="row" style="border-left:4px solid ${DOC_COLORS[d.docType] || '#77818E'}">
@@ -5229,7 +5238,7 @@ function enterGhost() {
   $('decoyRetry').addEventListener('click', () => { const n = Date.now(); taps = taps.filter(x => n - x < 8000); taps.push(n); if (taps.length >= 2) { taps = []; setTimeout(enterGhost, 1600); } }); }
 
 /* ---------- Recently deleted ---------- */
-const BIN_TYPES = { inbox: 'Inbox item', task: 'Task', note: 'Note', date: 'Date', doc: 'Document', docfile: 'File', snote: 'Private note', fin: 'Money entry' };
+const BIN_TYPES = { inbox: 'Inbox item', task: 'Task', note: 'Note', date: 'Date', doc: 'Document', docfile: 'File', snote: 'Private note', fin: 'Money entry', vault: 'Card / account detail' };
 function binItemsBase() {
   if (window.GHOST) return [];
   const cutoff = nowMs() - 30 * 86400000;
@@ -5590,7 +5599,7 @@ function guessDateCat(d) {
   if (/gym|club|membership/.test(l)) return 'member';
   return 'other';
 }
-const dateCat = d => d.cat && allDateCatKeys().includes(d.cat) ? d.cat : guessDateCat(d);
+const dateCat = d => { const k = d.cat && allDateCatKeys().includes(d.cat) ? d.cat : guessDateCat(d), m = dateCfg().merged || {}; return m[k] && m[k] !== k ? m[k] : k; };   // v2.23: a merged category's dates show in the one it went into
 /* v2.21 (C2): how many days ahead a date shows in “Coming up” — its own setting, else its category's, else Settings */
 const LEAD_OPTS = [3, 7, 15, 30, 45, 60, 90];
 const catLead = k => +((dateCfg().lead || {})[k] || 0);
@@ -5648,7 +5657,7 @@ function dateRowHtml({ d, w, days }, showCat, withTask) {
       ${days == null ? '<div class="count past" aria-label="no date">?<small>no date</small></div>' : countHtml(days)}
       <div class="row-main"><div class="row-title">${esc(d.label)}</div>
         <div class="row-sub">${w ? `<span>${dateFmt(w, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>` : '<span class="warn">set the date</span>'}${age ? `<span>${age}</span>` : ''}
-        ${d.repeat && d.repeat !== 'once' ? `<span class="pill">${esc(d.repeat)}</span>` : ''}${showCat && cat ? `<span>${cat[2]} ${esc(cat[1])}</span>` : ''}${inCal(d) ? '<span class="pill cal-in">📅 in Calendar</span>' : ''}${tk ? '<span class="pill">☑ in Tasks</span>' : ''}</div></div>
+        ${d.repeat && d.repeat !== 'once' ? `<span class="pill">${esc(repWord(d.repeat) || d.repeat)}</span>` : ''}${showCat && cat ? `<span>${cat[2]} ${esc(cat[1])}</span>` : ''}${inCal(d) ? '<span class="pill cal-in">📅 in Calendar</span>' : ''}${tk ? '<span class="pill">☑ in Tasks</span>' : ''}</div></div>
       ${withTask && w && !tk ? `<button class="d-task" data-dtask="${d.id}" aria-label="Add ${esc(d.label)} to Tasks">＋ Task</button>` : '<span class="chev">›</span>'}</div>`, '', 'Delete 🗑', `data-date="${d.id}"`);
 }
 function renderDatesBase() {
@@ -5672,8 +5681,8 @@ function renderDatesBase() {
   $('dateList').innerHTML = list.map(x => dateRowHtml(x, !datePath)).join('') || (datePath ? '<div class="empty">Nothing here yet — tap “Add here”.</div>' : '');
   $('dateList').classList.toggle('hidden', !$('dateList').innerHTML); setTimeout(selPaint, 0);
   $$('[data-date]', $('datesPane')).forEach(w => { const id = w.dataset.date; bindSwipe(w, null, () => deleteWithUndo(id)); bindHold(w, 'date', id); onTap(w, e => { if (e && e.target && e.target.closest('[data-dtask]')) { dateToTask(id); return; } openDate(id); }); });
-  $$('[data-dcat]', home).forEach(b => b.addEventListener('click', () => { datePath = b.dataset.dcat; renderDates(); $('main').scrollTop = 0; }));
-  $$('[data-dback]', home).forEach(b => b.addEventListener('click', () => { datePath = null; renderDates(); }));
+  $$('[data-dcat]', home).forEach(b => { if (!window.GHOST) bindHold(b, 'dcat', b.dataset.dcat); b.addEventListener('click', () => { if (folderSkip(b)) return; datePath = b.dataset.dcat; renderDates(); $('main').scrollTop = 0; }); });
+  $$('[data-dback]', home).forEach(b => b.addEventListener('click', () => { if (SEL_RAW.has(Sel.kind)) selEnd(); datePath = null; renderDates(); }));
   const on = (id, f) => { if ($(id)) $(id).addEventListener('click', f); };
   on('dateAddHere', () => openAdd('date'));
   if ($('dateCatLead')) $('dateCatLead').addEventListener('change', () => { setCatLead(datePath, +$('dateCatLead').value); toast('Saved.'); });
@@ -6003,7 +6012,7 @@ $('setArchive').addEventListener('click', () => { Sheets.close('shSettings', tru
 /* ---------- Dates: export to Excel, import back (bulk entry) ---------- */
 const DI = { plan: null };
 const catName = k => (dateCats().concat(DATE_CATS).find(c => c[0] === k) || [0, 'Other'])[1];
-const REP_W = { once: 'Once', yearly: 'Every year', monthly: 'Every month' };
+const REP_W = { once: 'Once', yearly: 'Every year', monthly: 'Every month', m2: 'Every 2 months', m3: 'Every 3 months', m6: 'Every 6 months' };
 /* v2.19 (S7): Dates go out and come back as CSV — opens in Excel, and nothing has to parse an Excel file */
 const csvCell = c => { let v = String(c == null ? '' : c); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
 function dateExport() {
@@ -6058,7 +6067,7 @@ function dateImportPlan(rows) {
     const pd = parseDateCell(r.date); if (pd.err) { P.err.push(`Row ${r.line} (${r.name}): ${pd.err}`); return; }
     let cat = findCat(r.cat), catKey = cat ? cat[0] : null;
     if (!cat && r.cat) { const nc = P.newCats.find(x => norm(x.n) === norm(r.cat)); catKey = nc ? nc.k : 'c' + Math.random().toString(36).slice(2, 8); if (!nc) P.newCats.push({ k: catKey, n: r.cat, i: '📁' }); }
-    const repRaw = r.rep.toLowerCase(), rep = /month/.test(repRaw) ? 'monthly' : /year|annual|every ?yr/.test(repRaw) ? 'yearly' : /once|one/.test(repRaw) ? 'once' : null;
+    const repRaw = r.rep.toLowerCase(), rep = /\b6\b|six|half/.test(repRaw) ? 'm6' : /\b3\b|three|quarter/.test(repRaw) ? 'm3' : /\b2\b|two|bi-?month/.test(repRaw) ? 'm2' : /month/.test(repRaw) ? 'monthly' : /year|annual|every ?yr/.test(repRaw) ? 'yearly' : /once|one/.test(repRaw) ? 'once' : null;
     const d = (r.id && byId.get(r.id)) || byKey.get(norm(r.name));
     const c = catKey || (d ? dateCat(d) : guessDateCat({ label: r.name }));
     const repeat = rep || (d ? d.repeat : ['birthday', 'anniv', 'remember'].includes(c) ? 'yearly' : 'once');
@@ -6752,7 +6761,7 @@ function renderAddForm0(focus) {
     f.innerHTML = `<div class="field"><input id="afTitle" placeholder="e.g. Car insurance renewal" autocomplete="off"></div>
       <div class="field"><label>Date</label><input type="date" id="afDate"></div>
       <div class="field"><label>Repeats</label><div class="wrapchips" id="afRep"></div></div>`;
-    AF.rep = YEARLY_CATS.includes(datePath) ? 'yearly' : 'once'; AF.repSet = false; chipGroup($('afRep'), [{ v: 'once', l: 'Once' }, { v: 'yearly', l: 'Every year' }, { v: 'monthly', l: 'Every month' }], AF.rep, v => { AF.rep = v; AF.repSet = true; });
+    AF.rep = YEARLY_CATS.includes(datePath) ? 'yearly' : 'once'; AF.repSet = false; chipGroup($('afRep'), REP_OPTS.map(([v, l]) => ({ v, l: l.replace(' (quarterly)', '') })), AF.rep, v => { AF.rep = v; AF.repSet = true; });
     f.insertAdjacentHTML('beforeend', `<div class="field"><label>Category</label><select id="afDateCat"><option value=""${datePath ? '' : ' selected'}>✨ Auto — from the name</option>${dateCats().map(c => `<option value="${c[0]}"${c[0] === datePath ? ' selected' : ''}>${c[2]} ${esc(c[1])}</option>`).join('')}</select></div><p class="hint">The date can be left empty and filled in later.</p>`);
   } else if (k === 'bill') {
     f.innerHTML = `<div class="field"><input id="afTitle" placeholder="e.g. Electricity, Home loan EMI" autocomplete="off"></div>
@@ -7125,12 +7134,13 @@ function afterFinanceUnlock() {
   showTab('money');
 }
 function onFinanceLocked(silent) {
+  if ($('vtBody')) $('vtBody').innerHTML = ''; if ($('docVault')) $('docVault').innerHTML = '';   // v2.23: nothing readable left on screen
   $('moneyTab').classList.add('hidden'); clearFinFilter();
   Bio.pending = null;                                                    // a half-finished Face ID setup keeps no code
   if (!$('lightbox').classList.contains('hidden')) $('lbClose').click();
   if (Sheets.isOpen('shDoc')) { const d = records[editDocId]; if (d && (d.lockFiles || d.numEnc)) { $('doNumber').value = d.numEnc ? '•••• ' + (d.numTail || '') : ''; $('doNumber').disabled = true; } }
   const sd = records[Scan.docId], lockedScan = (Scan.replace && Scan.replace.locked) || (sd && sd.lockFiles);
-  ['shFin', 'shSettle', 'shBudget', 'shInsights', 'shEmerg', 'shDocView', 'shDocShare', 'shPlan', ...(lockedScan ? ['shScan', 'shCrop'] : [])].forEach(id => Sheets.close(id, true));
+  ['shFin', 'shSettle', 'shBudget', 'shInsights', 'shEmerg', 'shCards', 'shDocView', 'shDocShare', 'shPlan', ...(lockedScan ? ['shScan', 'shCrop'] : [])].forEach(id => Sheets.close(id, true));
   pendingAfterUnlock = null;
   forgetLockedPlain(); forgetSecretImgs();
   if (currentTab === 'money') showTab(prefs.lastTab || 'tasks');
@@ -7597,9 +7607,9 @@ async function purgeNow(ids, again) {
   ids.forEach(id => { const r = records[id]; if (!r) return;
     if (!again && r.type === 'docfile' && r.fileId) driveDelete(r.fileId);
     if (!again && r.type === 'doc') all('docfile').forEach(f => { if (f.docId === id) { driveDelete(f.fileId); softDelete(f.id, { render: false }); } });
-    if (r._dirty && Sync.on()) { r.deletedAt = 1; put(r, { render: false }); wait.push(id); }   // its deletion has not reached the Sheet yet: removed right after it does
+    if (!again && Sync.on()) { r.deletedAt = 1; put(r, { render: false }); wait.push(id); }   // v2.23: tell every device it is gone for good (they drop it on their next clean-up), then remove it here once the Sheet has it
     else gone.push(id); });
-  if (wait.length) Sync.run().then(() => { const done = wait.filter(id => records[id] && records[id].deleted && !records[id]._dirty); if (done.length) purgeNow(done, true); });
+  if (wait.length) Sync.run().then(() => { const done = wait.filter(id => records[id] && records[id].deleted && !records[id]._dirty); if (done.length) purgeNow(done, true); }).catch(() => {});   // offline: they stay hidden and go after the next sync
   await Promise.all(gone.map(id => persistQ[id]).filter(Boolean));               // a queued save must not write it back after the delete
   gone.forEach(id => { delete records[id]; delete sealed[id]; delete persistQ[id]; });
   storeVer++;
@@ -7635,7 +7645,7 @@ function icsText(list) {
     L.push('BEGIN:VEVENT', `UID:${d.id}@register`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${d.when.replace(/-/g, '')}`, `DTEND;VALUE=DATE:${isoLocal(nx).replace(/-/g, '')}`, `SUMMARY:${e(d.label)}`);
     // same rule as the app: a day the month does not have moves to its last day
     if (d.repeat === 'yearly') L.push(mo === 2 && day === 29 ? 'RRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=28,29;BYSETPOS=-1' : 'RRULE:FREQ=YEARLY');
-    else if (d.repeat === 'monthly') L.push(day >= 29 ? 'RRULE:FREQ=MONTHLY;BYMONTHDAY=' + Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',') + ';BYSETPOS=-1' : 'RRULE:FREQ=MONTHLY');
+    else if (REP_MONTHS[d.repeat]) { const iv = REP_MONTHS[d.repeat] > 1 ? ';INTERVAL=' + REP_MONTHS[d.repeat] : ''; L.push(day >= 29 ? 'RRULE:FREQ=MONTHLY' + iv + ';BYMONTHDAY=' + Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',') + ';BYSETPOS=-1' : 'RRULE:FREQ=MONTHLY' + iv); }
     L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${e(d.label)}`, 'TRIGGER:-PT15H', 'END:VALARM', 'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${e(d.label)}`, 'TRIGGER:PT9H', 'END:VALARM', 'END:VEVENT');
   });
   L.push('END:VCALENDAR'); return L.map(icsFold).join('\r\n') + '\r\n';
@@ -7993,22 +8003,22 @@ function renameDocGroup(old, nu) {
     if (into) { const t = c.groups.find(x => x.n === into[0]); t.t.push(...g.t); c.groups = c.groups.filter(x => x !== g); } else g.n = nu; });
   if (docPath.grp === old) docPath.grp = into ? into[0] : nu;
 }
-function deleteDocGroup(name) {
+function deleteDocGroup(name, quiet) {
   const gi = DOC_GROUPS.findIndex(g => g[0] === name); if (gi < 0) return;
   if (gi === DOC_GROUPS.length - 1) { toast(`"${name}" is where everything else goes — it cannot be deleted. Rename it instead.`); return; }
   const g = DOC_GROUPS[gi], n = all('doc').filter(d => g[1].includes(d.docType)).length, other = DOC_GROUPS[DOC_GROUPS.length - 1][0];
-  if (!confirm(`Delete the category "${name}"?${n ? `\n\nIts ${n} document${n > 1 ? 's' : ''} stay safe and show under "${other}".` : ''}\nRecently deleted keeps it for 30 days — restoring it puts everything back.`)) return;
+  if (!quiet && !confirm(`Delete the category "${name}"?${n ? `\n\nIts ${n} document${n > 1 ? 's' : ''} stay safe and show under "${other}".` : ''}\nRecently deleted keeps it for 30 days — restoring it puts everything back.`)) return;
   put({ id: uid('cb'), type: 'catbin', what: 'docgrp', grp: { n: g[0], t: g[1].slice(), i: g[2] }, deleted: true, deletedAt: nowMs() }, { render: false });
   docCfgEdit(c => { const x = c.groups.find(y => y.n === name); c.groups[c.groups.length - 1].t.push(...x.t); c.groups = c.groups.filter(y => y !== x); });
   if (docPath.grp === name) docPath.grp = null;
-  toast(`Deleted "${name}" — in Recently deleted for 30 days.`);
+  if (!quiet) toast(`Deleted "${name}" — in Recently deleted for 30 days.`);
 }
 function setTypeGroup(type, grp) { docCfgEdit(c => { c.groups.forEach(g => { g.t = g.t.filter(t => t !== type); }); (c.groups.find(g => g.n === grp) || c.groups[c.groups.length - 1]).t.push(type); }); }
-function renamePerson(old, nu) {
+function renamePerson(old, nu, quiet) {
   nu = normWho(nu); if (!nu || nu === old) return;
   if (/&/.test(nu)) { toast('One name only.'); return; }
   const merging = allDocPeople().includes(nu);
-  if (merging && !confirm(`"${nu}" already exists. Move all of ${old}'s documents to ${nu}?`)) return;
+  if (merging && !quiet && !confirm(`"${nu}" already exists. Move all of ${old}'s documents to ${nu}?`)) return;
   all('doc').forEach(d => { const o = docOwners(d); if (!o.includes(old)) return; d.who = normWho([...new Set(o.map(p => p === old ? nu : p))].join(' & ')); put(d, { render: false }); if (d.expiry && typeof syncDocDate === 'function') syncDocDate(d); });
   docCfgEdit(c => { c.people = [...new Set((c.people || []).map(p => p === old ? nu : p))]; });
   if (docPath.who === old) docPath.who = nu;
@@ -8100,7 +8110,7 @@ function openDocFolders() {
   if (!Sheets.isOpen('shDocFolders')) Sheets.open('shDocFolders');
 }
 function renderDocs() {
-  syncDocCfg(); renderDocsBase();
+  syncDocCfg(); renderDocsBase(); renderVaultCard();
   const fbox = $('docFolders'); if (!fbox || window.GHOST) return;
   const crumb = fbox.querySelector('.doc-crumb'); if (!crumb) return;
   const acts = document.createElement('div'); acts.className = 'crumb-acts';
@@ -8332,21 +8342,21 @@ function restoreCatbin(r) {
   scheduleRender(); toast('Category restored.'); if (Sheets.isOpen('shBin')) openBin();
 }
 function binRestoreV2171(id) { const r = records[id]; if (r && r.type === 'catbin') { restoreCatbin(r); return; } binRestoreV216(id); }
-function deleteDateCat(key) {
+function deleteDateCat(key, quiet) {
   const cats = dateCats(), c = cats.find(x => x[0] === key); if (!c) return;
   const own = all('date').filter(d => dateCat(d) === key), custom = (dateCfg().custom || []).some(x => x.k === key);
-  if (!confirm(`Delete the category "${c[1]}"${own.length ? ` and its ${own.length} date${own.length === 1 ? '' : 's'}` : ''}?\n\nIt goes to Settings → Recently deleted for 30 days. Restoring the category brings its dates back too.`)) return;
+  if (!quiet && !confirm(`Delete the category "${c[1]}"${own.length ? ` and its ${own.length} date${own.length === 1 ? '' : 's'}` : ''}?\n\nIt goes to Settings → Recently deleted for 30 days. Restoring the category brings its dates back too.`)) return;
   const bin = put({ id: uid('cb'), type: 'catbin', what: 'datecat', cat: { k: key, n: c[1], i: c[2], custom }, dateIds: own.map(d => d.id), deleted: true, deletedAt: nowMs() }, { render: false });
   own.forEach(d => { d.catBin = bin.id; softDelete(d.id, { render: false }); });
   const cfg = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false };
   if (custom) cfg.custom = cfg.custom.filter(x => x.k !== key); else cfg.hidden = [...new Set([...(cfg.hidden || []), key])];
-  datePath = null; put(cfg); toast(`Deleted "${c[1]}".`, 'Undo', () => restoreCatbin(records[bin.id]));
+  datePath = null; put(cfg); if (!quiet) toast(`Deleted "${c[1]}".`, 'Undo', () => restoreCatbin(records[bin.id])); return bin.id;
 }
 function newDateCat() { catNameSheet('New category', '', '📁', (n, i) => newDateCatNamed(n, i)); }
 function newDateCatNamed(n, icon) {
   const cfg = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false };
   const builtin = DATE_CATS.find(x => x[1].toLowerCase() === n.toLowerCase());
-  if (builtin && (cfg.hidden || []).includes(builtin[0])) { cfg.hidden = cfg.hidden.filter(h => h !== builtin[0]); put(cfg); toast(`"${builtin[1]}" is back.`); return; }
+  if (builtin && (cfg.hidden || []).includes(builtin[0])) { cfg.hidden = cfg.hidden.filter(h => h !== builtin[0]); if (cfg.merged) { cfg.merged = { ...cfg.merged }; delete cfg.merged[builtin[0]]; } put(cfg); toast(`"${builtin[1]}" is back.`); return; }
   if (dateCats().some(x => x[1].toLowerCase() === n.toLowerCase())) { toast('That category already exists.'); return; }
   cfg.custom = [...(cfg.custom || []), { k: 'c' + Date.now().toString(36), n, i: icon || '📁' }]; put(cfg); toast(`Added "${n}".`);
 }
@@ -8843,7 +8853,7 @@ function syncAcctDates(a, force) {
 }
 function recurDateWant(r) {
   if (!r || r.deleted || !r.remind || !ISO_DATE_RX.test(r.remindDate || '')) return null;
-  const ev = +r.every || 1, repeat = ev === 12 ? 'yearly' : ev === 1 ? 'monthly' : 'once', day = +r.remindDate.slice(8, 10);
+  const ev = +r.every || 1, repeat = ({ 1: 'monthly', 2: 'm2', 3: 'm3', 6: 'm6', 12: 'yearly' })[ev] || 'once', day = +r.remindDate.slice(8, 10);
   let when = r.remindDate;
   if (repeat === 'once') { for (let k = 0; when < todayISO() && k < 600; k++) when = isoLocal(addMonthsKeep(new Date(when + 'T00:00:00'), ev, day)); }   // every 2, 3 or 6 months: the next one
   if (r.end && when.slice(0, 7) > r.end) return null;
@@ -9027,13 +9037,10 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
-  { t: '<b>Notes</b> now edit like Word: bold looks bold while you write, lists are real lists. Type <b>1.</b> or <b>-</b> and a space (or Tab) to start a list, <b>[]</b> for a checklist, <b>#</b> for a heading. Tab / Shift+Tab move a list item in and out; Ctrl/⌘ + B, I, U, K work. Notes are still saved as plain text, so nothing changes for sync or export. Prefer the old way? ••• → <b>Plain text</b>.' },
-  { t: '<b>Documents</b>: a clear <b>＋ Add document</b> button. In the form you can attach a photo or PDF, scan, or tick <b>Details only</b> (e.g. a debit card number) so it never shows under “No file attached”. Import from Drive is in Settings → Sync &amp; Drive; Select is press-and-hold.' },
-  { t: 'Selecting documents now shows its bar at the bottom, like Dates. Pressing on cards and buttons no longer brings up the iPhone text-selection menu.' },
-  { t: '<b>Categories</b>: add and rename them in Dates (open a category → ✎ Rename) and in Documents (in a person → ＋ New category; in a category → ✎ Rename), each with its own icon.' },
-  { t: 'Notes with a checklist show their progress (☑ 3/5) on the card.' },
-  { t: '<b>⧉ Copy</b> next to a document number copies it straight from the list. ＋ Add document inside a person or category fills in that person and type for you.' },
-  { t: '<b>Recurring items</b> can sit under your own categories — e.g. “Salary” holding each person’s salary — with a monthly total per category. Tap ✎ next to a category to rename it.', priv: true }
+  { t: '<b>Card &amp; account details</b> at the top of Documents: debit card number / expiry / CVV, bank account &amp; IFSC, electricity consumer no., policy numbers, logins — each entry with as many fields as you need (＋ Field). Encrypted with your private code like the Emergency sheet. Fields marked 🔒 stay as •••• until you tap Show, have ⧉ Copy, and are never printed.', priv: true },
+  { t: '<b>Press and hold a category</b> (Documents and Dates) or a note folder to select it. Then: Rename (one), Merge into one, Move to another person (Documents), 🖨 Print all its documents or dates, or Delete. People on the Documents page can be selected the same way.' },
+  { t: '<b>Dates</b> can now repeat every 2 months, every 3 months (quarterly) or every 6 months — also when you add them to the iPhone Calendar.' },
+  { t: '<b>Recently deleted → Empty</b> now empties it on your other devices too (after they next sync).' }
 ];
 function showWhatsNew() {
   $('nwBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">Register ${APP_VERSION}</p><ul class="nw-list">${WHATS_NEW.filter(x => !x.priv || finUnlocked()).map(x => `<li>${x.t}</li>`).join('')}</ul>`;
@@ -9651,3 +9658,232 @@ if ($('nmMode')) $('nmMode').addEventListener('click', () => {
   setPref('noteRich', !richActive()); richSetup();
   toast(richActive() ? 'Formatted editing — bold shows as bold while you write.' : 'Plain text editing — formatting shows as markdown (**bold**).');
 });
+
+/* ==========================================================================
+   v2.23 — press and hold on categories / folders (Documents, Dates, Notes)
+   ======================================================================== */
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+function pickTargetSheet(title, names, label, hint, onGo) {
+  planSheet(title, `<p class="hint" style="margin:0 4px 10px">${hint}</p>
+    <div class="field"><label>Keep this one</label><select id="mgInto">${names.map(n => `<option value="${esc(n[0])}">${esc(n[1])}</option>`).join('')}</select></div>`,
+    () => onGo($('mgInto').value) !== false, label);
+}
+/* Documents: categories inside a person */
+const docsOfGroups = (who, names) => all('doc').filter(d => (!who || docOwners(d).includes(who)) && names.includes(docGroup(d)));
+function mergeDocGroups(names, into) {
+  const last = DOC_GROUPS.length ? DOC_GROUPS[DOC_GROUPS.length - 1][0] : '';
+  const snap = JSON.parse(JSON.stringify(DOC_GROUPS));
+  const others = names.filter(n => n !== into), types = new Set([...DOC_GROUPS.filter(g => others.includes(g[0])).flatMap(g => g[1]), ...all('doc').filter(d => others.includes(docGroup(d))).map(d => d.docType).filter(Boolean)]);
+  docCfgEdit(c => { const t = c.groups.find(x => x.n === into); if (!t) return;
+    c.groups.forEach(g => { if (g !== t) g.t = g.t.filter(x => !types.has(x)); });
+    types.forEach(x => { if (!t.t.includes(x)) t.t.push(x); });                 // also the types that only fell into the last one by default
+    c.groups = c.groups.filter(g => g === t || g.n === last || !others.includes(g.n)); });
+  if (names.includes(docPath.grp)) docPath.grp = into;
+  selEnd(); toast(`Merged into "${into}".`, 'Undo', () => docCfgEdit(c => { c.groups = snap.map(g => ({ n: g[0], t: g[1].slice(), i: g[2] })); }), 7000);
+}
+SEL_ACTS.dgrp = () => {
+  const n = Sel.ids.size, who = docPath.who, A = [];
+  if (n === 1) A.push({ l: '✎ Rename', fn: ids => { const g = DOC_GROUPS.find(x => x[0] === ids[0]); selEnd(); catNameSheet('Rename category', ids[0], g ? g[2] : '📁', (nm, i) => { renameDocGroup(ids[0], nm); docCfgEdit(c => { const x = c.groups.find(y => y.n === nm); if (x) x.i = i; }); toast('Renamed.'); }); } });
+  if (n > 1) A.push({ l: '⇄ Merge', fn: ids => pickTargetSheet(`Merge ${n} categories`, ids.map(x => [x, `${groupIcon(x)} ${x}`]), 'Merge',
+    'All their documents go into the one you keep (for everyone — categories are shared by all people). Nothing is deleted.', into => { mergeDocGroups(ids, into); }) });
+  A.push({ l: '⇢ Move', fn: ids => { const L = docsOfGroups(who, ids).map(d => d.id); selEnd(); openDocMove(L, `${who ? who + "'s " : ''}${ids.join(', ')}`); } });
+  A.push({ l: '🖨 Print', fn: ids => { const L = docsOfGroups(who, ids); selEnd(); printDocsSheet(L, `${who ? who + ' — ' : ''}${ids.join(', ')}`); } });
+  A.push({ l: '🗑', danger: true, fn: ids => {
+    const last = DOC_GROUPS[DOC_GROUPS.length - 1][0], del = ids.filter(x => x !== last), k = docsOfGroups(null, del).length;
+    if (!del.length) { toast(`"${last}" is where everything else goes — it cannot be deleted. Rename it instead.`); return; }
+    if (!confirm(`Delete ${del.length === 1 ? `the category "${del[0]}"` : `${del.length} categories`}?${k ? `\n\nTheir ${plural(k, 'document')} stay safe and show under "${last}".` : ''}${del.length < ids.length ? `\n("${last}" stays — it holds everything else.)` : ''}\nRecently deleted keeps them for 30 days.`)) return;
+    del.forEach(x => deleteDocGroup(x, true)); selEnd(); toast(`Deleted ${plural(del.length, 'category').replace('categorys', 'categories')} — in Recently deleted for 30 days.`); } });
+  return A;
+};
+/* Documents: people on the first page */
+SEL_ACTS.dwho = () => {
+  const n = Sel.ids.size, A = [];
+  if (n === 1) A.push({ l: '✎ Rename', fn: ids => { selEnd(); planSheet('Rename person', `<div class="field"><label>Name</label><input id="rpName" value="${esc(ids[0])}" maxlength="40" autocomplete="off"></div>`, () => { const v = $('rpName').value.trim(); if (!v) { planMsg('Type a name.', true); return false; } renamePerson(ids[0], v); return true; }, 'Save'); } });
+  if (n > 1) A.push({ l: '⇄ Merge', fn: ids => pickTargetSheet(`Merge ${n} people`, ids.map(x => [x, '👤 ' + x]), 'Merge', 'Everyone else’s documents move to the person you keep (e.g. the same person saved under two spellings).', into => { ids.filter(x => x !== into).forEach(x => renamePerson(x, into, true)); selEnd(); toast(`Merged into ${into}.`); }) });
+  A.push({ l: '⇢ Move', fn: ids => { const L = all('doc').filter(d => ids.some(p => docOwners(d).includes(p))).map(d => d.id); selEnd(); openDocMove(L, `All documents of ${ids.join(', ')}`); } });
+  A.push({ l: '🖨 Print', fn: ids => { const L = all('doc').filter(d => ids.some(p => docOwners(d).includes(p))); selEnd(); printDocsSheet(L, ids.join(', ')); } });
+  if (n === 1) A.push({ l: '⤓ .zip', fn: ids => { selEnd(); exportPersonZip(ids[0]); } });
+  return A;
+};
+/* Dates: categories */
+function mergeDateCats(keys, into) {
+  const cats = dateCats(), cfg = { ...dateCfg(), id: DATE_CFG, type: 'datecfg', deleted: false }, others = keys.filter(k => k !== into);
+  all('date').forEach(d => { if (others.includes(dateCat(d))) { d.cat = into; put(d, { render: false }); } });
+  cfg.merged = { ...(cfg.merged || {}) }; Object.keys(cfg.merged).forEach(k => { if (others.includes(cfg.merged[k])) cfg.merged[k] = into; });
+  others.forEach(k => { cfg.merged[k] = into; if ((cfg.custom || []).some(x => x.k === k)) cfg.custom = cfg.custom.filter(x => x.k !== k); else cfg.hidden = [...new Set([...(cfg.hidden || []), k])]; });
+  cfg.hidMig = true; put(cfg); if (others.includes(datePath)) datePath = into;
+  const c = cats.find(x => x[0] === into); selEnd(); toast(`Merged into "${c ? c[1] : into}".`);
+}
+SEL_ACTS.dcat = () => {
+  const n = Sel.ids.size, A = [], nm = k => { const c = dateCats().find(x => x[0] === k); return c ? `${c[2]} ${c[1]}` : k; };
+  if (n === 1) A.push({ l: '✎ Rename', fn: ids => { selEnd(); renameDateCat(ids[0]); } });
+  if (n > 1) A.push({ l: '⇄ Merge', fn: ids => pickTargetSheet(`Merge ${n} categories`, ids.map(k => [k, nm(k)]), 'Merge', 'All their dates move into the one you keep. Nothing is deleted.', into => mergeDateCats(ids, into)) });
+  A.push({ l: '🖨 Print', fn: ids => { const L = dateRows(all('date').filter(d => ids.includes(dateCat(d)))); selEnd(); printDatesList(L, ids.map(nm).join(', ')); } });
+  A.push({ l: '🗑', danger: true, fn: ids => {
+    const k = all('date').filter(d => ids.includes(dateCat(d))).length;
+    if (!confirm(`Delete ${ids.length === 1 ? 'this category' : ids.length + ' categories'}${k ? ` and their ${plural(k, 'date')}` : ''}?\n\nThey go to Settings → Recently deleted for 30 days. Restoring a category brings its dates back too.`)) return;
+    const bins = ids.map(x => deleteDateCat(x, true)).filter(Boolean); selEnd();
+    toast(`Deleted ${ids.length === 1 ? 'the category' : ids.length + ' categories'}.`, 'Undo', () => bins.forEach(b => records[b] && restoreCatbin(records[b])), 7000); } });
+  return A;
+};
+/* Notes: folders */
+function setNotesFolder(from, to) { let n = 0; all('note').forEach(x => { if (from.includes(noteFolder(x))) { x.folder = to; put(x, { render: false }); n++; } }); return n; }
+SEL_ACTS.nfold = () => {
+  const n = Sel.ids.size, A = [];
+  if (n === 1) A.push({ l: '✎ Rename', fn: ids => { selEnd(); planSheet('Rename folder', `<div class="field"><label>Name</label><input id="nfName" value="${esc(ids[0])}" maxlength="60" autocomplete="off"></div>`, () => { const v = $('nfName').value.trim().slice(0, 60); if (!v) { planMsg('Type a name.', true); return false; } setNotesFolder(ids, v); if (activeFolder === ids[0]) activeFolder = v; scheduleRender(); toast('Renamed.'); return true; }, 'Save'); } });
+  if (n > 1) A.push({ l: '⇄ Merge', fn: ids => pickTargetSheet(`Merge ${n} folders`, ids.map(x => [x, '📁 ' + x]), 'Merge', 'All their notes go into the folder you keep.', into => { setNotesFolder(ids.filter(x => x !== into), into); selEnd(); scheduleRender(); toast(`Merged into ${into}.`); }) });
+  A.push({ l: '📤 Unfile', fn: ids => { const before = all('note').filter(x => ids.includes(noteFolder(x))).map(x => [x.id, x.folder]); const k = setNotesFolder(ids, ''); selEnd(); scheduleRender();
+    toast(`${plural(k, 'note')} moved out — the folder${ids.length > 1 ? 's are' : ' is'} gone, the notes stay.`, 'Undo', () => { before.forEach(([id, f]) => { const x = records[id]; if (x) { x.folder = f; put(x, { render: false }); } }); scheduleRender(); }, 7000); } });
+  return A;
+};
+
+/* ---- printing a set of documents (list, with photos of the files if wanted) ---- */
+function printDocsSheet(docs, title) {
+  if (!docs.length) { toast('No documents there.'); return; }
+  const imgN = docs.reduce((s, d) => s + docFilesOf(d.id).filter(f => /^image\//.test(f.mime || '') || /\.(jpe?g|png|webp|heic)$/i.test(f.name || '')).length, 0);
+  planSheet('Print ' + plural(docs.length, 'document'), `<p class="hint" style="margin:0 4px 10px">${esc(title)}. On iPhone: Print → pinch out on the preview → Save to Files to keep it as a PDF.</p>
+    <label class="switch-row">Show full numbers<input type="checkbox" class="sw" id="prFull"></label>
+    ${imgN ? `<label class="switch-row">Include photos of the files (${imgN})<input type="checkbox" class="sw" id="prImg"></label>` : ''}
+    <p class="hint">PDF files are listed by name — open the document to print those.${docs.some(d => d.numEnc) && !Fin.key ? ' Locked numbers stay hidden until you unlock.' : ''}</p>`,
+    () => { printDocs(docs, title, $('prFull').checked, $('prImg') && $('prImg').checked); return true; }, '🖨 Print');
+}
+async function printDocs(docs, title, full, pics) {
+  docs = docs.slice().sort((a, b) => docOwners(a).join().localeCompare(docOwners(b).join()) || docGroup(a).localeCompare(docGroup(b)) || a.title.localeCompare(b.title));
+  const td = 'border:1px solid #999;padding:5px 6px;vertical-align:top;font-size:12px', rows = [];
+  for (const d of docs) {
+    let num = docNumShown(d);
+    if (full) { try { num = (await docNumFull(d)) || num; } catch (e) {} }
+    const fs = docFilesOf(d.id);
+    rows.push(`<tr><td style="${td}"><b>${esc(d.title)}</b></td><td style="${td}">${esc(docOwners(d).join(' & '))}</td><td style="${td}">${esc(docGroup(d))} · ${esc(d.docType || '')}</td><td style="${td};font-family:monospace">${esc(num || '')}</td><td style="${td}">${d.expiry ? esc(fmtDate(d.expiry, true)) : ''}</td><td style="${td}">${esc(d.issuer || '')}${d.notes ? `<div style="color:#555">${esc(String(d.notes).slice(0, 300))}</div>` : ''}${fs.length ? `<div style="color:#555">📎 ${esc(fs.map(f => f.name).join(', ')).slice(0, 300)}</div>` : ''}</td></tr>`);
+  }
+  let imgs = '';
+  if (pics) {
+    jobOpen('Getting the photos'); let i = 0;
+    const L = docs.flatMap(d => docFilesOf(d.id).filter(f => /^image\//.test(f.mime || '') || /\.(jpe?g|png|webp|heic)$/i.test(f.name || '')).map(f => ({ f, d })));
+    for (const { f, d } of L) {
+      if (Job.stop) break;
+      jobStep(i, L.length, `Photo ${++i} of ${L.length}`);
+      try { const { blob } = await docFileBlob(f); const src = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(blob); });
+        imgs += `<div style="page-break-inside:avoid;margin:12px 0"><p style="font-size:12px;margin:0 0 4px"><b>${esc(d.title)}</b> — ${esc(f.name || '')}</p><img src="${src}" style="max-width:100%;max-height:900px"></div>`; }
+      catch (e) { imgs += `<p style="font-size:12px;color:#a00">${esc(d.title)} — ${esc(f.name || '')}: could not load (${esc(e.code === 'LOCKED' ? 'locked' : e.message || 'error')})</p>`; }
+    }
+    jobDone(Job.stop ? 'Stopped.' : 'Ready to print.', !!Job.stop);
+  }
+  $('printArea').innerHTML = `<div style="font-family:Georgia,serif;padding:10px"><h1 style="font-size:20px">Documents — ${esc(title)}</h1>
+    <table style="border-collapse:collapse;width:100%"><tr>${['Document', 'Belongs to', 'Category · type', 'Number', 'Expiry / due', 'Issuer · notes · files'].map(h => `<th style="${td};background:#eee;text-align:left">${h}</th>`).join('')}</tr>${rows.join('')}</table>
+    ${imgs}<hr><p style="color:#666;font-size:11px">Printed ${new Date().toLocaleString('en-IN')} from Register. ${full ? 'Contains full numbers — keep this paper safe.' : ''}</p></div>`;
+  setTimeout(() => window.print(), 150);
+}
+function printDatesList(rows, title) {
+  if (!rows.length) { toast('No dates there.'); return; }
+  const td = 'border:1px solid #999;padding:5px 6px;font-size:12px';
+  $('printArea').innerHTML = `<div style="font-family:Georgia,serif;padding:10px"><h1 style="font-size:20px">Dates — ${esc(title)}</h1>
+    <table style="border-collapse:collapse;width:100%"><tr>${['Name', 'Next', 'Repeats', 'Category'].map(h => `<th style="${td};background:#eee;text-align:left">${h}</th>`).join('')}</tr>
+    ${rows.map(x => { const c = dateCats().find(k => k[0] === dateCat(x.d)); return `<tr><td style="${td}">${esc(x.d.label)}</td><td style="${td}">${x.d.when ? esc(fmtDate(isoLocal(nextOccurrence(x.d)), true)) : '—'}</td><td style="${td}">${esc(repWord(x.d.repeat) || 'once')}</td><td style="${td}">${c ? esc(c[1]) : ''}</td></tr>`; }).join('')}</table>
+    <hr><p style="color:#666;font-size:11px">Printed ${new Date().toLocaleString('en-IN')} from Register.</p></div>`;
+  setTimeout(() => window.print(), 120);
+}
+
+/* ==========================================================================
+   v2.23 — Card & account details: encrypted entries, each with its own fields
+   (card: number / expiry / CVV; bill: consumer no.; bank: account / IFSC …)
+   Sealed with the private code like the Emergency sheet; hidden while locked.
+   Fields marked 🔒 stay as •••• until Show, and are never printed.
+   ======================================================================== */
+const VAULT_KINDS = [
+  ['card', '💳', 'Debit / credit cards', [['Card number'], ['Name on card'], ['Valid till (MM/YY)'], ['CVV', 1], ['PIN', 1]]],
+  ['bank', '🏦', 'Bank accounts', [['Account number'], ['IFSC'], ['Branch'], ['Customer ID'], ['Net-banking user ID'], ['Password', 1]]],
+  ['bill', '⚡', 'Bills & utilities', [['Consumer number'], ['Account number'], ['Registered mobile']]],
+  ['phone', '📱', 'Mobile & internet', [['Number'], ['Account / customer ID'], ['Plan']]],
+  ['policy', '🛡', 'Insurance & policies', [['Policy number'], ['Insurer'], ['Renewal date']]],
+  ['id', '🪪', 'IDs & registrations', [['Number'], ['Issued on'], ['Valid till']]],
+  ['login', '🌐', 'Website & app logins', [['Website'], ['User ID'], ['Password', 1]]],
+  ['other', '🗂', 'Other', [['Number']]]
+];
+const VSHORT = { card: 'Card', bank: 'Bank account', bill: 'Bill / utility', phone: 'Mobile / internet', policy: 'Policy', id: 'ID / registration', login: 'Login', other: 'Other' };
+const vKind = k => VAULT_KINDS.find(x => x[0] === k) || VAULT_KINDS[VAULT_KINDS.length - 1];
+const vaultAll = () => finUnlocked() && !window.GHOST ? all('vault') : [];
+let vtEdit = null, vtQ = '', vtShown = new Set(), vtTimer = null;
+function renderVaultCard() {
+  const box = $('docVault'); if (!box) return;
+  if (window.GHOST || !finUnlocked()) { box.innerHTML = ''; return; }
+  const n = vaultAll().length;
+  box.innerHTML = `<button type="button" class="vault-card priv-only" id="vaultGo"><span class="vc-i">🔐</span><span class="vc-t"><b>Card &amp; account details</b><small>${n ? plural(n, 'entry').replace('entrys', 'entries') + ' · ' : ''}encrypted · numbers, CVV, consumer no.</small></span><span class="chev">›</span></button>`;
+  $('vaultGo').addEventListener('click', () => openVault());
+}
+function openVault(editId) {
+  if (window.GHOST) { ghostCrash(true); return; }
+  if (!Fin.key) { needUnlock(() => openVault(editId)); return; }
+  vtShown = new Set();
+  if (editId !== undefined) vaultEditor(editId); else vaultList();
+  if (!Sheets.isOpen('shCards')) Sheets.open('shCards');
+}
+function vaultList() {
+  vtEdit = null;
+  $('vtTitle').textContent = 'Card & account details'; $('vtSave').textContent = 'Done'; $('vtBack').textContent = 'Close';
+  const q = vtQ.trim().toLowerCase(), L = vaultAll().filter(e => !q || [e.title, e.who, vKind(e.kind)[2], ...(e.fields || []).filter(f => !f.s).flatMap(f => [f.l, f.v])].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+  const card = e => `<div class="vt-card" data-vt="${e.id}"><div class="vt-h"><b>${esc(e.title || 'Untitled')}</b>${e.who ? `<small>👤 ${esc(e.who)}</small>` : ''}<button type="button" class="vt-ed" data-vte="${e.id}" aria-label="Edit ${esc(e.title || '')}">✎ Edit</button></div>
+    ${(e.fields || []).filter(f => f.v).map((f, i) => { const k = e.id + ':' + i, show = !f.s || vtShown.has(k);
+      return `<div class="vt-f"><span class="vt-l">${f.s ? '🔒 ' : ''}${esc(f.l || 'Field')}</span><span class="vt-v mono">${show ? esc(f.v) : '••••••'}</span>${f.s ? `<button type="button" data-vts="${k}">${show ? 'Hide' : 'Show'}</button>` : ''}<button type="button" data-vtc="${k}" aria-label="Copy ${esc(f.l || '')}">⧉</button></div>`; }).join('')}
+    ${e.notes ? `<div class="vt-n">${esc(e.notes)}</div>` : ''}</div>`;
+  const groups = VAULT_KINDS.map(k => [k, L.filter(e => vKind(e.kind)[0] === k[0])]).filter(g => g[1].length);
+  $('vtBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">Encrypted with your private code — the Google Sheet only sees scrambled text. Fields marked 🔒 (CVV, PIN, passwords) stay hidden until you tap Show, and are never printed.</p>
+    ${vaultAll().length > 4 ? `<input id="vtQ" type="search" placeholder="Search name, number…" value="${esc(vtQ)}" autocomplete="off" style="margin-bottom:10px">` : ''}
+    ${groups.map(([k, es]) => `<div class="group-title">${k[1]} ${esc(k[2])}</div>${es.map(card).join('')}`).join('') || `<div class="empty">${q ? 'Nothing matches.' : 'Nothing saved yet — pick what to add below.'}</div>`}
+    <div class="group-title">＋ Add</div><div class="wrapchips">${VAULT_KINDS.map(k => `<button type="button" class="chip" data-vtn="${k[0]}">${k[1]} ${esc(VSHORT[k[0]])}</button>`).join('')}</div>
+    ${vaultAll().length ? '<div class="btn-row"><button class="btn ghost" type="button" id="vtPrint">🖨 Print / PDF (🔒 fields left out)</button></div>' : ''}`;
+  const b = $('vtBody');
+  if ($('vtQ')) $('vtQ').addEventListener('input', () => { vtQ = $('vtQ').value; const pos = $('vtQ').selectionStart; vaultList(); const el = $('vtQ'); el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} });
+  $$('[data-vte]', b).forEach(x => x.addEventListener('click', () => vaultEditor(x.dataset.vte)));
+  $$('[data-vtn]', b).forEach(x => x.addEventListener('click', () => vaultEditor(null, x.dataset.vtn)));
+  $$('[data-vts]', b).forEach(x => x.addEventListener('click', () => { const k = x.dataset.vts; vtShown.has(k) ? vtShown.delete(k) : vtShown.add(k); clearTimeout(vtTimer); vtTimer = setTimeout(() => { vtShown.clear(); if (Sheets.isOpen('shCards') && !vtEdit) vaultList(); }, 30000); vaultList(); }));
+  $$('[data-vtc]', b).forEach(x => x.addEventListener('click', async () => { const [id, i] = x.dataset.vtc.split(':'), e = records[id], f = e && (e.fields || []).filter(f => f.v)[+i]; if (!f) return;
+    try { await navigator.clipboard.writeText(f.v); toast(`Copied ${f.l || 'it'}.`); } catch (er) { toast('Could not copy here.'); } }));
+  if ($('vtPrint')) $('vtPrint').addEventListener('click', () => printVault(L));
+}
+function vaultEditor(id, kind) {
+  const e0 = id && records[id], k = vKind(e0 ? e0.kind : kind);
+  const e = e0 ? JSON.parse(JSON.stringify(e0)) : { kind: k[0], title: '', who: '', fields: k[3].map(([l, s]) => ({ l, v: '', s: !!s })), notes: '' };
+  vtEdit = id || 'new';
+  $('vtTitle').textContent = e0 ? 'Edit' : 'New · ' + VSHORT[k[0]]; $('vtSave').textContent = 'Save'; $('vtBack').textContent = '‹ Back';
+  const people = typeof allDocPeople === 'function' ? allDocPeople() : [];
+  const row = f => `<div class="vt-row"><input class="vt-rl" value="${esc(f.l || '')}" placeholder="Field name" aria-label="Field name" maxlength="40"><input class="vt-rv${f.s ? ' vt-sec' : ''}" value="${esc(f.v || '')}" placeholder="Value" aria-label="Value" maxlength="300" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="vt-lock${f.s ? ' on' : ''}" aria-label="Hide this field" title="Hide (🔒) — never printed">${f.s ? '🔒' : '🔓'}</button><button type="button" class="em-rm" aria-label="Remove field">✕</button></div>`;
+  $('vtBody').innerHTML = `<div class="field"><label>Name</label><input id="vtName" value="${esc(e.title || '')}" placeholder="${{ card: 'e.g. SBI debit card', bank: 'e.g. SBI savings', bill: 'e.g. Electricity bill', phone: 'e.g. Jio — Rahul', policy: 'e.g. Star health policy', id: 'e.g. Car RC', login: 'e.g. Income-tax portal' }[k[0]] || 'Name'}" maxlength="80" autocomplete="off"></div>
+    <div class="grid2"><div class="field"><label>Kind</label><select id="vtKind">${VAULT_KINDS.map(x => `<option value="${x[0]}"${x[0] === k[0] ? ' selected' : ''}>${x[1]} ${esc(x[2])}</option>`).join('')}</select></div>
+      <div class="field"><label>Belongs to</label><input id="vtWho" value="${esc(e.who || '')}" list="vtPeople" placeholder="Optional" maxlength="40" autocomplete="off"><datalist id="vtPeople">${people.map(p => `<option value="${esc(p)}">`).join('')}</datalist></div></div>
+    <div class="group-title">Fields <span class="muted" style="font-weight:400;text-transform:none">· 🔒 = hidden &amp; not printed</span></div>
+    <div id="vtRows">${(e.fields || []).map(row).join('')}</div>
+    <div class="btn-row" style="margin:4px 0 0"><button class="btn ghost small" type="button" id="vtAddF">＋ Field</button></div>
+    <div class="group-title">Notes</div><textarea id="vtNotes" rows="3" placeholder="Anything else — branch, helpline, which phone it is linked to…" maxlength="2000">${esc(e.notes || '')}</textarea>
+    ${e0 ? '<div class="btn-row"><button class="btn ghost" type="button" id="vtDel" style="color:var(--seal)">🗑 Delete this entry</button></div>' : ''}<div class="msg" id="vtMsg"></div>`;
+  const wire = () => { $$('#vtRows .em-rm').forEach(x => { x.onclick = () => x.closest('.vt-row').remove(); });
+    $$('#vtRows .vt-lock').forEach(x => { x.onclick = () => { const on = !x.classList.contains('on'); x.classList.toggle('on', on); x.textContent = on ? '🔒' : '🔓'; x.parentNode.querySelector('.vt-rv').classList.toggle('vt-sec', on); }; }); };
+  $('vtAddF').addEventListener('click', () => { $('vtRows').insertAdjacentHTML('beforeend', row({ l: '', v: '', s: false })); wire(); const r = $$('#vtRows .vt-rl'); r[r.length - 1].focus(); });
+  if ($('vtDel')) $('vtDel').addEventListener('click', () => { const x = records[id]; if (!x) return; softDelete(id, { render: false }); vaultList(); toast('Deleted.', 'Undo', () => { restore(id); if (Sheets.isOpen('shCards') && !vtEdit) vaultList(); }, 7000); renderVaultCard(); });
+  $('vtKind').addEventListener('change', () => { const nk = vKind($('vtKind').value), has = $$('#vtRows .vt-rv').some(x => x.value.trim());
+    if (!has) { $('vtRows').innerHTML = nk[3].map(([l, s]) => row({ l, v: '', s: !!s })).join(''); wire(); } });
+  wire();
+  setTimeout(() => { if (!e0 && $('vtName')) $('vtName').focus(); }, 300);
+}
+function vaultRead() {
+  const fields = $$('#vtRows .vt-row').map(r => ({ l: r.querySelector('.vt-rl').value.trim().slice(0, 40), v: r.querySelector('.vt-rv').value.trim().slice(0, 300), s: r.querySelector('.vt-lock').classList.contains('on') })).filter(f => f.l || f.v).slice(0, 40);
+  return { title: $('vtName').value.trim().slice(0, 80), kind: $('vtKind').value, who: normWho($('vtWho').value.trim()).slice(0, 40), fields, notes: $('vtNotes').value.slice(0, 2000) };
+}
+$('vtSave').addEventListener('click', () => {
+  if (!vtEdit) { Sheets.close('shCards', true); $('vtBody').innerHTML = ''; return; }
+  if (!Fin.key) { toast('The private section locked — open it again to save.'); return; }
+  const v = vaultRead(); if (!v.title) { const m = $('vtMsg'); m.className = 'msg err'; m.textContent = 'Give it a name (e.g. “SBI debit card”).'; $('vtName').focus(); return; }
+  const id = vtEdit === 'new' ? uid('vt') : vtEdit, r = records[id];
+  put({ ...(r || { id, type: 'vault' }), ...v, deleted: false }, { render: false });
+  toast('Saved (encrypted).'); vaultList(); renderVaultCard();
+});
+$('vtBack').addEventListener('click', () => { if (vtEdit) vaultList(); else { Sheets.close('shCards', true); $('vtBody').innerHTML = ''; } });
+function printVault(list) {
+  const td = 'border:1px solid #999;padding:5px 6px;font-size:12px;vertical-align:top';
+  $('printArea').innerHTML = `<div style="font-family:Georgia,serif;padding:10px"><h1 style="font-size:20px">Card &amp; account details</h1>
+    ${VAULT_KINDS.map(k => { const es = list.filter(e => vKind(e.kind)[0] === k[0]); if (!es.length) return '';
+      return `<h2 style="font-size:15px;margin:14px 0 6px">${esc(k[2])}</h2><table style="border-collapse:collapse;width:100%">${es.map(e => `<tr><td style="${td};width:30%"><b>${esc(e.title)}</b>${e.who ? `<br><span style="color:#555">${esc(e.who)}</span>` : ''}</td><td style="${td}">${(e.fields || []).filter(f => f.v).map(f => `${esc(f.l)}: ${f.s ? '<i style="color:#888">not printed</i>' : `<span style="font-family:monospace">${esc(f.v)}</span>`}`).join('<br>')}${e.notes ? `<div style="color:#555;margin-top:4px">${esc(e.notes)}</div>` : ''}</td></tr>`).join('')}</table>`; }).join('')}
+    <hr><p style="color:#666;font-size:11px">Printed ${new Date().toLocaleString('en-IN')} from Register. Hidden (🔒) fields are left out. Keep this paper safe.</p></div>`;
+  setTimeout(() => window.print(), 120);
+}

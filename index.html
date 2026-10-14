@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.22.0">
+<meta name="app-version" content="2.23.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -971,10 +971,26 @@ html.on-money .hint-bubble{bottom:calc(var(--tabbar-h) + var(--safe-b) + 138px)}
 .swipe .row,.note-card{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .sel-on .row,.note-card.sel-on{background:rgba(147,115,31,.16)!important;box-shadow:inset 3px 0 0 var(--brass)}
 .note-card.sel-on{outline:2px solid var(--brass);outline-offset:-2px}
+/* v2.23: selected categories / folders; Card & account details */
+.folder.sel-on{outline:2px solid var(--brass);outline-offset:-2px;background:rgba(147,115,31,.14)}
+.folder{-webkit-touch-callout:none}
+.vault-card{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:12px 14px;margin:0 0 12px;border-left:4px solid var(--brass);color:inherit;font:inherit}
+.vault-card .vc-i{font-size:1.5rem}.vault-card .vc-t{flex:1;display:flex;flex-direction:column;gap:2px}.vault-card small{color:var(--ink-soft);font-size:.78rem}
+.vt-card{background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:10px 12px;margin:0 0 10px}
+.vt-h{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}.vt-h b{flex:1}.vt-h small{color:var(--ink-soft)}
+.vt-ed{background:none;border:0;color:var(--brass);font:inherit;font-size:.85rem;padding:2px 4px}
+.vt-f{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:.9rem}
+.vt-l{color:var(--ink-soft);flex:0 0 38%;font-size:.8rem}.vt-v{flex:1;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.vt-f button{background:none;border:1px solid var(--line);border-radius:8px;color:var(--ink);font:inherit;font-size:.78rem;padding:3px 8px}
+.vt-n{color:var(--ink-soft);font-size:.82rem;white-space:pre-wrap;margin-top:6px}
+.vt-row{display:grid;grid-template-columns:34% 1fr auto auto;gap:6px;margin:0 0 6px;align-items:center}
+.vt-row input{min-width:0;padding:9px 10px;font-size:16px}.vt-row .em-rm{width:34px;height:40px;border-radius:8px;background:rgba(128,128,128,.13)}.vt-sec{-webkit-text-security:disc}
+.vt-lock{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 7px;font-size:.95rem}.vt-lock.on{border-color:var(--brass);background:rgba(147,115,31,.12)}
 #selBar{position:fixed;left:10px;right:10px;bottom:calc(var(--tabbar-h) + var(--safe-b) + 8px);z-index:30;margin:0 auto;max-width:640px;display:flex;align-items:center;gap:8px;
   background:var(--ink);color:var(--paper);border-radius:14px;padding:8px 10px;box-shadow:0 8px 26px rgba(0,0,0,.3)}
 #selBar b{font-size:.875rem;white-space:nowrap}
-#selActs{flex:1;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;justify-content:flex-end}
+#selActs{flex:1;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+#selActs>:first-child{margin-left:auto}
 #selActs::-webkit-scrollbar{display:none}
 #selActs button{flex:none;color:var(--paper);border:1px solid rgba(255,255,255,.3);border-radius:12px;padding:6px 10px;font-size:.8125rem;font-weight:600}
 html[data-theme="dark"] #selActs button{border-color:rgba(0,0,0,.25)}
@@ -1128,6 +1144,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
       <div class="large-title">Documents</div>
       <div class="btn-row doc-top" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn brass small" id="docAddBtn">＋ Add document</button><button class="btn ghost small" id="docFoldersBtn">🗂 People &amp; categories</button><button class="btn ghost small" id="docFamBtn">✅ Family checklist</button>
         <span class="hidden"><button id="docQuickBtn"></button><button id="docImportBtn"></button><button id="docScanBtn"></button><button id="docSelBtn"></button></span></div>
+      <div id="docVault"></div>
       <div class="chips" id="docChips"></div>
       <div id="docChkNote"></div>
       <div id="docAttn"></div>
@@ -1364,7 +1381,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
       <div class="field"><label>What</label><input id="deLabel"></div>
       <div class="grid2">
         <div class="field"><label>Date</label><input type="date" id="deWhen"></div>
-        <div class="field"><label>Repeats</label><select id="deRepeat"><option value="once">Once</option><option value="yearly">Every year</option><option value="monthly">Every month</option></select></div>
+        <div class="field"><label>Repeats</label><select id="deRepeat"><option value="once">Once</option><option value="yearly">Every year</option><option value="monthly">Every month</option><option value="m2">Every 2 months</option><option value="m3">Every 3 months (quarterly)</option><option value="m6">Every 6 months</option></select></div>
       </div>
       <div class="grid2"><div class="field"><label>Category</label><select id="deCat"></select></div><div class="field"><label>Show in Coming up</label><select id="deLead"></select></div></div>
       <p class="hint" id="deInfo" style="margin:0 4px 10px"></p>
@@ -1781,6 +1798,12 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
     <div class="sheet-body" id="emBody"></div>
   </div>
 </div>
+<div class="sheet full" id="shCards">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" id="vtBack">Close</button><h2 id="vtTitle">Card &amp; account details</h2><button class="sh-r" id="vtSave">Done</button></div>
+    <div class="sheet-body" id="vtBody"></div>
+  </div>
+</div>
 <div class="sheet" id="shWork">
   <div class="sheet-card"><div class="sheet-grab"></div>
     <div class="sheet-head"><span class="sh-l"></span><h2 id="jbTitle">Working…</h2><button class="sh-r" id="jbStop">Stop</button></div>
@@ -1923,6 +1946,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.22.0"></script>
+<script src="app.js?v=2.23.0"></script>
 </body>
 </html>
