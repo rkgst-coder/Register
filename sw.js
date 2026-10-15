@@ -7,16 +7,29 @@
    first day. The Apps Script API is never cached.
    With every deploy: bump VERSION here and APP_VERSION in app.js, and the
    ?v= on the app.js script tag and the app-version meta in index.html. */
-const VERSION = '2.23.0';
+const VERSION = '2.24.0';
 const CACHE = 'register-v' + VERSION;
 const SHELL = ['./', './index.html', './app.js?v=' + VERSION, './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png', './icon-512-maskable.png',
   './vendor/pdf-3.11.174.min.js', './vendor/pdf.worker-3.11.174.min.js', './vendor/pdf-lib-1.17.1.min.js', './vendor/xlsx.full-0.18.5.min.js'];
 
+// v2.24: the new version takes over only when the page, app.js and the PDF / Excel tools all downloaded.
+// If one fails (a flaky network, GitHub still publishing), this install fails, the working old version
+// stays in charge, and the browser tries again on a later launch. Icons and the manifest are optional.
+const MUST = ['./index.html', './app.js?v=' + VERSION, './vendor/pdf-3.11.174.min.js', './vendor/pdf.worker-3.11.174.min.js', './vendor/pdf-lib-1.17.1.min.js', './vendor/xlsx.full-0.18.5.min.js'];
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));
+  e.waitUntil((async () => {
+    const tmp = await caches.open(CACHE + '-new');
+    try {
+      await Promise.all(MUST.map(async u => { const r = await fetch(u, { cache: 'no-cache' }); if (!r.ok) throw new Error(u + ' ' + r.status); await tmp.put(u, r); }));
+      await Promise.all(SHELL.filter(u => !MUST.includes(u)).map(u => fetch(u, { cache: 'no-cache' }).then(r => r.ok ? tmp.put(u, r) : null).catch(() => null)));
+      const c = await caches.open(CACHE);
+      for (const req of await tmp.keys()) await c.put(req, await tmp.match(req));
+    } finally { await caches.delete(CACHE + '-new'); }
+    await self.skipWaiting();
+  })());
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== CACHE + '-new').map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
   const req = e.request;

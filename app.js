@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.23.0';
+const APP_VERSION = '2.24.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -433,7 +433,8 @@ const DB = (() => {
     remove: key => tx('kv', 'readwrite', s => { s.delete(key); }),
     imgGet: key => tx('imgs', 'readonly', s => req(s.get(key))),
     imgSet: (key, val) => tx('imgs', 'readwrite', s => { s.put(val, key); }),
-    imgDel: key => tx('imgs', 'readwrite', s => { s.delete(key); })
+    imgDel: key => tx('imgs', 'readwrite', s => { s.delete(key); }),
+    imgKeys: () => tx('imgs', 'readonly', s => req(s.getAllKeys()))
   };
 })();
 
@@ -476,7 +477,7 @@ const persistQ = {};       // id -> promise chain, keeps writes for one id in or
 /* ---------- private-section encryption (AES-GCM, key from the access code) ---------- */
 const te = new TextEncoder(), td = new TextDecoder();
 const b64 = buf => { let s = ''; const a = new Uint8Array(buf); for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return btoa(s); };
-const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const unb64 = s => { const t = atob(s), a = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) a[i] = t.charCodeAt(i); return a; };   // v2.24: a plain loop — fast enough for 50 MB
 const FIN_ITERS = 150000, FIN_ITERS_NEW = 600000, FIN_MIN_CODE = 12;   // v2.19 (S3): new and changed codes need 12+ characters; older shorter codes still open
 const Fin = { key: null, salt: null, kid: null, iters: FIN_ITERS, lockedOut: [], tampered: [] };
 const keyCache = new Map();          // `${salt}|${code}` → CryptoKey, cleared on lock
@@ -501,7 +502,7 @@ async function aesDec(key, payload) {
   const raw = unb64(payload);
   return td.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, key, raw.slice(12)));
 }
-function stripLocal(r) { const o = { ...r }; delete o._dirty; return o; }
+function stripLocal(r) { const o = { ...r }; delete o._dirty; delete o._base; return o; }
 async function seal(rec, ctx) {
   ctx = ctx && ctx.key ? ctx : Fin;
   if (!ctx.key) throw new Error('private section is locked');
@@ -604,7 +605,7 @@ function lockFinance(silent) {
    year …) are printed in lists. Anything outside the shapes the app itself creates is dropped or reset. */
 const REC_ID_RX = /^[A-Za-z0-9_.:@\-]{1,120}$/, REC_TYPE_RX = /^[a-z][a-z0-9_]{0,30}$/;
 const ISO_DATE_RX = /^\d{4}-\d{2}-\d{2}$/, FY_RX = /^\d{4}-\d{2}$/, HM_RX = /^\d{2}:\d{2}$/;
-const TASK_STATUS = ['active', 'inprogress', 'waiting', 'done'], TASK_REPEAT = ['none', 'daily', 'weekly', 'monthly'], DATE_REPEAT = ['once', 'yearly', 'monthly', 'm2', 'm3', 'm6'];
+const TASK_STATUS = ['active', 'inprogress', 'waiting', 'done'], TASK_REPEAT = ['none', 'daily', 'weekdays', 'weekly', 'monthly', 'yearly'], DATE_REPEAT = ['once', 'yearly', 'monthly', 'm2', 'm3', 'm6'];
 /* v2.23: every 2, 3 and 6 months */
 const REP_MONTHS = { monthly: 1, m2: 2, m3: 3, m6: 6, yearly: 12 };
 const REP_OPTS = [['once', 'Once'], ['yearly', 'Every year'], ['monthly', 'Every month'], ['m2', 'Every 2 months'], ['m3', 'Every 3 months (quarterly)'], ['m6', 'Every 6 months']];
@@ -618,7 +619,7 @@ function cleanRec(r) {
     r.category = fixCat(r.category); r.priority = pick(r.priority, PRIOS, 'Medium');
     if (Array.isArray(r.subs)) r.subs.forEach(s => { if (s && typeof s === 'object') { s.priority = pick(s.priority, PRIOS, 'Medium'); if (s.dueDate != null) s.dueDate = dateOr(s.dueDate, null); } });
     if (r.type === 'task') {
-      r.status = pick(r.status, TASK_STATUS, 'active'); r.repeat = pick(r.repeat, TASK_REPEAT, 'none');
+      r.status = pick(r.status, TASK_STATUS, 'active'); r.repeat = /^e([1-9]\d?)([dwm])$/.test(String(r.repeat)) ? r.repeat : pick(r.repeat, TASK_REPEAT, 'none');   // v2.24: + weekdays, yearly, every N days / weeks / months (e3d, e2w, e6m)
       if (r.dueDate != null) r.dueDate = dateOr(r.dueDate, null);
       if (r.dueTime != null && !(typeof r.dueTime === 'string' && HM_RX.test(r.dueTime))) delete r.dueTime;
       if (r.waitingOn != null && typeof r.waitingOn !== 'string') delete r.waitingOn;
@@ -682,6 +683,7 @@ let storeVer = 0;
 function put(rec, opt) {
   if (window.GHOST) { ghostCrash(); return rec; }
   opt = opt || {};
+  { const prev = records[rec.id]; if (prev && !prev._dirty && prev.updatedAt) rec._base = prev.updatedAt; else if (prev && prev._base) rec._base = prev._base; }   // v2.24: the Sheet's version this edit started from
   if (opt.bump) rec.updatedAt = (rec.updatedAt || 0) + 1;                       // re-seal: keeps its place in time
   else if (!opt.keepTime) rec.updatedAt = Math.max(nowMs(), (rec.updatedAt || 0) + 1);   // another device's clock may be ahead
   storeVer++;
@@ -785,6 +787,7 @@ const Sync = {
       if (!(await DB.get('firstSync'))) await DB.set('firstSync', this.lastOk);   // first time this device synced with this Sheet
       this.status('ok', 'Synced ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
       if (manual) toast(got ? `Synced — ${got} update${got === 1 ? '' : 's'} received.` : 'Synced — all up to date.');
+      conflictsSave().catch(e => RLOG.warn('conflicts', e.message)); deviceSeen();
       if (got) purgeOldTrash().catch(() => {});            // v2.23: "Empty" done on another device clears it here too
       return true;
     } catch (e) {
@@ -805,10 +808,11 @@ const Sync = {
   rowFor(id) {
     const s = sealed[id];
     const noBig = x => { const p = stripLocal(x); delete p._tooBig; delete p._chunked; return p; };
-    if (s) return { id, type: s.type, updatedAt: s.updatedAt, deleted: !!s.deleted, summary: '', payload: JSON.stringify(noBig(s)) };
+    const baseAt = records[id] && records[id]._base || undefined;            // v2.24: lets the script tell us when another device changed it meanwhile
+    if (s) return { id, type: s.type, updatedAt: s.updatedAt, deleted: !!s.deleted, summary: '', baseAt, payload: JSON.stringify(noBig(s)) };
     const r = records[id];
     const summary = r.type === 'blob' ? (r.name || 'image') : (r.title || r.label || '');
-    return { id, type: r.type, updatedAt: r.updatedAt, deleted: !!r.deleted, summary, payload: JSON.stringify(noBig(r)) };
+    return { id, type: r.type, updatedAt: r.updatedAt, deleted: !!r.deleted, summary, baseAt, payload: JSON.stringify(noBig(r)) };
   },
   /* v2.19 (B5): one record → its row, or (when it is too big for a Sheet cell) its chunk rows followed by a small stub */
   rowsFor(id) {
@@ -840,11 +844,13 @@ const Sync = {
       if (!batch.length) return;
       const d = await this.call('push', { records: batch });
       const stale = new Set(d.stale || []), rejected = new Set(d.rejected || []);
+      (d.overwrote || []).forEach(o => { try { const x = JSON.parse(o.payload); if (x && !x._chunks && CONFLICT_TYPES.has(x.type)) conflictStash(o.id, x, 'other'); } catch (e) {} });   // v2.24: ours replaced another device's newer change
       const clean = [];
       batch.forEach(row => {
         if (row.chunkOf) { if (rejected.has(row.id) || stale.has(row.id)) badChunk.add(row.chunkOf); return; }
         const cur = sealed[row.id] || records[row.id];
         if (!cur || cur.updatedAt !== row.updatedAt) return;    // edited again meanwhile — stays dirty
+        if (stale.has(row.id) && CONFLICT_TYPES.has(cur.type)) conflictStash(row.id, records[row.id] ? stripLocal(records[row.id]) : stripLocal(cur), 'mine');   // v2.24: the Sheet kept the other device's — keep ours to choose
         if (stale.has(row.id) && (cur.type === 'note' || cur.type === 'snote')) {   // v2.19 (B6): the Sheet has a newer copy from another device — keep ours to compare
           const plain = records[row.id]; if (plain && (plain.type === 'note' || plain.type === 'snote')) (this.conflicts = this.conflicts || {})[row.id] = { id: plain.id, type: plain.type, title: plain.title, text: plain.text, folder: plain.folder, color: plain.color, docRefs: plain.docRefs, imgs: plain.imgs };
         }
@@ -1044,6 +1050,7 @@ async function driveFetch(fileId) {
   if (memImg.has(fileId)) return memImg.get(fileId);
   let url = null;
   try { url = await DB.imgGet(fileId); } catch (e) {}
+  if (url && typeof url !== 'string') { try { url = url instanceof Blob ? await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(url); }) : null; } catch (e) { url = null; } }   // v2.24: a document file kept as a Blob
   if (!url) {
     const d = await Sync.call('driveGet', { fileId }, 90000);
     if (!d.data) throw new Error('empty');
@@ -1201,6 +1208,9 @@ function shiftISO(iso, repeat, day) {
   if (!iso) return null;
   const d = new Date(iso + 'T00:00:00'); if (isNaN(d)) return iso;
   if (repeat === 'daily') d.setDate(d.getDate() + 1); else if (repeat === 'weekly') d.setDate(d.getDate() + 7); else if (repeat === 'monthly') return isoLocal(addMonthsKeep(d, 1, day));
+  else if (repeat === 'weekdays') { do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6); }
+  else if (repeat === 'yearly') return isoLocal(addMonthsKeep(d, 12, day));
+  else { const m = /^e(\d+)([dwm])$/.exec(String(repeat || '')); if (m) { const n = Math.max(1, +m[1]); if (m[2] === 'm') return isoLocal(addMonthsKeep(d, n, day)); d.setDate(d.getDate() + n * (m[2] === 'w' ? 7 : 1)); } }
   return isoLocal(d);
 }
 function spawnRepeatOld(t) {
@@ -1273,7 +1283,7 @@ function taskRow(t, showCat) {
         ${t.status === 'inprogress' ? '<span>◐ in progress</span>' : ''}
         ${t.status === 'waiting' ? `<span class="wait-pill">⏳ waiting${t.waitingOn ? ' on ' + esc(t.waitingOn) : ''}${t.waitingSince ? ' · ' + waitAge(t) : ''}</span>` : ''}
         ${t.status === 'done' && t.completedOn ? `<span>✓ ${fmtDate(t.completedOn)}</span>` : ''}
-        ${t.repeat && t.repeat !== 'none' ? `<span>🔁 ${esc(t.repeat)}</span>` : ''}
+        ${t.repeat && t.repeat !== 'none' ? `<span>🔁 ${esc(taskRepWord(t.repeat))}</span>` : ''}
         ${subs.length ? `<button class="toggle-steps" data-steps="${t.id}" aria-expanded="${open}">☑ ${done}/${subs.length} ${open ? '▾' : '▸'}</button>` : ''}
         ${late ? `<span class="warn">⚠ ${late} step${late > 1 ? 's' : ''} overdue</span>` : ''}
         ${t.notes ? '<span aria-label="has notes">📝</span>' : ''}
@@ -1485,7 +1495,7 @@ function previewTask(id) {
       <span class="pill" style="color:${PRIO_COLOR[t.priority]}">${esc(t.priority)}</span>
       ${t.dueDate ? `<span class="pill ${isOverdue(t) ? 'neg' : ''}">📅 ${relDay(t.dueDate)}${t.dueTime ? ' ' + fmtTime12(t.dueTime) : ''}${isOverdue(t) ? ' · overdue' : ''}</span>` : ''}
       ${t.status === 'inprogress' ? '<span class="pill">◐ in progress</span>' : ''}${t.status === 'waiting' ? `<span class="pill">⏳ waiting${t.waitingOn ? ' on ' + esc(t.waitingOn) : ''}${t.waitingSince ? ' · ' + waitAge(t) : ''}</span>` : ''}${t.status === 'done' ? `<span class="pill pos">✓ done ${fmtDate(t.completedOn)}</span>` : ''}
-      ${t.repeat && t.repeat !== 'none' ? `<span class="pill">🔁 ${esc(t.repeat)}</span>` : ''}
+      ${t.repeat && t.repeat !== 'none' ? `<span class="pill">🔁 ${esc(taskRepWord(t.repeat))}</span>` : ''}
     </div>
     ${subs.length ? `<div class="flabel">Steps ${subs.filter(s => s.done).length}/${subs.length}</div><div class="group" style="padding:4px 12px">${subs.map((s, i) => stepHtml(s, i, id)).join('')}</div>` : ''}
     ${t.notes ? `<div class="flabel">Notes</div><div style="white-space:pre-wrap;line-height:1.6;margin-bottom:14px">${linkify(esc(t.notes))}</div>` : ''}
@@ -1520,7 +1530,7 @@ function openTaskEditor(id) {
   chipGroup($('teStatus'), [{ v: 'active', l: 'To do' }, { v: 'inprogress', l: 'In progress' }, { v: 'waiting', l: '⏳ Waiting on' }, { v: 'done', l: 'Done' }], t.status, v => { setStatus(t, v); $('teWaitW').classList.toggle('hidden', v !== 'waiting'); if (v === 'waiting') setTimeout(() => $('teWait').focus(), 50); });
   $('teWait').value = t.waitingOn || ''; $('teWaitW').classList.toggle('hidden', t.status !== 'waiting');
   $('teDue').value = t.dueDate || ''; $('teTime').value = t.dueTime || '';
-  $('teRepeat').value = t.repeat || 'none';
+  teRepShow(t.repeat || 'none');
   $('teNotes').value = t.notes || '';
   $('teDueQuick').innerHTML = [['Today', 0], ['Tomorrow', 1], ['In 3 days', 3], ['Next week', 7], ['No date', null]]
     .map(([l, n]) => `<button class="chip" data-d="${n}">${l}</button>`).join('');
@@ -1535,7 +1545,7 @@ function teSave() {
   t.title = $('teTitle').value.trim() || t.title;
   { const nd = $('teDue').value || null; if (nd !== t.dueDate) delete t.repeatDay; t.dueDate = nd; }   // a moved date sets the new repeat day
   t.dueTime = $('teTime').value || undefined; if (!t.dueTime) delete t.dueTime;
-  t.repeat = $('teRepeat').value;
+  t.repeat = teRepRead();
   t.notes = $('teNotes').value;
   { const w = $('teWait').value.trim(); if (t.status === 'waiting' && w) t.waitingOn = w; else delete t.waitingOn; }
   put(t, { render: false });
@@ -2440,7 +2450,7 @@ function renderDocsBase() {
     return swipeHtml(`<div class="row" style="border-left:4px solid ${DOC_COLORS[d.docType] || '#77818E'}">
       ${d.expiry ? countHtml(days, 'expired') : '<div class="count past" aria-label="no expiry">∞<small>no expiry</small></div>'}
       <div class="row-main"><div class="row-title">${esc(d.title)}${showWho ? ` <span class="muted" style="font-weight:400">· ${esc(docOwners(d).join(' & '))}</span>` : ''}</div>
-        <div class="row-sub"><span>${esc(d.docType)}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span><button type="button" class="d-copy" data-dcopy="${d.id}" aria-label="Copy number of ${esc(d.title)}">⧉ Copy</button>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}</div></div>
+        <div class="row-sub"><span>${esc(d.docType)}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span><button type="button" class="d-copy" data-dcopy="${d.id}" aria-label="Copy number of ${esc(d.title)}">⧉ Copy</button>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}${docOffline(d) ? '<span class="off-ok" aria-label="files kept on this iPhone">📱✓</span>' : ''}</div></div>
       ${docSel ? `<span class="sel-box${docSel.has(d.id) ? ' on' : ''}" aria-label="${docSel.has(d.id) ? 'selected' : 'not selected'}">${docSel.has(d.id) ? '✓' : ''}</span>` : '<span class="chev">›</span>'}</div>`, '', 'Delete 🗑', `data-doc="${d.id}"`);
   }).join('') || (!docs.length ? '<div class="empty"><b>No documents</b>Aadhaar, PAN, marksheets, ITRs, policies — tap ＋ Add document. Attach a photo or PDF, scan it, or keep just the details. Each person gets a folder, with categories inside.</div>' : '');
   $('docList').classList.toggle('hidden', !$('docList').innerHTML);
@@ -2497,7 +2507,77 @@ $('doRemind').addEventListener('click', () => {
    upload. That key is stored in a sealed 'filekey' record, so it is protected
    by the private code and follows code changes automatically.
    ======================================================================== */
-const DOCFILE_MAX = 15 * 1024 * 1024;
+const DOCFILE_MAX = 50 * 1024 * 1024;               // v2.24: files travel in 4 MB pieces (Apps Script v26)
+const ONE_MSG_MAX = 20 * 1024 * 1024;               // what an older Apps Script (one message per file) takes
+const DOC_EXT_MIME = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', webp: 'image/webp', gif: 'image/gif',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', csv: 'text/csv',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', doc: 'application/msword', txt: 'text/plain' };
+const DOC_ACCEPT = 'image/*,application/pdf,.pdf,.xlsx,.xls,.csv,.docx,.doc,.txt,' + Object.values(DOC_EXT_MIME).filter(m => !/^image|pdf/.test(m)).join(',');
+const extOf = n => ((String(n || '').match(/\.([a-z0-9]{1,5})$/i) || [])[1] || '').toLowerCase();
+/* v2.24: what a file is — pdf, img, xls, csv, word, txt ('' = not accepted) */
+function fileKind(f) {
+  const m = String((f && (f.mime || f.type)) || '').toLowerCase(), e = extOf(f && f.name);
+  if (/pdf/.test(m) || e === 'pdf') return 'pdf';
+  if (/^image\//.test(m) || ['jpg', 'jpeg', 'png', 'heic', 'webp', 'gif'].includes(e)) return 'img';
+  if (e === 'csv' || /text\/csv/.test(m)) return 'csv';
+  if (e === 'xlsx' || e === 'xls' || /spreadsheetml|ms-excel/.test(m)) return 'xls';
+  if (e === 'docx' || e === 'doc' || /wordprocessingml|msword/.test(m)) return 'word';
+  if (e === 'txt' || /^text\/plain/.test(m)) return 'txt';
+  return '';
+}
+const KIND_TAG = { pdf: 'PDF', img: 'IMG', xls: 'XLS', csv: 'CSV', word: 'DOC', txt: 'TXT' };
+const mimeFor = f => { const e = extOf(f.name), t = String(f.type || ''); return t && t !== 'application/octet-stream' ? t : DOC_EXT_MIME[e] || 'application/octet-stream'; };
+/* ---------- v2.24: files to and from Drive in pieces (Apps Script v26); older scripts get one message ---------- */
+async function callRetry(action, body, ms) {
+  try { return await Sync.call(action, body, ms); }
+  catch (e) { if (/unknown action|not allowed|too large|expired|unauthorized/i.test(e.message)) throw e; await new Promise(r => setTimeout(r, 1500)); return Sync.call(action, body, ms); }
+}
+async function driveSendBytes(body, name, mime, onProg) {
+  if (!Sync.noParts) {
+    try {
+      const st = await Sync.call('driveUpStart', { folderId: prefs.driveFolder, name, mime, size: body.length }, 60000);
+      const part = st.part || 4194304; let off = 0, res = null;
+      while (off < body.length) {
+        const piece = body.subarray(off, Math.min(body.length, off + part));
+        res = await callRetry('driveUpPart', { up: st.up, offset: off, data: b64(piece) }, 180000);
+        off += piece.length; if (onProg) onProg(off, body.length);
+      }
+      if (!res || !res.fileId) throw new Error('Drive did not return a file id');
+      return res.fileId;
+    } catch (e) { if (!/unknown action/i.test(e.message)) throw e; Sync.noParts = true; RLOG.info('Apps Script has no piece upload — one message per file'); }
+  }
+  if (body.length > ONE_MSG_MAX) throw new Error('larger than 20 MB — update the Apps Script to v26 for files up to 50 MB');
+  const d = await Sync.call('driveUpload', { folderId: prefs.driveFolder, name, mime, data: b64(body) }, 240000);
+  if (!d.fileId) throw new Error('Drive did not return a file id');
+  return d.fileId;
+}
+async function driveFetchBytes(fileId, onProg) {
+  if (!Sync.noParts) {
+    try {
+      let off = 0, size = null, mime = ''; const parts = [];
+      do {
+        const d = await callRetry('driveGetPart', { fileId, offset: off }, 180000);
+        if (size === null) { size = +d.size || 0; mime = d.mime || ''; }
+        const b = unb64(d.data || ''); if (!b.length && off < size) throw new Error('Drive sent an empty piece');
+        parts.push(b); off += b.length; if (onProg) onProg(off, size);
+      } while (off < size);
+      const out = new Uint8Array(off); let p = 0; parts.forEach(b => { out.set(b, p); p += b.length; });
+      return { bytes: out, mime };
+    } catch (e) { if (!/unknown action/i.test(e.message)) throw e; Sync.noParts = true; }
+  }
+  const d = await Sync.call('driveGet', { fileId }, 240000);
+  if (!d.data) throw new Error('Drive returned an empty file');
+  return { bytes: unb64(d.data), mime: d.mime || '' };
+}
+/* the copy kept on this device: a Blob (v2.24) or, from older versions, a data: URL */
+async function cachedBytes(fileId) {
+  let v = null; try { v = await DB.imgGet(fileId); } catch (e) {}
+  if (!v) return null;
+  if (typeof v === 'string') return unb64(v.slice(v.indexOf(',') + 1));
+  if (v instanceof Blob) return new Uint8Array(await v.arrayBuffer());
+  if (v && v.byteLength !== undefined) return new Uint8Array(v);
+  return null;
+}
 const PDFJS_URL = 'vendor/pdf-3.11.174.min.js';           // v2.18: libraries are served from this site (see vendor/README.md), not a CDN
 const PDFJS_WORKER = 'vendor/pdf.worker-3.11.174.min.js';
 const PDFLIB_URL = 'vendor/pdf-lib-1.17.1.min.js';
@@ -2527,7 +2607,7 @@ async function fileKeyOf(f) {
 }
 
 /* Encrypt (if asked) and upload. Returns { fileId, keyId }. */
-async function putDocBytes(bytes, name, mime, lock) {
+async function putDocBytes(bytes, name, mime, lock) {   // putDocBytes.onProg(sent, total) may be set by the caller
   let body = bytes, upMime = mime, keyId = null;
   try {
     if (lock) {
@@ -2537,27 +2617,21 @@ async function putDocBytes(bytes, name, mime, lock) {
       body = await aesEncBytes(await importFileKey(raw), bytes);
       upMime = 'application/octet-stream';
     }
-    const data = b64(body);
-    const d = await Sync.call('driveUpload', { folderId: prefs.driveFolder, name: lock ? name + '.locked' : name, mime: upMime, data }, 240000);
-    if (!d.fileId) throw new Error('Drive did not return a file id');
-    DB.imgSet(d.fileId, 'data:' + upMime + ';base64,' + data).catch(() => {});   // locked files are cached as ciphertext only
-    return { fileId: d.fileId, keyId };
+    const fileId = await driveSendBytes(body, lock ? name + '.locked' : name, upMime, putDocBytes.onProg);
+    DB.imgSet(fileId, new Blob([body], { type: upMime })).catch(() => {});   // locked files are cached as ciphertext only
+    return { fileId, keyId };
   } catch (e) {
     if (keyId && records[keyId]) softDelete(keyId, { render: false });
     throw e;
   }
 }
-async function rawDocBytes(f) {
-  let url = null;
-  try { url = await DB.imgGet(f.fileId); } catch (e) {}
-  if (!url) {
-    if (!Sync.on()) throw new Error('sync is not set up, so the file cannot be fetched from Drive');
-    const d = await Sync.call('driveGet', { fileId: f.fileId }, 240000);
-    if (!d.data) throw new Error('Drive returned an empty file');
-    url = 'data:' + (d.mime || 'application/octet-stream') + ';base64,' + d.data;
-    DB.imgSet(f.fileId, url).catch(() => {});
-  }
-  return unb64(url.slice(url.indexOf(',') + 1));
+async function rawDocBytes(f, onProg) {
+  const have = await cachedBytes(f.fileId);
+  if (have) return have;
+  if (!Sync.on()) throw new Error('sync is not set up, so the file cannot be fetched from Drive');
+  const { bytes, mime } = await driveFetchBytes(f.fileId, onProg);
+  try { await DB.imgSet(f.fileId, new Blob([bytes], { type: mime || 'application/octet-stream' })); } catch (e) { RLOG.warn('keep copy', e.message); }
+  return bytes;
 }
 async function docFileBlob(f) {
   if (f.locked && !Fin.key) throw lockedErr();                            // before the cache: a file locked on another device stays locked here
@@ -2584,7 +2658,7 @@ async function fileToBytes(file) {
     const dataUrl = await prepForDrive(file);                 // very large photos are shrunk to 2400 px JPEG
     return { bytes: unb64(dataUrl.slice(dataUrl.indexOf(',') + 1)), mime: dataUrl.slice(5, dataUrl.indexOf(';')) };
   }
-  return { bytes: new Uint8Array(await file.arrayBuffer()), mime: file.type || 'application/pdf' };
+  return { bytes: new Uint8Array(await file.arrayBuffer()), mime: mimeFor(file) };
 }
 function docFileBadge(d) {
   const n = docFilesOf(d.id).length;
@@ -2611,7 +2685,7 @@ function renderDocEditFiles() {
   $('doLock').checked = !!d.lockFiles;
   const mismatch = fs.filter(f => !!f.locked !== !!d.lockFiles).length;
   const row = f => `<div class="dfile">
-      <span class="dficon" aria-hidden="true">${f.locked ? '🔒' : isPdf(f) ? 'PDF' : 'IMG'}</span>
+      <span class="dficon" aria-hidden="true">${f.locked ? '🔒' : KIND_TAG[fileKind(f)] || 'FILE'}</span>
       <span class="dfname">${esc(f.name)}<small>${fmtBytes(f.bytes || 0)}${f.locked ? ' · locked' : ''}</small>${d.byYear ? `<select class="dffy" data-dffy="${f.id}" aria-label="Year">${fyOptions(f.fy || '', 'No year')}</select>` : ''}</span>
       ${/^image\//.test(f.mime || '') || isPdf(f) ? `<button class="icon-btn dfedit" data-dfed="${f.id}" aria-label="Crop or straighten ${esc(f.name)}">✂</button>` : ''}<button class="icon-btn" data-dfrm="${f.id}" aria-label="Remove ${esc(f.name)}" style="width:34px;height:34px;font-size:14px">✕</button></div>`;
   const groups = d.byYear ? [...new Set(fs.map(f => f.fy || ''))].sort().reverse() : [null];
@@ -2633,12 +2707,13 @@ async function addDocFiles(docId, files) {
     const file = files[i];
     msg.className = 'msg'; msg.textContent = `Uploading ${i + 1} of ${files.length}…`;
     try {
-      const pdf = /pdf/i.test(file.type) || /\.pdf$/i.test(file.name || '');
-      if (!pdf && !/^image\//.test(file.type)) throw new Error('only photos and PDFs can be added');
-      if (file.size > DOCFILE_MAX) throw new Error('larger than 15 MB');
+      const kind = fileKind(file);
+      if (!kind) throw new Error('only photos, PDFs, Excel, Word and text files can be added');
+      if (file.size > DOCFILE_MAX) throw new Error('larger than 50 MB');
       const { bytes, mime } = await fileToBytes(file);
-      if (bytes.length > DOCFILE_MAX) throw new Error('larger than 15 MB');
-      const ext = /jpeg/.test(mime) ? '.jpg' : /png/.test(mime) ? '.png' : /pdf/.test(mime) ? '.pdf' : '';
+      if (bytes.length > DOCFILE_MAX) throw new Error('larger than 50 MB');
+      const ext = /jpeg/.test(mime) ? '.jpg' : /png/.test(mime) ? '.png' : /pdf/.test(mime) ? '.pdf' : extOf(file.name) ? '.' + extOf(file.name) : '';
+      putDocBytes.onProg = bytes.length > 3e6 ? (a, t) => { msg.textContent = `Uploading ${i + 1} of ${files.length}… ${Math.round(a / t * 100)}%`; } : null;
       const fy = fyPick;
       const base = ((d.title || 'Document') + (fy ? ' FY ' + fy : '')).replace(/[\\/:*?"<>|]/g, '-').trim().slice(0, 60) || 'Document';
       const taken = new Set(docFilesOf(docId).map(x => (x.name || '').toLowerCase()));
@@ -2646,9 +2721,10 @@ async function addDocFiles(docId, files) {
       while (taken.has(name.toLowerCase())) name = `${base} (${k++})${ext}`;
       const up = await putDocBytes(bytes, todayISO() + '-' + name, mime, !!d.lockFiles);
       const nf = put({ id: uid('df'), type: 'docfile', docId, name, mime, bytes: bytes.length, fileId: up.fileId, keyId: up.keyId, locked: !!d.lockFiles, fy: fy || undefined, deleted: false }, { render: false });
-      if (/pdf/i.test(mime) && !d.lockFiles) indexSoon(nf.id, bytes);          // v2.19: words inside the PDF become searchable
+      if (!d.lockFiles && fileKind(nf) !== 'img') indexSoon(nf.id, bytes);   // v2.19: words inside the PDF become searchable (v2.24: Excel, Word and text too)
       ok++;
     } catch (e) { RLOG.warn('doc file add failed', e.message); bad.push(`${file.name || 'file'}: ${e.message}`); }
+    finally { putDocBytes.onProg = null; }
   }
   msg.className = bad.length ? 'msg err' : 'msg ok';
   msg.textContent = (ok ? `${ok} file${ok > 1 ? 's' : ''} added${d.lockFiles ? ' and locked' : ''}. ` : '') + (bad.length ? 'Not added: ' + bad.join('; ') : '');
@@ -2773,6 +2849,7 @@ async function showDocFile(f) {
     const { blob, url } = await docFileBlob(f);
     if (viewDocId !== f.docId || !box.isConnected) return;
     if (isPdf(f)) { await renderPdfInto(box, blob); return; }
+    if (fileKind(f) !== 'img') { await renderOfficeInto(box, f, blob); return; }   // v2.24: Excel, Word, text
     box.innerHTML = `<img alt="${esc(f.name)}" src="${url}">`;
     box.addEventListener('click', e => { if (e.target.tagName === 'IMG') openLightbox(e.target.src); });
   } catch (e) {
@@ -2938,6 +3015,7 @@ $('dsGo').addEventListener('click', async () => {
       const f = records[id]; if (!f) continue;
       const { blob } = await docFileBlob(f);
       if (!wm) { files.push(new File([blob], f.name, { type: f.mime })); continue; }
+      if (!['pdf', 'img'].includes(fileKind(f))) { notes.push(`${f.name} sent without a watermark (only photos and PDFs can carry one).`); files.push(new File([blob], f.name, { type: f.mime })); continue; }
       if (isPdf(f)) {
         try { files.push(new File([await watermarkPdf(blob, wm)], stemOf(f.name) + '-shared.pdf', { type: 'application/pdf' })); }
         catch (e) { notes.push(`${f.name} sent without a watermark because ${e.message}.`); files.push(new File([blob], f.name, { type: f.mime })); }
@@ -4842,7 +4920,7 @@ const IMPORT_MAP = { ID: 'Identity', EDU: 'Education', EXAM: 'Exam', TAX: 'Tax',
   CASE: 'Case', EVIDENCE: 'Case', MISC: 'Other', PERSONAL: 'Other', UNKNOWN: 'Other', ACAD: 'Education', MARKSHEET: 'Education', BANK: 'Financial', INS: 'Insurance', INSURANCE: 'Insurance',
   VEH: 'Vehicle', VEHICLE: 'Vehicle', WARRANTY: 'Warranty', MEMBER: 'Membership', MEMBERSHIP: 'Membership', OFFICE: 'Official', OFFICIAL: 'Official', IDS: 'Identity', MEDICAL: 'Medical', EXAMS: 'Exam' };
 const IMPORT_SKIP = { VIDEO: 'not a PDF or photo' };
-const IMPORT_OK_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'webp'];
+const IMPORT_OK_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'webp', 'xlsx', 'xls', 'csv', 'docx', 'doc', 'txt'];
 const splitCamel = s => String(s).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/(\d)([A-Z])/g, '$1 $2').replace(/-/g, ' - ').replace(/\s+/g, ' ').trim();
 const isDateTok = t => /^(AY|FY)?(19|20)\d{2}(-\d{2}){0,2}$/i.test(t) || /^(YYYY|Undated)$/i.test(t);   // "1234" (last digits of an account) is not a year
 function fyFromToken(t) {
@@ -4857,7 +4935,7 @@ function fyFromToken(t) {
 }
 function parseDocName(name) {
   const ext = ((name.match(/\.([^.]+)$/) || [])[1] || '').toLowerCase(), base = name.replace(/\.[^.]+$/, '');
-  if (!IMPORT_OK_EXT.includes(ext)) return { skip: 'not a PDF or photo' };
+  if (!IMPORT_OK_EXT.includes(ext)) return { skip: 'not a PDF, photo, Excel, Word or text file' };
   const tk = base.split('_').filter(Boolean); if (!tk.length) return { skip: 'no name' };
   const pre = tk[0].toUpperCase();
   if (IMPORT_SKIP[pre]) return { skip: IMPORT_SKIP[pre] };
@@ -6779,8 +6857,8 @@ function renderAddForm0(focus) {
         <div class="field"><label><select id="afDueKind" style="width:auto;padding:0;border:0;background:none;font:inherit;color:inherit">${dueKindOpts()}</select> (optional)</label><input type="date" id="afDate"></div></div>
       <div class="grid2"><div class="field"><label>Belongs to</label><input id="afDocWho" list="afWhoDl" autocomplete="off" placeholder="Blank = Rahul" value="${esc(docPath.who && docPath.who !== DOC_ME ? docPath.who : '')}"><datalist id="afWhoDl">${docPeople().map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
         <div class="field"><label>Year (FY, optional)</label><select id="afFy">${fyOptions('', '— none —')}</select></div></div>
-      <div class="field"><label>File (optional)</label><div class="btn-row" style="margin:0;flex-wrap:wrap"><button type="button" class="btn ghost small" id="afDocFileBtn">＋ Photo or PDF</button><button type="button" class="btn ghost small" id="afDocScanBtn">📷 Scan</button><span class="hint" id="afDocFileN" style="margin:0;align-self:center"></span></div>
-        <input type="file" id="afDocFile" class="vh" accept="image/*,application/pdf,.pdf" multiple tabindex="-1" aria-hidden="true"></div>
+      <div class="field"><label>File (optional)</label><div class="btn-row" style="margin:0;flex-wrap:wrap"><button type="button" class="btn ghost small" id="afDocFileBtn">＋ Photo, PDF, Excel, Word</button><button type="button" class="btn ghost small" id="afDocScanBtn">📷 Scan</button><span class="hint" id="afDocFileN" style="margin:0;align-self:center"></span></div>
+        <input type="file" id="afDocFile" class="vh" accept="${DOC_ACCEPT}" multiple tabindex="-1" aria-hidden="true"></div>
       <div class="group"><label class="switch-row"><span>Details only — no file needed<small>e.g. a debit card's number and expiry. It won’t show under “No file attached”.</small></span><input type="checkbox" class="sw" id="afNoFile"></label></div>`;
     AF.files = [];
     $('afDocFileBtn').addEventListener('click', () => $('afDocFile').click());
@@ -8115,10 +8193,10 @@ function renderDocs() {
   const crumb = fbox.querySelector('.doc-crumb'); if (!crumb) return;
   const acts = document.createElement('div'); acts.className = 'crumb-acts';
   if (docPath.who && !docPath.grp) {
-    acts.innerHTML = `<button data-ca="new">＋ Document here</button><button data-ca="gnew">＋ New category</button><button data-ca="ren">✎ Rename</button><button data-ca="mv">⇢ Move all…</button>${FAM_PEOPLE.includes(docPath.who) ? '<button data-ca="chk">✅ Checklist</button>' : ''}<button data-ca="em">🆘 Emergency sheet</button><button data-ca="zip">⤓ All as .zip</button>`;
+    acts.innerHTML = `<button data-ca="new">＋ Document here</button><button data-ca="gnew">＋ New category</button><button data-ca="ren">✎ Rename</button><button data-ca="mv">⇢ Move all…</button>${FAM_PEOPLE.includes(docPath.who) ? '<button data-ca="chk">✅ Checklist</button>' : ''}<button data-ca="em">🆘 Emergency sheet</button><button data-ca="zip">⤓ All as .zip</button><button data-ca="off">📱 Keep on this iPhone</button>`;
     if (!all('doc').some(d => docOwners(d).includes(docPath.who))) fbox.insertAdjacentHTML('beforeend', '<div class="empty">No documents for this person yet.</div>');
   } else if (docPath.grp) {
-    acts.innerHTML = `<button data-ca="gnew2">＋ Document here</button><button data-ca="gren">✎ Rename category</button><button data-ca="gmv">⇢ Move these…</button><button data-ca="gdel">🗑 Delete category</button>`;
+    acts.innerHTML = `<button data-ca="gnew2">＋ Document here</button><button data-ca="gren">✎ Rename category</button><button data-ca="gmv">⇢ Move these…</button><button data-ca="gdel">🗑 Delete category</button><button data-ca="off">📱 Keep on this iPhone</button>`;
   }
   crumb.after(acts);
   const who = docPath.who, grp = docPath.grp, here = () => all('doc').filter(d => docOwners(d).includes(who) && (!grp || docGroup(d) === grp)).map(d => d.id);
@@ -8135,6 +8213,7 @@ function renderDocs() {
     else if (a === 'chk') openFamily(who);
     else if (a === 'em') openEmergency(who);
     else if (a === 'zip') exportPersonZip(who);
+    else if (a === 'off') keepOffline(here().map(id => records[id]), grp ? `${who}'s ${grp}` : `${who}'s documents`);
   }));
 }
 function renderSelBar() {
@@ -8144,6 +8223,7 @@ function renderSelBar() {
 }
 $('docSelMove').addEventListener('click', () => docSel && openDocMove([...docSel]));
 $('docSelMerge').addEventListener('click', () => docSel && openDocMerge([...docSel]));
+$('docSelOff').addEventListener('click', () => { if (!docSel || !docSel.size) { toast('Pick documents first.'); return; } const L = [...docSel].map(id => records[id]); docSel = null; renderDocs(); keepOffline(L, L.length + ' documents'); });
 $('docFoldersBtn').addEventListener('click', openDocFolders);
 $('docFamBtn').addEventListener('click', () => openFamily());
 $('docAddBtn').addEventListener('click', () => openAdd('doc'));
@@ -8171,7 +8251,7 @@ async function storePdfs(files) {
   for (const f of files) {
     try {
       if (!driveOn()) throw new Error('PDFs need the Drive folder (Settings → Sync)');
-      if (f.size > DOCFILE_MAX) throw new Error('larger than 15 MB');
+      if (f.size > ONE_MSG_MAX) throw new Error('larger than 20 MB');
       let url = await fileToDataUrl(f); if (!/^data:application\/pdf/.test(url)) url = 'data:application/pdf;base64,' + url.slice(url.indexOf(',') + 1);
       const name = (f.name || 'file.pdf').replace(/[^\w.\- ()]/g, '_'), fileId = await driveUpload(url, todayISO() + '-' + name);
       memImg.set(fileId, url); DB.imgSet(fileId, url).catch(() => {});
@@ -8316,6 +8396,7 @@ function runSearch() {
   }
   $$('[data-sug]', box).forEach(b => b.addEventListener('click', () => pick(b.dataset.sug)));
   savedSearchUI(q, box);
+  searchCards(q, box);
 }
 $('searchIn').addEventListener('keydown', e => { if (e.key === 'Enter') rememberQ($('searchIn').value); });
 
@@ -8863,7 +8944,8 @@ function syncAllAcctDates() {
   if (!Fin.key || window.GHOST) return;
   accts(true).forEach(a => syncAcctDates(a, false));
   all('recur').forEach(r => sysDate('rd-' + r.id, recurDateWant(r), false));
-  if (!(Fin.lockedOut || []).length) all('date').forEach(d => { if (d.sysSrc && (d.sysSrc === 'acct' || d.sysSrc === 'recur')) { const s = records[d.srcRef]; if (!s || s.deleted) sysDate(d.id, null); } });
+  all('vault').forEach(v => sysDate('vd-' + v.id, vaultDateWant(v), false));   // v2.24: card / policy expiry from Card & account details
+  if (!(Fin.lockedOut || []).length) all('date').forEach(d => { if (d.sysSrc && (d.sysSrc === 'acct' || d.sysSrc === 'recur' || d.sysSrc === 'vault')) { const s = records[d.srcRef]; if (!s || s.deleted) sysDate(d.id, null); } });
 }
 { const sd = softDelete, rs0 = restore;
   softDelete = function (id, opt) { const r = records[id]; sd(id, opt); if (r && (r.type === 'acct' || r.type === 'recur')) setTimeout(() => { try { syncAllAcctDates(); } catch (e) { RLOG.warn('acct dates', e.message); } }, 0); };
@@ -8907,10 +8989,11 @@ $('setQ').addEventListener('input', () => setSearch($('setQ').value));
 Sheets.onOpen.shSettings = () => { $('setQ').value = ''; setSearch(''); setShowPage(null);
   try { const w = securityChecks().filter(c => c.state === 'warn').length; $('setPrivV').textContent = w ? w + ' to review' : '›'; } catch (e) {}
   $('setSyncV').textContent = Sync.on() ? (Sync.lastOk ? 'synced ' + timeAgo(Sync.lastOk) : 'connected') : 'off';
-  $('setScanIdxV').textContent = scanIdxLabel(); };
+  $('setScanIdxV').textContent = scanIdxLabel(); if ($('setOffV')) $('setOffV').textContent = offLabel(); };
 $('setHealth').addEventListener('click', () => { Sheets.close('shSettings', true); openDataHealth(); });
 $('setWhatsNew').addEventListener('click', () => showWhatsNew());
 $('setScanIdx').addEventListener('click', () => { Sheets.close('shSettings', true); indexAllScans(); });
+$('setOff').addEventListener('click', () => { Sheets.close('shSettings', true); openOffline(); });
 
 /* ==========================================================================
    v2.19 — Data health: one place to see that everything is safe
@@ -8950,9 +9033,10 @@ async function openDataHealth() {
     }
   }
   const sc = scanIdxStats();
-  if (sc.total) add(sc.todo ? 'info' : 'ok', 'Searchable PDFs', `${sc.done} of ${sc.total} PDFs can be searched by their words${sc.none ? ` (${sc.none} are photos without text)` : ''}${sc.locked ? `; ${sc.locked} locked PDF${sc.locked > 1 ? 's are' : ' is'} not indexed` : ''}.`, sc.todo ? { label: 'Index ' + sc.todo, fn: () => { Sheets.close('shHealth', true); indexAllScans(); } } : null);
+  if (sc.total) add(sc.todo ? 'info' : 'ok', 'Searchable files', `${sc.done} of ${sc.total} PDFs can be searched by their words${sc.none ? ` (${sc.none} are photos without text)` : ''}${sc.locked ? `; ${sc.locked} locked PDF${sc.locked > 1 ? 's are' : ' is'} not indexed` : ''}.`, sc.todo ? { label: 'Index ' + sc.todo, fn: () => { Sheets.close('shHealth', true); indexAllScans(); } } : null);
   { const c = recordSplit(), by = Object.entries(c.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${n} ${RECORD_WORDS[t] || t}`).join(', ');
     add('info', 'This device', `Register v${APP_VERSION}. Your items: ${c.live.toLocaleString('en-IN')}${by ? ' (' + by + ')' : ''}. In Recently deleted: ${c.trash}. App and system records (pictures, settings, sync pieces${finUnlocked() ? ', private entries' : ''}): ${(c.sys + c.enc).toLocaleString('en-IN')}.`); }
+  try { healthExtra(add); } catch (e) { RLOG.warn('health extra', e.message); }   // v2.24: devices, changed on two devices, files on this iPhone
   const warn = rows.filter(r => r.state === 'warn').length;
   $('hlBody').innerHTML = `<div class="sc-sum">${warn ? `${warn} thing${warn > 1 ? 's' : ''} to look at` : 'All good'}</div><div class="group">${rows.map((c, i) => `<div class="hl-row"><span class="sc-ic ${c.state}" aria-hidden="true">${c.state === 'ok' ? '✓' : c.state === 'warn' ? '!' : 'i'}</span><div class="row-main"><div class="row-title">${esc(c.t)}</div><div class="row-sub">${esc(c.d)}</div></div>${c.act ? `<button class="btn small ghost" data-hla="${i}">${esc(c.act.label)}</button>` : ''}</div>`).join('')}</div>
     <p class="hint">Looks at this device and its last sync. Nothing is sent anywhere.</p>`;
@@ -9037,10 +9121,14 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
-  { t: '<b>Card &amp; account details</b> at the top of Documents: debit card number / expiry / CVV, bank account &amp; IFSC, electricity consumer no., policy numbers, logins — each entry with as many fields as you need (＋ Field). Encrypted with your private code like the Emergency sheet. Fields marked 🔒 stay as •••• until you tap Show, have ⧉ Copy, and are never printed.', priv: true },
-  { t: '<b>Press and hold a category</b> (Documents and Dates) or a note folder to select it. Then: Rename (one), Merge into one, Move to another person (Documents), 🖨 Print all its documents or dates, or Delete. People on the Documents page can be selected the same way.' },
-  { t: '<b>Dates</b> can now repeat every 2 months, every 3 months (quarterly) or every 6 months — also when you add them to the iPhone Calendar.' },
-  { t: '<b>Recently deleted → Empty</b> now empties it on your other devices too (after they next sync).' }
+  { t: '<b>Excel, Word and text files</b> in Documents (.xlsx, .xls, .csv, .docx, .doc, .txt). Excel and CSV show as a table, Word and text as text; <b>↗ Open in</b> sends it to Excel, Numbers, Word or Pages. Their words are searchable too.' },
+  { t: '<b>Files up to 50 MB</b> (was 15 MB). They travel in 4 MB pieces — this needs the new Apps Script (v26). With the old script the limit is 20 MB.' },
+  { t: '<b>📱 Keep on this iPhone</b>: download a person’s, a category’s, selected or all document files once, so they open instantly (even offline). 📱✓ marks documents already kept. Settings → Data → Files on this iPhone shows the space used and can remove the copies.' },
+  { t: '<b>Changed on two devices</b>: when the same task, date, document or entry was edited on two devices before syncing, Register now keeps both and asks which one to use (notes already kept a conflict copy).' },
+  { t: '<b>Tasks</b> can repeat on weekdays, every 2 weeks, every 3 or 6 months, yearly, or every N days / weeks / months.' },
+  { t: '<b>Data health</b> lists your devices with their app version and last sync — an outdated device stands out.' },
+  { t: 'A card’s “Valid till” (or a policy’s renewal date) in <b>Card &amp; account details</b> now appears in Dates. Main search finds those entries while unlocked (🔒 fields are never searched). A copied 🔒 value is wiped from the clipboard on your next tap in Register.', priv: true },
+  { t: 'Updates install only when every part downloaded, so a bad connection can no longer leave a half-updated app.' }
 ];
 function showWhatsNew() {
   $('nwBody').innerHTML = `<p class="hint" style="margin:0 4px 10px">Register ${APP_VERSION}</p><ul class="nw-list">${WHATS_NEW.filter(x => !x.priv || finUnlocked()).map(x => `<li>${x.t}</li>`).join('')}</ul>`;
@@ -9271,22 +9359,23 @@ async function pdfText(blob) {
   return out.replace(/[ \t ]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim().slice(0, SCAN_TXT_MAX);
 }
 async function indexFile(f, blob) {
-  if (!f || f.deleted || f.locked || !isPdf(f)) return false;
+  if (!f || f.deleted || f.locked || !['pdf', 'xls', 'csv', 'word', 'txt'].includes(fileKind(f))) return false;
   let txt = '';
-  try { txt = await pdfText(blob); } catch (e) { if (e && e.name === 'PasswordException') txt = ''; else throw e; }
+  if (!isPdf(f)) txt = (await officeText(f, blob)).replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim().slice(0, SCAN_TXT_MAX);
+  else try { txt = await pdfText(blob); } catch (e) { if (e && e.name === 'PasswordException') txt = ''; else throw e; }
   const r = records[f.id]; if (!r || r.deleted || r.locked) return false;
   if (txt) { r.txt = txt; delete r.txtNone; } else { r.txtNone = 1; delete r.txt; }
   put(r, { render: false }); return !!txt;
 }
-function indexSoon(id, bytes) { setTimeout(() => { const f = records[id]; if (f) indexFile(f, new Blob([bytes], { type: 'application/pdf' })).catch(e => RLOG.warn('pdf text', e.message)); }, 600); }
+function indexSoon(id, bytes) { setTimeout(() => { const f = records[id]; if (f) indexFile(f, new Blob([bytes], { type: f.mime || 'application/pdf' })).catch(e => RLOG.warn('file text', e.message)); }, 600); }
 function scanIdxStats() {
-  const L = all('docfile').filter(f => isPdf(f) && records[f.docId] && !records[f.docId].deleted);
+  const L = all('docfile').filter(f => ['pdf', 'xls', 'csv', 'word', 'txt'].includes(fileKind(f)) && records[f.docId] && !records[f.docId].deleted);
   const open = L.filter(f => !f.locked);
   return { total: L.length, locked: L.length - open.length, done: open.filter(f => f.txt).length, none: open.filter(f => f.txtNone).length, todo: open.filter(f => !f.txt && !f.txtNone).length };
 }
 const scanIdxLabel = () => { const s = scanIdxStats(); return s.todo ? s.todo + ' to do' : s.total ? '✓' : '›'; };
 async function indexAllScans() {
-  const L = all('docfile').filter(f => isPdf(f) && !f.locked && !f.txt && !f.txtNone && records[f.docId] && !records[f.docId].deleted);
+  const L = all('docfile').filter(f => ['pdf', 'xls', 'csv', 'word', 'txt'].includes(fileKind(f)) && !f.locked && !f.txt && !f.txtNone && records[f.docId] && !records[f.docId].deleted);
   if (!L.length) { toast(scanIdxStats().total ? 'All PDFs are already searchable.' : 'No PDFs in Docs yet.'); return; }
   jobOpen('Making PDFs searchable');
   let ok = 0, none = 0, i = 0; const bad = [];
@@ -9688,6 +9777,7 @@ SEL_ACTS.dgrp = () => {
     'All their documents go into the one you keep (for everyone — categories are shared by all people). Nothing is deleted.', into => { mergeDocGroups(ids, into); }) });
   A.push({ l: '⇢ Move', fn: ids => { const L = docsOfGroups(who, ids).map(d => d.id); selEnd(); openDocMove(L, `${who ? who + "'s " : ''}${ids.join(', ')}`); } });
   A.push({ l: '🖨 Print', fn: ids => { const L = docsOfGroups(who, ids); selEnd(); printDocsSheet(L, `${who ? who + ' — ' : ''}${ids.join(', ')}`); } });
+  A.push({ l: '⤓ Keep', fn: ids => { const L = docsOfGroups(who, ids); selEnd(); keepOffline(L, ids.join(', ')); } });
   A.push({ l: '🗑', danger: true, fn: ids => {
     const last = DOC_GROUPS[DOC_GROUPS.length - 1][0], del = ids.filter(x => x !== last), k = docsOfGroups(null, del).length;
     if (!del.length) { toast(`"${last}" is where everything else goes — it cannot be deleted. Rename it instead.`); return; }
@@ -9702,6 +9792,7 @@ SEL_ACTS.dwho = () => {
   if (n > 1) A.push({ l: '⇄ Merge', fn: ids => pickTargetSheet(`Merge ${n} people`, ids.map(x => [x, '👤 ' + x]), 'Merge', 'Everyone else’s documents move to the person you keep (e.g. the same person saved under two spellings).', into => { ids.filter(x => x !== into).forEach(x => renamePerson(x, into, true)); selEnd(); toast(`Merged into ${into}.`); }) });
   A.push({ l: '⇢ Move', fn: ids => { const L = all('doc').filter(d => ids.some(p => docOwners(d).includes(p))).map(d => d.id); selEnd(); openDocMove(L, `All documents of ${ids.join(', ')}`); } });
   A.push({ l: '🖨 Print', fn: ids => { const L = all('doc').filter(d => ids.some(p => docOwners(d).includes(p))); selEnd(); printDocsSheet(L, ids.join(', ')); } });
+  A.push({ l: '⤓ Keep', fn: ids => { const L = all('doc').filter(d => ids.some(p => docOwners(d).includes(p))); selEnd(); keepOffline(L, ids.join(', ')); } });
   if (n === 1) A.push({ l: '⤓ .zip', fn: ids => { selEnd(); exportPersonZip(ids[0]); } });
   return A;
 };
@@ -9809,11 +9900,11 @@ function renderVaultCard() {
   if (window.GHOST || !finUnlocked()) { box.innerHTML = ''; return; }
   const n = vaultAll().length;
   box.innerHTML = `<button type="button" class="vault-card priv-only" id="vaultGo"><span class="vc-i">🔐</span><span class="vc-t"><b>Card &amp; account details</b><small>${n ? plural(n, 'entry').replace('entrys', 'entries') + ' · ' : ''}encrypted · numbers, CVV, consumer no.</small></span><span class="chev">›</span></button>`;
-  $('vaultGo').addEventListener('click', () => openVault());
+  $('vaultGo').addEventListener('click', () => openCards());
 }
-function openVault(editId) {
+function openCards(editId) {
   if (window.GHOST) { ghostCrash(true); return; }
-  if (!Fin.key) { needUnlock(() => openVault(editId)); return; }
+  if (!Fin.key) { needUnlock(() => openCards(editId)); return; }
   vtShown = new Set();
   if (editId !== undefined) vaultEditor(editId); else vaultList();
   if (!Sheets.isOpen('shCards')) Sheets.open('shCards');
@@ -9839,7 +9930,7 @@ function vaultList() {
   $$('[data-vtn]', b).forEach(x => x.addEventListener('click', () => vaultEditor(null, x.dataset.vtn)));
   $$('[data-vts]', b).forEach(x => x.addEventListener('click', () => { const k = x.dataset.vts; vtShown.has(k) ? vtShown.delete(k) : vtShown.add(k); clearTimeout(vtTimer); vtTimer = setTimeout(() => { vtShown.clear(); if (Sheets.isOpen('shCards') && !vtEdit) vaultList(); }, 30000); vaultList(); }));
   $$('[data-vtc]', b).forEach(x => x.addEventListener('click', async () => { const [id, i] = x.dataset.vtc.split(':'), e = records[id], f = e && (e.fields || []).filter(f => f.v)[+i]; if (!f) return;
-    try { await navigator.clipboard.writeText(f.v); toast(`Copied ${f.l || 'it'}.`); } catch (er) { toast('Could not copy here.'); } }));
+    try { await navigator.clipboard.writeText(f.v); if (f.s) { clipArm(); toast(`Copied ${f.l || 'it'} — wiped from the clipboard the next time you tap in Register after 30 s.`); } else toast(`Copied ${f.l || 'it'}.`); } catch (er) { toast('Could not copy here.'); } }));
   if ($('vtPrint')) $('vtPrint').addEventListener('click', () => printVault(L));
 }
 function vaultEditor(id, kind) {
@@ -9856,6 +9947,8 @@ function vaultEditor(id, kind) {
     <div id="vtRows">${(e.fields || []).map(row).join('')}</div>
     <div class="btn-row" style="margin:4px 0 0"><button class="btn ghost small" type="button" id="vtAddF">＋ Field</button></div>
     <div class="group-title">Notes</div><textarea id="vtNotes" rows="3" placeholder="Anything else — branch, helpline, which phone it is linked to…" maxlength="2000">${esc(e.notes || '')}</textarea>
+    <label class="switch-row">Expiry / renewal date in Dates<input type="checkbox" class="sw" id="vtDate"${e.noDate ? '' : ' checked'}></label>
+    <p class="hint" style="margin:-4px 4px 10px">Uses a field like “Valid till”, “Expiry” or “Renewal date” (08/29, 31/08/2029 …). Only the name and the date go to Dates — no numbers.</p>
     ${e0 ? '<div class="btn-row"><button class="btn ghost" type="button" id="vtDel" style="color:var(--seal)">🗑 Delete this entry</button></div>' : ''}<div class="msg" id="vtMsg"></div>`;
   const wire = () => { $$('#vtRows .em-rm').forEach(x => { x.onclick = () => x.closest('.vt-row').remove(); });
     $$('#vtRows .vt-lock').forEach(x => { x.onclick = () => { const on = !x.classList.contains('on'); x.classList.toggle('on', on); x.textContent = on ? '🔒' : '🔓'; x.parentNode.querySelector('.vt-rv').classList.toggle('vt-sec', on); }; }); };
@@ -9868,15 +9961,16 @@ function vaultEditor(id, kind) {
 }
 function vaultRead() {
   const fields = $$('#vtRows .vt-row').map(r => ({ l: r.querySelector('.vt-rl').value.trim().slice(0, 40), v: r.querySelector('.vt-rv').value.trim().slice(0, 300), s: r.querySelector('.vt-lock').classList.contains('on') })).filter(f => f.l || f.v).slice(0, 40);
-  return { title: $('vtName').value.trim().slice(0, 80), kind: $('vtKind').value, who: normWho($('vtWho').value.trim()).slice(0, 40), fields, notes: $('vtNotes').value.slice(0, 2000) };
+  return { title: $('vtName').value.trim().slice(0, 80), kind: $('vtKind').value, who: normWho($('vtWho').value.trim()).slice(0, 40), fields, notes: $('vtNotes').value.slice(0, 2000), noDate: $('vtDate') && !$('vtDate').checked ? true : undefined };
 }
 $('vtSave').addEventListener('click', () => {
   if (!vtEdit) { Sheets.close('shCards', true); $('vtBody').innerHTML = ''; return; }
   if (!Fin.key) { toast('The private section locked — open it again to save.'); return; }
   const v = vaultRead(); if (!v.title) { const m = $('vtMsg'); m.className = 'msg err'; m.textContent = 'Give it a name (e.g. “SBI debit card”).'; $('vtName').focus(); return; }
   const id = vtEdit === 'new' ? uid('vt') : vtEdit, r = records[id];
-  put({ ...(r || { id, type: 'vault' }), ...v, deleted: false }, { render: false });
-  toast('Saved (encrypted).'); vaultList(); renderVaultCard();
+  const saved = put({ ...(r || { id, type: 'vault' }), ...v, deleted: false }, { render: false });
+  const dw = vaultDateWant(saved); sysDate('vd-' + id, dw, true);
+  toast(dw ? `Saved (encrypted). “${dw.label}” is in Dates for ${fmtDate(dw.when, true)}.` : 'Saved (encrypted).'); vaultList(); renderVaultCard();
 });
 $('vtBack').addEventListener('click', () => { if (vtEdit) vaultList(); else { Sheets.close('shCards', true); $('vtBody').innerHTML = ''; } });
 function printVault(list) {
@@ -9887,3 +9981,277 @@ function printVault(list) {
     <hr><p style="color:#666;font-size:11px">Printed ${new Date().toLocaleString('en-IN')} from Register. Hidden (🔒) fields are left out. Keep this paper safe.</p></div>`;
   setTimeout(() => window.print(), 120);
 }
+
+
+/* ==========================================================================
+   v2.24 — Excel, Word and text files in Documents: preview + words for search
+   Excel / CSV show as a table (the Excel library is already in the app),
+   .docx and .txt as text. Every one can be opened in Excel / Word / Numbers /
+   Pages through the share sheet, or saved to Files.
+   ======================================================================== */
+async function xlsxLib() { await loadScript(XLSX_URL); return window.XLSX; }
+function xmlText(x) {
+  return String(x || '').replace(/<w:tab\/>/g, '\t').replace(/<w:br[^>]*\/>/g, '\n').replace(/<\/w:p>/g, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&amp;/g, '&');
+}
+async function docxText(blob) {
+  const X = await xlsxLib(), z = X.CFB.read(new Uint8Array(await blob.arrayBuffer()), { type: 'array' });
+  const i = z.FullPaths.findIndex(p => /\/word\/document\.xml$/i.test(p)); if (i < 0) throw new Error('not a .docx file');
+  return xmlText(new TextDecoder().decode(z.FileIndex[i].content));
+}
+async function officeText(f, blob) {
+  const k = fileKind(f);
+  if (k === 'txt' || k === 'csv') return await blob.text();
+  if (k === 'word') return extOf(f.name) === 'doc' ? '' : await docxText(blob);
+  if (k === 'xls') { const X = await xlsxLib(), wb = X.read(new Uint8Array(await blob.arrayBuffer()), { type: 'array' }); return wb.SheetNames.map(n => n + '\n' + X.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n'); }
+  return '';
+}
+const OFFICE_ROWS = 300, OFFICE_COLS = 40;
+async function renderOfficeInto(box, f, blob) {
+  const k = fileKind(f), app = { xls: 'Excel / Numbers', csv: 'Excel / Numbers', word: 'Word / Pages', txt: 'Files' }[k] || 'another app';
+  const bar = `<div class="dv-acts"><span class="dv-tag">${KIND_TAG[k] || 'FILE'} · ${fmtBytes(blob.size)}</span><button type="button" class="btn ghost small" data-dvopen>↗ Open in ${app}</button><button type="button" class="btn ghost small" data-dvsave>⤓ Save</button></div>`;
+  const wire = () => {
+    const o = box.querySelector('[data-dvopen]'), sv = box.querySelector('[data-dvsave]');
+    if (o) o.addEventListener('click', async () => { const file = new File([blob], f.name, { type: f.mime || blob.type || 'application/octet-stream' });
+      try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: f.name }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+      dl(file, f.name); });
+    if (sv) sv.addEventListener('click', () => dl(blob, f.name));
+  };
+  box.innerHTML = bar + '<div class="dv-wait">Opening…</div>';
+  let body = '';
+  try {
+    if (k === 'txt') { const t = await blob.text(); body = `<pre class="dv-txt">${esc(t.slice(0, 200000))}</pre>${t.length > 200000 ? '<p class="hint">Showing the first part — open it for the rest.</p>' : ''}`; }
+    else if (k === 'word') {
+      if (extOf(f.name) === 'doc') body = '<div class="dv-wait">An older Word file (.doc) — it cannot be shown here. Tap “Open in Word / Pages”.</div>';
+      else { const t = await docxText(blob); body = `<div class="dv-doc">${t.split('\n').filter(x => x.trim()).slice(0, 2000).map(x => `<p>${esc(x)}</p>`).join('') || '<p class="muted">(no text)</p>'}</div><p class="hint">Text only — tables, pictures and formatting show when you open it in Word or Pages.</p>`; }
+    } else if (k === 'xls' || k === 'csv') {
+      const X = await xlsxLib(), wb = k === 'csv' ? X.read(await blob.text(), { type: 'string', raw: true }) : X.read(new Uint8Array(await blob.arrayBuffer()), { type: 'array' });
+      const one = n => { const ws = wb.Sheets[n]; if (!ws || !ws['!ref']) return '<p class="muted">(empty sheet)</p>';
+        const r = X.utils.decode_range(ws['!ref']), cut = r.e.r - r.s.r + 1 > OFFICE_ROWS || r.e.c - r.s.c + 1 > OFFICE_COLS;
+        const rows = X.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '', range: { s: r.s, e: { r: Math.min(r.e.r, r.s.r + OFFICE_ROWS - 1), c: Math.min(r.e.c, r.s.c + OFFICE_COLS - 1) } } });
+        return `<div class="dv-sheet"><table>${rows.map((row, i) => `<tr>${row.map(c => i === 0 ? `<th>${esc(c)}</th>` : `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>${cut ? `<p class="hint">Showing the first ${OFFICE_ROWS} rows and ${OFFICE_COLS} columns — open it for everything.</p>` : ''}`; };
+      const names = wb.SheetNames;
+      body = (names.length > 1 ? `<div class="wrapchips dv-tabs">${names.map((n, i) => `<button type="button" class="chip${i ? '' : ' on'}" data-dvsh="${i}">${esc(n)}</button>`).join('')}</div>` : '') + `<div class="dv-shbox">${one(names[0])}</div>`;
+      box.innerHTML = bar + body; wire();
+      $$('[data-dvsh]', box).forEach(b => b.addEventListener('click', () => { $$('[data-dvsh]', box).forEach(x => x.classList.toggle('on', x === b)); box.querySelector('.dv-shbox').innerHTML = one(names[+b.dataset.dvsh]); }));
+      return;
+    }
+  } catch (e) { body = `<div class="dv-wait">Could not show it here (${esc(e.message)}). Tap “Open in ${app}”.</div>`; }
+  box.innerHTML = bar + body; wire();
+}
+
+
+/* ==========================================================================
+   v2.24 — "Keep on this iPhone": download document files once, open instantly
+   A file opened once is already kept; this fetches the rest in one go.
+   Locked files are kept still locked (encrypted) — they open after unlocking.
+   ======================================================================== */
+const Off = { keys: new Set() };
+async function offRefresh() { try { Off.keys = new Set(await DB.imgKeys()); } catch (e) { RLOG.warn('offline list', e.message); } }
+const fileOnDevice = f => !!(f && f.fileId && Off.keys.has(f.fileId));
+function docOffline(d) { if (window.GHOST) return false; const fs = docFilesOf(d.id); return fs.length > 0 && fs.every(fileOnDevice); }
+const offFiles = () => all('docfile').filter(f => f.fileId && records[f.docId] && !records[f.docId].deleted);
+function offLabel() { const L = offFiles(), n = L.filter(fileOnDevice).length; return L.length ? `${n} of ${L.length}` : '›'; }
+async function keepOffline(docs, label) {
+  if (window.GHOST) { ghostCrash(true); return; }
+  docs = (docs || []).filter(Boolean);
+  const fs = docs.flatMap(d => docFilesOf(d.id)).filter(f => f.fileId && !fileOnDevice(f));
+  if (!fs.length) { toast(docs.some(d => docFilesOf(d.id).length) ? 'Already on this iPhone ✓' : 'No files there to keep.'); return; }
+  if (!Sync.on()) { toast('Connect sync first — the files come from your Drive folder.'); return; }
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+  const total = fs.reduce((t, f) => t + (+f.bytes || 0), 0);
+  jobOpen(`Keeping ${label || 'documents'} on this iPhone`);
+  let i = 0, ok = 0; const bad = [];
+  for (const f of fs) {
+    if (Job.stop) break;
+    const head = `File ${i + 1} of ${fs.length}: ${f.name} (${fmtBytes(+f.bytes || 0)})`;
+    jobStep(i, fs.length, head);
+    try { await rawDocBytes(f, (a, t) => jobStep(i + (t ? a / t : 0), fs.length, `${head} · ${Math.round(a / (t || 1) * 100)}%`)); Off.keys.add(f.fileId); ok++; }
+    catch (e) { bad.push(`${f.name}: ${e.message}`); }
+    i++;
+  }
+  jobDone(`${Job.stop ? 'Stopped. ' : ''}${ok} file${ok === 1 ? '' : 's'} (${fmtBytes(total)} in all) now open without waiting.${bad.length ? ' Not kept: ' + bad.slice(0, 5).join('; ') + (bad.length > 5 ? ` … and ${bad.length - 5} more` : '') : ''}`, !!bad.length);
+  scheduleRender();
+}
+async function offSize() {
+  let n = 0, bytes = 0;
+  for (const f of offFiles()) { if (!fileOnDevice(f)) continue; n++;
+    try { const v = await DB.imgGet(f.fileId); bytes += typeof v === 'string' ? Math.round((v.length - v.indexOf(',')) * 0.75) : v instanceof Blob ? v.size : (+f.bytes || 0); } catch (e) {} }
+  return { n, bytes };
+}
+async function dropOffline() {
+  const L = offFiles().filter(fileOnDevice);
+  if (!L.length) { toast('Nothing kept on this iPhone.'); return; }
+  if (!confirm(`Remove the ${L.length} downloaded file${L.length > 1 ? 's' : ''} from this iPhone?\n\nThey stay safe in your Drive folder and download again when you open them.`)) return;
+  for (const f of L) { try { await DB.imgDel(f.fileId); } catch (e) {} Off.keys.delete(f.fileId); const v = docPlain.get(f.id); if (v) { URL.revokeObjectURL(v.url); docPlain.delete(f.id); } }
+  toast('Removed from this iPhone. Your files are still in Drive.'); scheduleRender(); if (Sheets.isOpen('shPlan')) openOffline();
+}
+async function openOffline() {
+  await offRefresh();
+  const L = offFiles(), have = L.filter(fileOnDevice), miss = L.filter(f => !fileOnDevice(f)), need = miss.reduce((t, f) => t + (+f.bytes || 0), 0);
+  let est = null; try { if (navigator.storage && navigator.storage.estimate) est = await navigator.storage.estimate(); } catch (e) {}
+  planSheet('Files on this iPhone', `<p class="hint" style="margin:0 4px 10px">A document opens instantly when its file is kept here; otherwise it is fetched from your Drive folder first. Locked files stay locked here too.</p>
+    <div class="group"><div class="set-row"><span>Kept here</span><span class="v">${have.length} of ${L.length} files</span></div>
+    <div class="set-row"><span>Space used</span><span class="v" id="offSz">counting…</span></div>
+    ${miss.length ? `<div class="set-row"><span>Still to download</span><span class="v">${miss.length} · ${fmtBytes(need)}</span></div>` : ''}
+    ${est && est.quota ? `<div class="set-row"><span>Free for the app</span><span class="v">${fmtBytes(Math.max(0, est.quota - (est.usage || 0)))}</span></div>` : ''}</div>
+    <div class="btn-row" style="flex-wrap:wrap">${miss.length ? '<button class="btn brass" type="button" id="offAll">📱 Keep all on this iPhone</button>' : '<span class="hint">✓ Every file is on this iPhone.</span>'}${have.length ? '<button class="btn ghost" type="button" id="offDrop" style="color:var(--seal)">Remove downloaded copies</button>' : ''}</div>
+    <p class="hint">Tip: for one person or category, open it in Documents and tap “📱 Keep on this iPhone”, or press and hold folders / documents and choose ⤓ Keep. Big downloads are best on Wi-Fi.</p>`, () => true, 'Done');
+  if ($('offAll')) $('offAll').addEventListener('click', () => { Sheets.close('shPlan', true); keepOffline(all('doc'), 'all documents'); });
+  if ($('offDrop')) $('offDrop').addEventListener('click', dropOffline);
+  offSize().then(r => { if ($('offSz')) $('offSz').textContent = fmtBytes(r.bytes); });
+}
+setTimeout(() => offRefresh().then(() => scheduleRender()), 1200);
+
+/* ==========================================================================
+   v2.24 — the same item changed on two devices: keep both, you choose
+   (notes keep their "conflict copy" as before; this covers tasks, dates,
+   documents, Money entries, accounts, card details …)
+   Needs Apps Script v26 for the "your change replaced theirs" half.
+   ======================================================================== */
+const CONFLICT_TYPES = new Set(['task', 'date', 'doc', 'fin', 'vault', 'acct', 'recur', 'emerg', 'bill', 'goal', 'loan', 'invest', 'template']);
+const Conf = { list: null, fresh: [] };
+async function confLoad() { if (Conf.list) return Conf.list; try { Conf.list = (await DB.get('conflicts')) || []; } catch (e) { Conf.list = []; } return Conf.list; }
+function conflictStash(id, data, side) { if (window.GHOST || !data) return; Conf.fresh.push({ id, type: data.type, side, data, at: nowMs() }); }
+async function conflictsSave() {
+  if (!Conf.fresh.length) return;
+  const L = await confLoad(), fresh = Conf.fresh.splice(0);
+  fresh.forEach(c => { const i = L.findIndex(x => x.id === c.id); if (i >= 0) L.splice(i, 1); L.push(c); });
+  while (L.length > 60) L.shift();
+  await DB.set('conflicts', L);
+  RLOG.warn('changed on two devices', fresh.length);
+  toast(`${fresh.length} item${fresh.length > 1 ? 's were' : ' was'} changed on two devices.`, 'Review', openConflicts, 12000);
+}
+const CONF_SKIP = new Set(['updatedAt', 'createdAt', 'deletedAt', 'id', 'type', '_dirty', '_base', '_chunked', '_tooBig', 'enc', 'iv', 'salt', 'kid', 'it', 'tag', 'v']);
+const recTitle = r => String((r && (r.title || r.label || r.desc || r.name || r.who)) || '(untitled)').slice(0, 80);
+async function confPlain(c) {          // the other version, readable (private ones need the code)
+  const d = c.data; if (!d) return null;
+  if (SEALED_TYPES.has(d.type) && d.enc) { if (!Fin.key) return { locked: true }; try { return await unsealWith(Fin.key, d); } catch (e) { return { bad: true }; } }
+  return d;
+}
+function confDiff(a, b, type) {
+  const keys = [...new Set([...Object.keys(a || {}), ...Object.keys(b || {})])].filter(k => !CONF_SKIP.has(k) && !k.startsWith('_'));
+  const show = (v, k) => { if (v === undefined || v === null || v === '') return '—'; if (type === 'vault' && k === 'fields') return (v || []).map(f => f.l + ': ' + (f.s ? '••••' : f.v)).join(' · ');
+    if (typeof v === 'object') v = JSON.stringify(v); return String(v).slice(0, 120); };
+  const W = { title: 'Title', label: 'Name', priority: 'Priority', notes: 'Notes', dueDate: 'Due', dueTime: 'Time', status: 'Status', when: 'Date', repeat: 'Repeats', amount: 'Amount', desc: 'Details', category: 'Category', number: 'Number', expiry: 'Expiry', who: 'Belongs to', deleted: 'Deleted', subs: 'Steps', fields: 'Fields', docType: 'Type', issuer: 'Issuer', kind: 'Kind', date: 'Date', cat: 'Category', name: 'Name' };
+  return keys.filter(k => JSON.stringify(a ? a[k] : undefined) !== JSON.stringify(b ? b[k] : undefined)).map(k => ({ k: W[k] || k.charAt(0).toUpperCase() + k.slice(1), a: show(a && a[k], k), b: show(b && b[k], k) }));
+}
+async function openConflicts() {
+  if (window.GHOST) return;
+  const L = await confLoad(), rows = [];
+  for (const c of L.slice().reverse()) {
+    const live = records[c.id], other = await confPlain(c);
+    if (other && other.locked) { rows.push({ c, locked: true }); continue; }
+    if (!other || other.bad) continue;
+    const diff = confDiff(live || { deleted: true }, other, c.type);
+    if (!diff.length) { L.splice(L.indexOf(c), 1); continue; }
+    rows.push({ c, live, other, diff });
+  }
+  await DB.set('conflicts', L);
+  const word = { task: 'Task', date: 'Date', doc: 'Document', fin: 'Money entry', vault: 'Card / account detail', acct: 'Account', recur: 'Recurring item', emerg: 'Emergency sheet', bill: 'Bill', goal: 'Goal', loan: 'Loan', invest: 'Investment', template: 'Template' };
+  planSheet('Changed on two devices', `<p class="hint" style="margin:0 4px 10px">These were edited on this device and on another one before they synced. The version shown in the app now is <b>In use</b>. Pick the other one if it is the right one — nothing is lost until you choose.</p>
+    ${rows.length ? rows.map((x, i) => x.locked ? `<div class="cf-card"><b>${esc(word[x.c.type] || x.c.type)}</b><p class="hint">Private — unlock to compare.</p></div>`
+      : `<div class="cf-card"><div class="cf-h"><b>${esc(recTitle(x.live || x.other))}</b><span class="pill">${esc(word[x.c.type] || x.c.type)}</span></div>
+        <table class="cf-t"><tr><th></th><th>In use</th><th>${x.c.side === 'mine' ? 'This device’s edit' : 'Other device’s edit'}</th></tr>${x.diff.slice(0, 10).map(d => `<tr><td>${esc(d.k)}</td><td>${esc(d.a)}</td><td>${esc(d.b)}</td></tr>`).join('')}</table>
+        <div class="btn-row" style="margin:6px 0 0"><button class="btn ghost small" type="button" data-cfk="${i}">Keep “In use”</button><button class="btn brass small" type="button" data-cfo="${i}">Use the other</button></div></div>`).join('')
+      : '<div class="empty">Nothing to review.</div>'}`, () => true, 'Done');
+  const drop = async c => { const L2 = await confLoad(); const j = L2.indexOf(c); if (j >= 0) L2.splice(j, 1); await DB.set('conflicts', L2); };
+  $$('[data-cfk]', $('pshBody')).forEach(b => b.addEventListener('click', async () => { await drop(rows[+b.dataset.cfk].c); openConflicts(); }));
+  $$('[data-cfo]', $('pshBody')).forEach(b => b.addEventListener('click', async () => { const x = rows[+b.dataset.cfo];
+    if (SEALED_TYPES.has(x.c.type) && !Fin.key) { toast('Unlock first.'); return; }
+    const o = { ...x.other }; delete o._dirty; delete o._base; delete o.enc; put(o); await drop(x.c); toast('Done — the other version is in use now.'); openConflicts(); }));
+}
+
+/* ---------- v2.24 (S2): card / policy expiry from Card & account details → Dates ---------- */
+const EXP_MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+function parseExpiry(v) {
+  const t = String(v || '').trim().toLowerCase(), last = (y, m) => isoLocal(new Date(y, m, 0)), Y = y => y < 100 ? 2000 + y : y;
+  let m;
+  if ((m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/))) return t;
+  if ((m = t.match(/^(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{2}|\d{4})$/))) { const d = +m[1], mo = +m[2], y = Y(+m[3]); if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return isoLocal(new Date(y, mo - 1, Math.min(d, new Date(y, mo, 0).getDate()))); return null; }
+  if ((m = t.match(/^(\d{1,2})\s*[\/\-.]\s*(\d{2}|\d{4})$/))) { const mo = +m[1], y = Y(+m[2]); return mo >= 1 && mo <= 12 ? last(y, mo) : null; }
+  if ((m = t.match(/^([a-z]{3})[a-z]*\.?\s*[,'\-]?\s*(\d{2}|\d{4})$/)) && EXP_MON.includes(m[1])) return last(Y(+m[2]), EXP_MON.indexOf(m[1]) + 1);
+  return null;
+}
+const VAULT_DATE_CAT = { card: 'bank', bank: 'bank', policy: 'insurance', id: 'govt', phone: 'subs', login: 'subs', bill: 'home', other: 'other' };
+function vaultDateWant(v) {
+  if (!v || v.deleted || v.noDate || !v.title) return null;
+  for (const f of v.fields || []) {
+    if (!f.v || f.s || !/valid|expir|renew|due|till|upto|up to|maturity/i.test(f.l || '')) continue;
+    const when = parseExpiry(f.v); if (!when) continue;
+    const k = vKind(v.kind)[0];
+    return { label: `${v.title} — ${k === 'card' ? 'card expires' : /renew/i.test(f.l) ? 'renewal' : 'expires'}`, when, repeat: 'once', cat: VAULT_DATE_CAT[k] || 'other', srcRef: v.id, sysSrc: 'vault' };
+  }
+  return null;
+}
+{ const sd = softDelete, rs0 = restore;
+  softDelete = function (id, opt) { const r = records[id]; sd(id, opt); if (r && r.type === 'vault') sysDate('vd-' + id, null); };
+  restore = function (id) { const r = records[id]; rs0(id); if (r && r.type === 'vault') sysDate('vd-' + id, vaultDateWant(records[id]), true); };
+}
+
+/* ---------- v2.24 (S3): main search finds Card & account details while unlocked (🔒 fields never searched or shown) ---------- */
+function searchCards(q, box) {
+  q = String(q || '').trim().toLowerCase(); if (!q || q.length < 2 || !finUnlocked() || window.GHOST || !box) return;
+  const L = vaultAll().filter(e => [e.title, e.who, vKind(e.kind)[2], e.notes, ...(e.fields || []).filter(f => !f.s).flatMap(f => [f.l, f.v])].join(' ').toLowerCase().includes(q)).slice(0, 8);
+  if (!L.length) return;
+  box.insertAdjacentHTML('afterbegin', `<div class="group-title" style="margin-top:6px">🔐 Card &amp; account details</div>${L.map(e => { const f = (e.fields || []).find(x => !x.s && x.v && String(x.v).toLowerCase().includes(q)) || (e.fields || []).find(x => !x.s && x.v);
+    return `<button type="button" class="sr cf-sr" data-scv="${e.id}"><b>${esc(e.title)}</b>${f ? `<small>${esc(f.l)}: <span class="mono">${esc(f.v)}</span></small>` : ''}</button>`; }).join('')}`);
+  $$('[data-scv]', box).forEach(b => b.addEventListener('click', () => { Sheets.close('shSearch', true); vtQ = ''; openCards(); setTimeout(() => { const c = document.querySelector(`[data-vt="${b.dataset.scv}"]`); if (c) { c.scrollIntoView({ block: 'center' }); c.classList.add('flash'); } }, 400); }));
+}
+
+/* ---------- v2.24 (S4): task repeats ---------- */
+function taskRepWord(r) {
+  const W = { daily: 'daily', weekdays: 'weekdays', weekly: 'weekly', monthly: 'monthly', yearly: 'yearly' };
+  if (W[r]) return W[r];
+  const m = /^e(\d+)([dwm])$/.exec(String(r || '')); if (!m) return String(r || '');
+  return `every ${m[1]} ${{ d: 'day', w: 'week', m: 'month' }[m[2]]}${+m[1] > 1 ? 's' : ''}`;
+}
+function teRepShow(r) {
+  const sel = $('teRepeat'), has = [...sel.options].some(o => o.value === r);
+  sel.value = has ? r : /^e\d+[dwm]$/.test(r) ? 'custom' : 'none';
+  const m = /^e(\d+)([dwm])$/.exec(r || ''); if (m && !has) { $('teRepN').value = m[1]; $('teRepU').value = m[2]; }
+  $('teRepC').classList.toggle('hidden', sel.value !== 'custom');
+}
+function teRepRead() {
+  const v = $('teRepeat').value; if (v !== 'custom') return v;
+  const n = Math.max(1, Math.min(99, parseInt($('teRepN').value, 10) || 1)), u = $('teRepU').value;
+  return n === 1 ? ({ d: 'daily', w: 'weekly', m: 'monthly' })[u] : `e${n}${u}`;
+}
+$('teRepeat').addEventListener('change', () => $('teRepC').classList.toggle('hidden', $('teRepeat').value !== 'custom'));
+
+/* ---------- v2.24 (S8): a copied 🔒 field is wiped from the clipboard on your next tap in Register (after 30 s) ----------
+   iPhone only lets a page write the clipboard during a tap, so the wipe happens on a tap, not on a timer. */
+const Clip = { armedAt: 0 };
+function clipArm() { Clip.armedAt = Date.now(); }
+['click', 'touchend'].forEach(ev => document.addEventListener(ev, () => {
+  if (!Clip.armedAt || Date.now() - Clip.armedAt < 30000) return;
+  Clip.armedAt = 0;
+  try { navigator.clipboard.writeText(' ').then(() => toast('The copied 🔒 value was wiped from the clipboard.', null, null, 3000)).catch(() => {}); } catch (e) {}
+}, { capture: true, passive: true }));
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Clip.armedAt) Clip.armedAt = Math.min(Clip.armedAt, Date.now() - 30000); });   // back from pasting it elsewhere: the next tap wipes it
+
+/* ---------- v2.24 (S9): each device notes its last sync, so Data health can list them ---------- */
+function deviceId() { let id = lsGet('r2_devId'); if (!id) { id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); lsSet('r2_devId', id); } return id; }
+function deviceGuess() { const u = navigator.userAgent || ''; return /iPhone/.test(u) ? 'iPhone' : /iPad/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1) ? 'iPad' : /Android/.test(u) ? 'Android phone' : /Windows/.test(u) ? 'Windows PC' : /Macintosh/.test(u) ? 'Mac' : 'Device'; }
+function deviceSeen() {
+  if (window.GHOST || !Sync.on()) return;
+  const id = 'dev-' + deviceId(), r = records[id], now = nowMs();
+  const c = recordSplit();
+  if (r && !r.deleted && r.ver === APP_VERSION && now - (r.lastSync || 0) < (r.items === c.live ? 6 * 3600000 : 1800000)) return;   // at most every 6 hours (30 min when the count changed)
+  put({ ...(r || { id, type: 'device', name: deviceGuess() }), ver: APP_VERSION, lastSync: now, items: c.live, trash: c.trash, deleted: false }, { render: false });
+}
+function healthExtra(add) {
+  const me = 'dev-' + deviceId(), devs = all('device').sort((a, b) => (b.lastSync || 0) - (a.lastSync || 0));
+  if (devs.length) {
+    const old = devs.filter(d => d.ver && d.ver !== APP_VERSION && Date.now() - (d.lastSync || 0) < 60 * 86400000);
+    devs.forEach(d => { const isOld = old.includes(d);
+      add(isOld ? 'warn' : 'ok', `${d.id === me ? 'This device' : 'Device'}: ${d.name || 'Device'}`, `Register v${d.ver || '?'} · synced ${timeAgo(d.lastSync || 0)} · ${(+d.items || 0).toLocaleString('en-IN')} items${isOld ? ' · older version — open Register on it with internet and reload to update' : ''}.`, d.id === me ? { label: 'Rename', fn: renameDevice } : null); });
+  }
+  function renameDevice() {
+        const r = records[me]; if (!r) { toast('Sync once first.'); return; }
+        planSheet('Name this device', `<div class="field"><label>Name</label><input id="dvName" value="${esc(r.name || '')}" maxlength="30" placeholder="e.g. Rahul's iPhone, Office laptop"></div>`, () => { const v = $('dvName').value.trim(); if (!v) return false; r.name = v.slice(0, 30); put(r, { render: false }); toast('Saved.'); Sheets.close('shHealth', true); return true; }, 'Save');
+  }
+  if (Conf.list && Conf.list.length) add('warn', 'Changed on two devices', `${Conf.list.length} item${Conf.list.length > 1 ? 's' : ''} to choose a version for.`, { label: 'Review', fn: () => { Sheets.close('shHealth', true); openConflicts(); } });
+  const fl = offFiles(); if (fl.length) { const n = fl.filter(fileOnDevice).length; add('info', 'Files on this iPhone', `${n} of ${fl.length} document files open without downloading.`, { label: 'Manage', fn: () => { Sheets.close('shHealth', true); openOffline(); } }); }
+}
+setTimeout(() => confLoad(), 1500);

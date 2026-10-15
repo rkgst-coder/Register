@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.23.0">
+<meta name="app-version" content="2.24.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -972,6 +972,17 @@ html.on-money .hint-bubble{bottom:calc(var(--tabbar-h) + var(--safe-b) + 138px)}
 .sel-on .row,.note-card.sel-on{background:rgba(147,115,31,.16)!important;box-shadow:inset 3px 0 0 var(--brass)}
 .note-card.sel-on{outline:2px solid var(--brass);outline-offset:-2px}
 /* v2.23: selected categories / folders; Card & account details */
+.dv-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px}.dv-tag{font-size:.75rem;font-weight:700;color:var(--ink-soft);margin-right:auto}
+.dv-txt{white-space:pre-wrap;word-break:break-word;font-size:.85rem;background:var(--card);padding:10px;border-radius:8px;max-height:70vh;overflow:auto;user-select:text;-webkit-user-select:text}
+.dv-doc{background:var(--card);padding:10px 12px;border-radius:8px;font-size:.9rem;max-height:70vh;overflow:auto;user-select:text;-webkit-user-select:text}.dv-doc p{margin:0 0 .6em}
+.dv-sheet{overflow:auto;max-height:70vh;background:var(--card);border-radius:8px;-webkit-overflow-scrolling:touch}
+.dv-sheet table{border-collapse:collapse;font-size:.8rem}.dv-sheet td,.dv-sheet th{border:1px solid var(--line);padding:4px 6px;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis;user-select:text;-webkit-user-select:text}
+.dv-sheet th{background:rgba(147,115,31,.12);position:sticky;top:0}.dv-tabs{margin:0 0 6px}
+.off-ok{font-size:.75rem;opacity:.8}
+.cf-card{background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:10px 12px;margin:0 0 10px}.cf-h{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:6px}
+.cf-t{width:100%;border-collapse:collapse;font-size:.8rem}.cf-t th,.cf-t td{border-top:1px solid var(--line);padding:4px;text-align:left;vertical-align:top;word-break:break-word}.cf-t th{color:var(--ink-soft);font-weight:600}
+.cf-sr{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left}.cf-sr small{color:var(--ink-soft)}
+.vt-card.flash{outline:2px solid var(--brass)}
 .folder.sel-on{outline:2px solid var(--brass);outline-offset:-2px;background:rgba(147,115,31,.14)}
 .folder{-webkit-touch-callout:none}
 .vault-card{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:12px 14px;margin:0 0 12px;border-left:4px solid var(--brass);color:inherit;font:inherit}
@@ -1152,7 +1163,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
       <div id="docYearBar"></div>
       <div id="docFolders"></div>
       <div class="group" id="docList"></div>
-      <div class="sel-bar hidden" id="docSelBar"><span id="docSelN"></span><button class="btn small brass" id="docSelShare">Share</button><button class="btn small" id="docSelMove">Move</button><button class="btn small" id="docSelMerge">Merge</button><button class="btn small ghost" id="docSelCancel">Cancel</button></div>
+      <div class="sel-bar hidden" id="docSelBar"><span id="docSelN"></span><button class="btn small brass" id="docSelShare">Share</button><button class="btn small" id="docSelMove">Move</button><button class="btn small" id="docSelMerge">Merge</button><button class="btn small" id="docSelOff">⤓ Keep</button><button class="btn small ghost" id="docSelCancel">Cancel</button></div>
     </section>
 
     <!-- MONEY (private) -->
@@ -1249,8 +1260,9 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
       <div class="grid2">
         <div class="field"><label>Due</label><div style="display:flex;gap:8px"><input type="date" id="teDue" style="flex:1;min-width:0"><input type="time" id="teTime" style="width:8.5em;flex:none" aria-label="Time"></div></div>
         <div class="field"><label>Repeats</label><select id="teRepeat">
-          <option value="none">Never</option><option value="daily">Daily</option>
-          <option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+          <option value="none">Never</option><option value="daily">Daily</option><option value="weekdays">Weekdays (Mon–Fri)</option>
+          <option value="weekly">Weekly</option><option value="e2w">Every 2 weeks</option><option value="monthly">Monthly</option><option value="e3m">Every 3 months</option><option value="e6m">Every 6 months</option><option value="yearly">Yearly</option><option value="custom">Every … (choose)</option></select>
+          <div class="hidden" id="teRepC" style="display:flex;gap:6px;margin-top:6px;align-items:center"><span>Every</span><input id="teRepN" type="number" min="1" max="99" value="2" inputmode="numeric" style="width:64px"><select id="teRepU"><option value="d">days</option><option value="w">weeks</option><option value="m">months</option></select></div></div>
       </div>
       <div class="wrapchips" id="teDueQuick" style="margin:-4px 0 14px"></div>
       <div class="field"><label>Steps <span id="teStepCount"></span></label>
@@ -1444,8 +1456,8 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
       <div class="field"><label>Files</label>
         <div class="dfiles" id="doFiles"></div>
         <div class="field hidden" id="doFileFyW" style="margin:6px 0"><label>Year for the next files</label><select id="doFileFy"></select></div>
-        <div class="btn-row" style="margin:0;flex-wrap:wrap"><button type="button" class="btn ghost small" id="doFileBtn">＋ Add photo or PDF</button><button type="button" class="btn ghost small" id="doScanBtn">📷 Scan pages</button></div>
-        <input type="file" id="doFileIn" class="vh" accept="image/*,application/pdf,.pdf" multiple tabindex="-1" aria-hidden="true">
+        <div class="btn-row" style="margin:0;flex-wrap:wrap"><button type="button" class="btn ghost small" id="doFileBtn">＋ Add file (photo, PDF, Excel, Word, text)</button><button type="button" class="btn ghost small" id="doScanBtn">📷 Scan pages</button></div>
+        <input type="file" id="doFileIn" class="vh" accept="image/*,application/pdf,.pdf,.xlsx,.xls,.csv,.docx,.doc,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain" multiple tabindex="-1" aria-hidden="true">
         <div class="msg" id="doFileMsg"></div>
       </div>
       <div class="group"><label class="switch-row"><span>Lock files<small class="dq-sub">Encrypted; opens only after unlocking. Use for Aadhaar, PAN, passport.</small></span><input type="checkbox" class="sw" id="doLock"></label></div>
@@ -1898,6 +1910,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <div class="group">
           <button class="set-row" id="setBin">Recently deleted<span class="v">🗑</span></button>
           <button class="set-row" id="setArchive">Archive old years<span class="v">🗄</span></button>
+          <button class="set-row" id="setOff">Files on this iPhone (open offline)<span class="v" id="setOffV">›</span></button>
           <button class="set-row" id="setScanIdx">Make scanned PDFs searchable<span class="v" id="setScanIdxV">›</span></button>
           <button class="set-row" id="setTpl">Task templates<span class="v">›</span></button>
           <button class="set-row" id="setLegacyLocal">Import from the old app on this iPhone<span class="v">›</span></button>
@@ -1946,6 +1959,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.23.0"></script>
+<script src="app.js?v=2.24.0"></script>
 </body>
 </html>
