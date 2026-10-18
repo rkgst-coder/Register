@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.24.0">
+<meta name="app-version" content="2.25.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -285,6 +285,37 @@ html[data-theme="dark"] .nc5{background:#1E2935}
 .person-lines{margin:8px 0 0 46px}
 .pline{display:flex;gap:8px;align-items:center;font-size:0.84375rem;padding:4px 0;color:var(--ink-soft)}
 .pline .d{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* v2.25 — udhaar people list, entry ledger */
+.udh-p{width:100%;text-align:left;gap:10px;align-items:center;border:none;border-bottom:.5px solid var(--line);font:inherit;color:inherit}
+.udh-p .amt{margin-left:auto}
+.udh-done{opacity:.55}
+.udh-sh{font-size:.75rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);padding:12px 14px 4px}
+.person-lines .udh-sh{padding:0}
+.udh-back{padding:10px 14px 0}
+.udh-line{cursor:pointer;border-radius:8px}
+.udh-line:active{background:var(--line)}
+.udh-led td:nth-child(n+3),.udh-led th:nth-child(n+3){text-align:right;white-space:nowrap}
+.udh-led tr.tot td{border-top:1px solid var(--line)}
+/* v2.25 — account statement */
+.stm-sum{margin-bottom:8px}
+.stm-sh{font-size:.75rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);margin:2px 0 4px}
+.stm-m{background:var(--card);border-radius:12px;padding:10px 12px;margin:0 0 8px;border:.5px solid var(--line)}
+.stm-m.bad{border-color:var(--seal)}
+.stm-h{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.stm-h .tag.ok{opacity:.7}
+.stm-g{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.stm-c .k{display:block;font-size:.6875rem;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.stm-c.op{order:1}.stm-c.cl{order:2;text-align:right}.stm-c.in{order:3;grid-column:1/-1}.stm-c.out{order:4;grid-column:1/-1}
+.stm-l{display:flex;flex-wrap:wrap;gap:4px}
+.stm-i{display:inline-flex;gap:4px;align-items:baseline;font-size:.8125rem;background:var(--line);border-radius:6px;padding:2px 7px;border:none;color:inherit;font-family:inherit}
+.stm-c.in .stm-i b{color:var(--pos,inherit)}
+.stm-c.out .stm-i b{color:var(--neg,inherit)}
+.stm-i.est{font-style:italic}
+.stm-link{cursor:pointer;text-decoration:underline dotted}
+.stm-ent{margin-top:6px;font-size:.8125rem}
+.stm-ent summary{color:var(--ink-faint);cursor:pointer}
+.stm-e{display:flex;justify-content:space-between;width:100%;background:none;border:none;color:inherit;font:inherit;padding:4px 0;border-bottom:.5px solid var(--line);text-align:left}
+@media (min-width:700px){.stm-g{grid-template-columns:1fr 2fr 2fr 1fr}.stm-c.op,.stm-c.in,.stm-c.out,.stm-c.cl{order:0;grid-column:auto}}
 
 /* ---------- sheets ---------- */
 .sheet{position:fixed;inset:0;z-index:100;background:var(--scrim);display:flex;align-items:flex-end;
@@ -768,6 +799,12 @@ html.decoy-on #todayFab{display:none}
 .led-ic{position:relative;width:44px;height:40px;border-radius:10px;background:var(--card);box-shadow:var(--shadow);display:grid;place-items:center;font-size:1.125rem;color:var(--ink-soft);flex:none}
 .led-ic svg{width:21px;height:21px}
 .led-ic.on{background:var(--ink);color:var(--paper)}
+.led-ic-t{width:auto;padding:0 10px;display:flex;gap:5px;align-items:center;font-size:.8125rem;font-weight:600}
+@media (max-width:360px){.led-ic-t span{display:none}.led-ic-t{width:44px;padding:0}}
+.usual-row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:7px 0;border-bottom:.5px solid var(--line);font-size:.875rem}
+.usual-row:last-child{border-bottom:none}
+.usual-row small{grid-column:1/-1;color:var(--ink-faint)}
+.usual-row .up{color:var(--neg)}.usual-row .dn{color:var(--pos)}
 .led-dot{position:absolute;top:6px;right:7px;width:8px;height:8px;border-radius:50%;background:var(--brass);border:2px solid var(--card)}
 .fin-filter{background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:10px;margin:0 0 10px}
 .fin-filter .linkbtn{margin-left:auto;font-size:.875rem}
@@ -1185,7 +1222,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
           <button class="led-nav" id="finNext" aria-label="Next month">›</button>
           <span class="led-sp"></span>
           <button class="led-ic" id="finFilterBtn" aria-label="Search and filter" aria-expanded="false" aria-controls="finFilterPanel"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16l-6.2 7.3V18l-3.6 1.8v-7z"/></svg><i class="led-dot hidden" id="finFilterDot"></i></button>
-          <button class="led-ic" id="finInsBtn" aria-label="Insights: dashboard, budgets, reports">📊</button>
+          <button class="led-ic led-ic-t" id="finInsBtn" aria-label="Spending: dashboard, budgets, subscriptions, exports">📊<span>Spending</span></button>
         </div>
         <div class="fin-filter hidden" id="finFilterPanel" role="search">
           <input type="search" id="finQ" placeholder="Search description or person" aria-label="Search the Ledger" autocomplete="off" enterkeyhint="search">
@@ -1200,13 +1237,13 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <div id="finList"></div>
       </div>
       <div id="paneUdhaar" class="hidden">
-        <div class="fin-sum fin-sum3">
+        <div class="fin-sum fin-sum3" id="udSum">
           <div class="stat"><div class="n pos" id="udOwed">₹0</div><div class="l">Owed to you</div></div>
           <div class="stat"><div class="n neg" id="udOwe">₹0</div><div class="l">You owe</div></div>
           <div class="stat"><div class="n" id="udNet">₹0</div><div class="l">Udhaar net</div></div>
         </div>
         <div class="group" id="udList"></div>
-        <details class="fold"><summary>Settled udhaar</summary><div class="group" id="udSettled"></div></details>
+        <details class="fold" id="udSettledFold"><summary>Settled udhaar</summary><div class="group" id="udSettled"></div></details>
       </div>
       <div id="paneAccts" class="hidden"><div id="acctBody"></div></div>
       <div id="panePlan" class="hidden"><div id="planBody"></div></div>
@@ -1661,6 +1698,14 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
   </div>
 </div>
 
+<!-- v2.25: account statement -->
+<div class="sheet full" id="shStmt">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><span class="sh-l"></span><h2 id="stmTitle">Statement</h2><button class="sh-r" data-close>Done</button></div>
+    <div class="sheet-body" id="stmBody"></div>
+  </div>
+</div>
+
 <!-- emergency erase -->
 <div class="sheet full" id="shErase">
   <div class="sheet-card"><div class="sheet-grab"></div>
@@ -1672,10 +1717,10 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <!-- money insights (v2.19): dashboard, net worth, budgets, subscriptions, reports -->
 <div class="sheet full" id="shInsights">
   <div class="sheet-card"><div class="sheet-grab"></div>
-    <div class="sheet-head"><span class="sh-l"></span><h2>Money insights</h2><button class="sh-r" data-close>Done</button></div>
+    <div class="sheet-head"><span class="sh-l"></span><h2>Spending</h2><button class="sh-r" data-close>Done</button></div>
     <div class="sheet-body">
       <div id="ledgerDash"></div>
-      <div id="nwTrend"></div>
+      <div id="usualBox"></div>
       <div class="plan-sec" id="budSec">
         <h3 class="plan-h">Budgets</h3>
         <div class="month-nav"><button id="budPrev" aria-label="Previous month">‹</button><b id="budMonthLbl"></b><button id="budNext" aria-label="Next month">›</button></div>
@@ -1683,6 +1728,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <button class="btn ghost block" id="budSetBtn">Set a monthly budget</button>
       </div>
       <div id="subsBox"></div>
+      <div class="plan-sec"><p class="hint" style="margin:0">Net worth over time and account statements (where each account's money comes from and goes) are in <button class="linkbtn" id="insToPlan" style="display:inline;padding:0">Money → Plan ›</button></p></div>
       <div class="plan-sec"><h3 class="plan-h">Export</h3>
         <div class="btn-row" style="flex-wrap:wrap;margin:0"><button class="btn ghost small" id="finCsvBtn">⤓ Ledger (CSV)</button><button class="btn ghost small" id="finXlsxBtn">⤓ Money workbook (Excel)</button></div></div>
     </div>
@@ -1712,6 +1758,14 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
   </div>
 </div>
 <datalist id="peopleDl"></datalist>
+
+<!-- v2.25: one udhaar entry's ledger -->
+<div class="sheet" id="shUdhLed">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><span class="sh-l"></span><h2 id="ulTitle">Udhaar</h2><button class="sh-r" data-close>Done</button></div>
+    <div class="sheet-body" id="ulBody"></div>
+  </div>
+</div>
 
 <!-- udhaar settle -->
 <div class="sheet" id="shSettle">
@@ -1959,6 +2013,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.24.0"></script>
+<script src="app.js?v=2.25.0"></script>
 </body>
 </html>
