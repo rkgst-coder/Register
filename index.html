@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.25.0">
+<meta name="app-version" content="2.26.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -148,6 +148,8 @@ textarea{resize:none;line-height:1.55}
 .wrapchips .chip{padding:8px 13px}
 .seg{display:flex;background:rgba(128,128,128,.14);border-radius:10px;padding:2px;margin-bottom:14px}
 .seg button{flex:1;padding:8px 6px;border-radius:8px;font-size:0.875rem;font-weight:600;color:var(--ink-soft)}
+#rcKind{flex-wrap:wrap;gap:2px}#rcKind button{flex:1 1 30%}   /* v2.26: five types */
+.plan-acc>summary .muted{font-weight:400}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .pill{font-size:0.71875rem;font-weight:600;padding:2px 8px;border-radius:9px;background:rgba(128,128,128,.16);color:var(--ink-soft);
   white-space:nowrap;flex:none}
@@ -1728,7 +1730,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <button class="btn ghost block" id="budSetBtn">Set a monthly budget</button>
       </div>
       <div id="subsBox"></div>
-      <div class="plan-sec"><p class="hint" style="margin:0">Net worth over time and account statements (where each account's money comes from and goes) are in <button class="linkbtn" id="insToPlan" style="display:inline;padding:0">Money → Plan ›</button></p></div>
+      <div class="plan-sec"><p class="hint" style="margin:0">Account statements — where each account's money comes from and goes, month by month — are in <button class="linkbtn" id="insToPlan" style="display:inline;padding:0">Money → Plan ›</button></p></div>
       <div class="plan-sec"><h3 class="plan-h">Export</h3>
         <div class="btn-row" style="flex-wrap:wrap;margin:0"><button class="btn ghost small" id="finCsvBtn">⤓ Ledger (CSV)</button><button class="btn ghost small" id="finXlsxBtn">⤓ Money workbook (Excel)</button></div></div>
     </div>
@@ -2013,6 +2015,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.25.0"></script>
+<script src="app.js?v=2.26.0"></script>
 </body>
 </html>
