@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.26.0">
+<meta name="app-version" content="2.26.1">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -298,6 +298,7 @@ html[data-theme="dark"] .nc5{background:#1E2935}
 .udh-line:active{background:var(--line)}
 .udh-led td:nth-child(n+3),.udh-led th:nth-child(n+3){text-align:right;white-space:nowrap}
 .udh-led tr.tot td{border-top:1px solid var(--line)}
+.udh-chain{padding:10px 12px;margin-bottom:10px}.udh-pled tbody tr[data-ulentry]{cursor:pointer}.udh-pled td:last-child{white-space:nowrap}
 /* v2.25 — account statement */
 .stm-sum{margin-bottom:8px}
 .stm-sh{font-size:.75rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);margin:2px 0 4px}
@@ -2015,6 +2016,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.26.0"></script>
+<script src="app.js?v=2.26.1"></script>
 </body>
 </html>

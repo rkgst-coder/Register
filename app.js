@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.26.0';
+const APP_VERSION = '2.26.1';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -3298,7 +3298,7 @@ function renderUdhaar() {
   const done = ud.filter(e => e.settled).sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 60);
   $('udSettled').innerHTML = done.length ? done.map(e => finRow(e)).join('') : '<div class="empty">None yet.</div>';
   wireFinRows($('udSettled'));
-  if (Sheets.isOpen('shUdhLed') && UdhLed.id) renderUdhLedger(UdhLed.id);
+  if (Sheets.isOpen('shUdhLed')) { if (UdhLed.person) renderUdhPersonLedger(UdhLed.person); else if (UdhLed.id) renderUdhLedger(UdhLed.id); }
 }
 function renderUdhPeople(G) {
   const act = G.filter(g => g.open.length).sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal) || a.name.localeCompare(b.name));
@@ -3331,9 +3331,10 @@ function renderUdhPerson(g) {
         ${list.length > 1 ? `<button class="linkbtn" data-settleall="1">Settle all with ${esc(p)}</button>` : ''}
         ${done.length ? `<div class="udh-sh" style="margin:10px 0 2px">Settled</div>${done.map(e => line(e, true)).join('')}` : ''}</div>
       <p class="hint" style="margin:8px 0 0 46px">Tap an entry for its ledger.</p>
-      <div class="btn-row" style="margin:8px 0 0 46px"><button class="btn ghost small" id="udShare">⇪ Share statement</button>${typeof accts === 'function' && accts().length && planCfg() ? '<button class="btn ghost small" id="udStmt">📒 Month by month</button>' : ''}</div></div>`;
+      <div class="btn-row" style="margin:8px 0 0 46px"><button class="btn ghost small" id="udFull">📒 Full ledger</button><button class="btn ghost small" id="udShare">⇪ Share statement</button>${typeof accts === 'function' && accts().length && planCfg() ? '<button class="btn ghost small" id="udStmt">📒 Month by month</button>' : ''}</div></div>`;
   $('udBack').addEventListener('click', () => { Udh.person = null; renderUdhaar(); });
   $('udShare').addEventListener('click', () => shareUdhStatement(g));
+  $('udFull').addEventListener('click', () => openUdhPersonLedger(g.k));   // v2.26.1
   if ($('udStmt')) $('udStmt').addEventListener('click', () => openStatement('udh', { person: g.k }));   // v2.26
   $$('[data-settle]', $('udList')).forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); openSettle(b.dataset.settle); }));
   $$('[data-fe]', $('udList')).forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); openFin(b.dataset.fe); }));
@@ -3369,22 +3370,94 @@ function udhLedgerRows(e) {
   let left = 0; rows.forEach(r => { left += r.udh - r.set; r.left = left; });
   return rows;
 }
-const UdhLed = { id: null };
-function openUdhLedger(id) { UdhLed.id = id; renderUdhLedger(id); if (!Sheets.isOpen('shUdhLed')) Sheets.open('shUdhLed'); }
+/* v2.26.1: an "Extra when settling" entry and the entry it came from. New extras store origin; older ones are found by person, type and date. */
+function udhOriginOf(x) {
+  if (!x || !udhIsExtra(x)) return null;
+  if (x.origin) return records[x.origin] && !records[x.origin].deleted ? records[x.origin] : null;
+  const k = udhKey(x.who), want = x.kind === 'lent' ? (e => e.kind === 'borrowed' || isPaidBy(e)) : (e => e.kind === 'lent');
+  const c = all('fin').filter(e => e.id !== x.id && isUdh(e) && udhKey(e.who) === k && want(e) && e.settled && (e.date || '') <= (x.date || '9'));
+  return c.find(e => (e.pays || []).some(p => p.date === x.date)) || c.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0] || null;
+}
+const udhExtrasOf = e => all('fin').filter(x => udhIsExtra(x) && udhOriginOf(x) === e);
+const UdhLed = { id: null, person: null };
+function openUdhLedger(id) { UdhLed.id = id; UdhLed.person = null; renderUdhLedger(id); if (!Sheets.isOpen('shUdhLed')) Sheets.open('shUdhLed'); }
+function openUdhPersonLedger(k) { UdhLed.id = null; UdhLed.person = k; renderUdhPersonLedger(k); if (!Sheets.isOpen('shUdhLed')) Sheets.open('shUdhLed'); }
 function renderUdhLedger(id) {
+  if (UdhLed.person) return renderUdhPersonLedger(UdhLed.person);
   const e = records[id]; if (!e || e.deleted) { Sheets.close('shUdhLed'); return; }
   const rows = udhLedgerRows(e), tu = rows.reduce((s, r) => s + r.udh, 0), ts = rows.reduce((s, r) => s + r.set, 0), rem = outstanding(e);
+  const o = udhOriginOf(e), extras = udhExtrasOf(e);
+  let chain = '';
+  if (o) {   // this entry is the extra paid over what was owed: show where it came from
+    const or = udhLedgerRows(o), lastPay = (o.pays || []).filter(p => p.date === e.date).reduce((t, p) => t + (+p.amt || 0), 0);
+    const paidWord = o.kind === 'lent' ? `${esc(o.who || 'They')} paid you` : 'You paid';
+    chain = `<div class="group udh-chain"><div class="udh-sh" style="padding:0 0 4px">How this started</div>
+      <div class="tw"><table class="pt udh-led"><tbody>${or.map(r => `<tr><td>${r.date ? fmtDate(r.date) : '—'}</td><td>${esc(r.what)}</td><td>${r.udh ? rs(r.udh) : '–'}</td><td>${r.set ? rs(r.set) : '–'}</td><td>${rs(r.left)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="hint" style="margin:6px 0 0">${e.date ? fmtDate(e.date) + ': ' : ''}${paidWord} <b>${esc(fmtMoney(lastPay + (+e.amount || 0)))}</b> — ${esc(fmtMoney(lastPay))} settled that, and the extra <b>${esc(fmtMoney(e.amount))}</b> became this entry (${e.kind === 'lent' ? `${esc(e.who || 'they')} now owes you` : 'you now owe'}).</p>
+      <button class="linkbtn" data-ulopen="${o.id}">Open the first entry ›</button></div>`;
+  }
+  const carried = extras.map(x => `<p class="hint" style="margin:6px 0 0">${x.date ? fmtDate(x.date) + ': ' : ''}${esc(fmtMoney(x.amount))} more than owed was paid — it became a new entry (${x.kind === 'lent' ? `${esc(x.who || 'they')} owes you` : 'you owe'} ${esc(fmtMoney(outstanding(x)))} on it now). <button class="linkbtn" data-ulopen="${x.id}" style="display:inline;padding:0">Open ›</button></p>`).join('');
   $('ulTitle').textContent = e.who || 'Udhaar';
-  $('ulBody').innerHTML = `<div class="fin-sum fin-sum3" style="margin:0 0 10px">
+  $('ulBody').innerHTML = `${chain}<div class="fin-sum fin-sum3" style="margin:0 0 10px">
       <div class="stat"><div class="n">${rsShort(tu)}</div><div class="l">Udhaar</div></div>
       <div class="stat"><div class="n pos">${rsShort(ts)}</div><div class="l">Settled</div></div>
       <div class="stat"><div class="n ${rem > 0.005 ? (e.kind === 'lent' ? 'pos' : 'neg') : ''}">${rsShort(rem)}</div><div class="l">Remaining</div></div></div>
     <div class="tw"><table class="pt udh-led"><thead><tr><th>Date</th><th>Particulars</th><th>Udhaar</th><th>Settled</th><th>Remaining</th></tr></thead><tbody>
       ${rows.map(r => `<tr><td>${r.date ? fmtDate(r.date) : '—'}</td><td>${esc(r.what)}</td><td>${r.udh ? rs(r.udh) : '–'}</td><td>${r.set ? rs(r.set) : '–'}</td><td>${rs(r.left)}</td></tr>`).join('')}
       <tr class="tot"><td></td><td><b>Total</b></td><td><b>${rs(tu)}</b></td><td><b>${rs(ts)}</b></td><td><b>${rs(Math.max(0, tu - ts))}</b></td></tr></tbody></table></div>
-    <p class="hint">${e.settled ? 'Fully settled.' : e.kind === 'lent' ? `${esc(e.who || 'They')} still owes you ${esc(fmtMoney(rem))}.` : `You still owe ${esc(e.who || 'them')} ${esc(fmtMoney(rem))}.`} To record a payment, use Settle on the person's screen.</p>`;
+    ${carried}
+    <p class="hint">${e.settled ? 'Fully settled.' : e.kind === 'lent' ? `${esc(e.who || 'They')} still owes you ${esc(fmtMoney(rem))}.` : `You still owe ${esc(e.who || 'them')} ${esc(fmtMoney(rem))}.`} To record a payment, use Settle on the person's screen.</p>
+    <button class="btn ghost small" data-ulperson="${esc(udhKey(e.who))}">📒 Full ledger with ${esc(e.who || 'them')}</button>`;
+  udhLedWire();
 }
-Sheets.onClose.shUdhLed = () => { UdhLed.id = null; };
+function udhLedWire() {
+  $$('[data-ulopen]', $('ulBody')).forEach(b => b.addEventListener('click', () => openUdhLedger(b.dataset.ulopen)));
+  $$('[data-ulperson]', $('ulBody')).forEach(b => b.addEventListener('click', () => openUdhPersonLedger(b.dataset.ulperson)));
+  $$('[data-ulentry]', $('ulBody')).forEach(b => b.addEventListener('click', () => openUdhLedger(b.dataset.ulentry)));
+}
+/* v2.26.1: everything with one person by date, one running balance (+ they owe you, − you owe). A payment that went over
+   what was owed shows as one payment, split into the part that settled and the extra. */
+function udhPersonRows(k) {
+  const ents = all('fin').filter(e => isUdh(e) && udhKey(e.who) === k), ev = [];
+  const merged = new Set();
+  ents.forEach(e => {
+    const s = udhSign(e), amt = +e.amount || 0, who = String(e.who || '').trim();
+    const o = udhOriginOf(e);
+    if (o && udhKey(o.who) === k) {                                          // extra: joined to the payment it came from
+      const p = (o.pays || []).filter(p => p.date === e.date);
+      if (p.length) { merged.add(e.id); const part = p.reduce((t, x) => t + (+x.amt || 0), 0);
+        ev.push({ date: e.date, ord: 2, ca: e.createdAt || 0, v: s * amt, what: `${o.kind === 'lent' ? 'Received back' : 'Paid back'} ${fmtMoney(part + amt)} (${fmtMoney(part)} settled · ${fmtMoney(amt)} extra${s > 0 ? ' — now owed to you' : ' — now you owe'})`, id: e.id, extra: part }); return; }
+    }
+    ev.push({ date: e.date || '', ord: 0, ca: e.createdAt || 0, v: s * amt, what: (e.kind === 'lent' ? 'Given' : isPaidBy(e) ? `${who} paid for you` : 'Borrowed') + (e.desc && !udhIsExtra(e) ? ' — ' + e.desc : udhIsExtra(e) ? ' — extra when settling' : ''), id: e.id });
+    const pays = (e.pays || []).filter(p => +p.amt), back = e.kind === 'lent' ? 'Received back' : 'Paid back';
+    pays.forEach(p => ev.push({ date: p.date || e.date || '', ord: 1, ca: e.createdAt || 0, v: -s * (+p.amt || 0), what: back + (p.planRef ? ' (instalment)' : ''), id: e.id, pay: p, of: e }));
+    const rest = +((e.paidAmount || 0) - pays.reduce((t, p) => t + (+p.amt || 0), 0)).toFixed(2);
+    if (Math.abs(rest) > 0.005) ev.push({ date: e.date || '', ord: 1, ca: e.createdAt || 0, v: -s * rest, what: back + ' (date not recorded)', id: e.id });
+    if (e.settled) { const gap = +(amt - (e.paidAmount || 0)).toFixed(2); if (Math.abs(gap) > 0.005) ev.push({ date: e.date || '', ord: 1, ca: e.createdAt || 0, v: -s * gap, what: 'Marked settled', id: e.id }); }
+  });
+  // the settling part of a merged payment is already inside the merged row
+  const out = ev.filter(x => !(x.pay && ents.some(m => merged.has(m.id) && udhOriginOf(m) === x.of && m.date === x.pay.date)))
+    .map(x => { if (x.extra != null) x.v = udhSign(records[x.id]) * (+records[x.id].amount || 0) + -udhSign(udhOriginOf(records[x.id])) * x.extra; return x; });
+  out.sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.ord - b.ord || a.ca - b.ca);
+  let bal = 0; out.forEach(x => { bal += x.v; x.bal = bal; });
+  return out;
+}
+function renderUdhPersonLedger(k) {
+  const g = udhGroups().find(x => x.k === k); if (!g) { Sheets.close('shUdhLed'); return; }
+  const rows = udhPersonRows(k), gave = rows.reduce((t, r) => t + Math.max(0, r.v), 0), got = rows.reduce((t, r) => t + Math.max(0, -r.v), 0), bal = rows.length ? rows[rows.length - 1].bal : 0;
+  const bw = v => Math.abs(v) < 0.005 ? 'settled' : v > 0 ? `owes you ${rs(v)}` : `you owe ${rs(-v)}`;
+  $('ulTitle').textContent = g.name + ' · ledger';
+  $('ulBody').innerHTML = `<div class="fin-sum fin-sum3" style="margin:0 0 10px">
+      <div class="stat"><div class="n">${rsShort(gave)}</div><div class="l">You gave</div></div>
+      <div class="stat"><div class="n">${rsShort(got)}</div><div class="l">You got</div></div>
+      <div class="stat"><div class="n ${bal > 0.005 ? 'pos' : bal < -0.005 ? 'neg' : ''}">${rsShort(Math.abs(bal))}</div><div class="l">${Math.abs(bal) < 0.005 ? 'Settled' : bal > 0 ? 'Owes you' : 'You owe'}</div></div></div>
+    <div class="tw"><table class="pt udh-led udh-pled"><thead><tr><th>Date</th><th>Particulars</th><th>You gave</th><th>You got</th><th>Balance</th></tr></thead><tbody>
+      ${rows.map(r => `<tr data-ulentry="${r.id}"><td>${r.date ? fmtDate(r.date) : '—'}</td><td>${esc(r.what)}</td><td>${r.v > 0 ? rs(r.v) : '–'}</td><td>${r.v < 0 ? rs(-r.v) : '–'}</td><td class="${r.bal > 0.005 ? 'pos' : r.bal < -0.005 ? 'neg' : ''}">${esc(bw(r.bal))}</td></tr>`).join('')}
+      <tr class="tot"><td></td><td><b>Total</b></td><td><b>${rs(gave)}</b></td><td><b>${rs(got)}</b></td><td><b>${esc(bw(bal))}</b></td></tr></tbody></table></div>
+    <p class="hint">“You gave” = udhaar you gave and money you paid back. “You got” = udhaar you took and money paid back to you. Tap a row for that entry.</p>`;
+  udhLedWire();
+}
+Sheets.onClose.shUdhLed = () => { UdhLed.id = null; UdhLed.person = null; };
 /* Plain-text statement for one person, to send on WhatsApp or anywhere. */
 function udhStatementText(g) {
   const L = [`Udhaar statement — ${g.name}`, `As on ${fmtDate(todayISO(), true)}`, ''];
@@ -3430,7 +3503,7 @@ $('stOk').addEventListener('click', () => {
   if (stAcct) e.pays = prevPays.concat([{ date: todayISO(), amt, acct: stAcct }]);
   put(e); Sheets.close('shSettle');
   let extraId = null;
-  if (over) extraId = put({ id: uid('f'), type: 'fin', desc: 'Extra when settling' + (e.desc ? ': ' + e.desc : ''), amount: over, kind: e.kind === 'lent' ? 'borrowed' : 'lent',
+  if (over) extraId = put({ id: uid('f'), type: 'fin', origin: e.id, desc: 'Extra when settling' + (e.desc ? ': ' + e.desc : ''), amount: over, kind: e.kind === 'lent' ? 'borrowed' : 'lent',
     category: '', date: todayISO(), who: e.who || '', acct: stAcct || undefined, recurring: false, paidAmount: 0, settled: false, deleted: false }).id;
   const undo = () => { e.paidAmount = prev.paid; e.settled = prev.settled; e.pays = prevPays; put(e); if (extraId) softDelete(extraId); };
   if (over) toast(`Settled. ${fmtMoney(over)} extra recorded as ${e.kind === 'lent' ? 'you owe ' : 'owed to you by '}${e.who || 'them'}.`, 'Undo', undo, 7000);
@@ -3851,6 +3924,7 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
   flows.forEach(f => { (byYm[f.ym] = byYm[f.ym] || []).push(f); });
   const rows = [], udhLeft = new Map(); let udhBack = 0, udhGive = 0;
   const gives = recurs().filter(r => r.kind === 'udhgive' && (r.who || '').trim()), cardPlans = cardBillPlans(c);   // v2.26
+  const giveDone = udhGiveMatches(gives, toMonth);                         // v2.26.1: planned gives already covered by real udhaar
   for (let ym = c.startMonth, i = 0; ym <= toMonth && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) {
     let inc = 0, exp = 0, invIn = 0, interest = 0, growth = 0, pending = 0, planned = false;
     const items = planItems(c, ym), fl = byYm[ym] || [], bal0 = { ...bal };
@@ -3872,10 +3946,8 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
     let spendLeft = Math.max(0, ledgerSpend);                                 // shared by all spending estimates, not taken off each one
     // v2.26: udhaar you plan to give (estimate) — from this month on; real udhaar given this month replaces it
     if (!actual && ym >= cur) gives.forEach(r => {
-      if (!recurDue(r, ym)) return;
-      let amt = recurAmt(r, ym);
-      const k = r.who.trim().toLowerCase();
-      if (ym === cur) amt -= all('fin').filter(e => e.kind === 'lent' && (e.date || '').slice(0, 7) === ym && (e.who || '').trim().toLowerCase() === k).reduce((t, e) => t + (+e.amount || 0), 0);
+      if (!recurDue(r, ym) || giveDone.has(r.id + '|' + ym)) return;
+      const amt = recurAmt(r, ym), k = r.who.trim().toLowerCase();
       if (amt <= 0.005) return;
       if (!udhLeft.has(k)) udhLeft.set(k, udhOwedBy(r.who));
       udhLeft.set(k, udhLeft.get(k) + amt); udhGive += amt; planned = true;
@@ -3951,6 +4023,64 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
       pending, planned, closed: !!(pm && pm.closed), neg, ended: ym < cur, cur: ym === cur });
   }
   return rows;
+}
+/* v2.26.1: amounts typed for one month only (in a month's sheet, or left over from the old plan) replace the recurring
+   amount in that month — including later raises. This lists them so they can be cleared. Ticked months are real Ledger entries and are left alone. */
+function recurOfKey(key, ym) {
+  if (key.startsWith('r:')) { const r = records[key.slice(2)]; if (!r || r.deleted || r.type !== 'recur' || !recurDue(r, ym)) return null; return { label: r.name, a: recurAmt(r, ym) }; }
+  if (key.startsWith('sip:')) { const a = acctById(key.slice(4)); if (!a || !a.sip) return null; return { label: 'SIP · ' + a.name, a: +a.sip.amt || 0 }; }
+  if (key.startsWith('emi:')) { const a = acctById(key.slice(4)); if (!a || !+a.emi) return null; return { label: 'EMI · ' + a.name, a: +a.emi || 0 }; }
+  return null;
+}
+function monthOverrides(c, onlyKey) {
+  const out = [];
+  all('planmonth').forEach(pm => {
+    if (!pm.month || pm.month < c.startMonth) return;
+    Object.entries(pm.items || {}).forEach(([key, o]) => {
+      if (!o || isBlank(o.a) || o.done || (onlyKey && key !== onlyKey)) return;
+      const R = recurOfKey(key, pm.month); if (!R) return;
+      out.push({ ym: pm.month, key, label: R.label, own: +o.a, rec: R.a, diff: Math.abs(+o.a - R.a) >= 0.5, pm });
+    });
+  });
+  return out.sort((a, b) => a.label.localeCompare(b.label) || a.ym.localeCompare(b.ym));
+}
+function overrideSheet(onlyKey) {
+  const c = planCfg(), L = monthOverrides(c, onlyKey);
+  if (!L.length) { toast('No month has its own amount.'); return; }
+  const by = {}; L.forEach(x => { (by[x.key] = by[x.key] || []).push(x); });
+  const html = `<p class="hint" style="margin:0 0 10px">These months use an amount typed for that month only. It replaces the recurring amount there — so later raises or changes in Recurring do not reach them. Clearing makes those months follow Recurring again. Months already ticked in a check-up are not listed.</p>
+    ${Object.entries(by).map(([key, xs]) => { const nd = xs.filter(x => x.diff).length;
+      return `<div class="group" style="padding:10px 12px;margin-bottom:10px"><label class="switch-row" style="padding:0"><span><b>${esc(xs[0].label)}</b><small>${xs.length} month${xs.length > 1 ? 's' : ''} · ${nd ? nd + ' differ from Recurring' : 'same as Recurring now, but will not follow later changes'}</small></span><input type="checkbox" class="sw" data-ovk="${esc(key)}" checked></label>
+        <div class="tw"><table class="pt"><thead><tr><th>Month</th><th>This month only</th><th>Recurring</th></tr></thead><tbody>${xs.map(x => `<tr class="${x.diff ? 'hl' : ''}"><td>${monthShort(x.ym)}</td><td>${rs(x.own)}</td><td>${rs(x.rec)}${x.diff ? ' <span class="tag warn">differs</span>' : ''}</td></tr>`).join('')}</tbody></table></div></div>`; }).join('')}`;
+  planSheet('Amounts for one month only', html, () => {
+    const keys = $$('[data-ovk]', $('pshBody')).filter(b => b.checked).map(b => b.dataset.ovk);
+    if (!keys.length) { planMsg('Tick at least one item to clear.', true); return false; }
+    const pms = new Map(); L.filter(x => keys.includes(x.key)).forEach(x => { if (!pms.has(x.pm.id)) pms.set(x.pm.id, JSON.parse(JSON.stringify(x.pm.items || {}))); });
+    let n = 0;
+    L.filter(x => keys.includes(x.key)).forEach(x => { const o = { ...(x.pm.items[x.key] || {}) }; delete o.a; const items = { ...(x.pm.items || {}) }; if (Object.keys(o).length) items[x.key] = o; else delete items[x.key]; x.pm.items = items; n++; });
+    pms.forEach((_, id) => put(records[id], { render: false }));
+    scheduleRender();
+    toast(`Cleared ${n} month${n > 1 ? 's' : ''} — they follow Recurring now.`, 'Undo', () => { pms.forEach((items, id) => { records[id].items = items; put(records[id], { render: false }); }); scheduleRender(); }, 8000);
+    return true;
+  }, 'Clear ticked');
+}
+/* v2.26.1: each real udhaar given to a person uses up the nearest planned "Udhaar give" to them within 2 months either side
+   (whatever the amounts), so giving earlier, later, more or less never counts twice. Overflow from settling does not count. */
+const udhIsExtra = e => !!(e && (e.origin || /^Extra when settling/.test(e.desc || '')));
+function udhGiveMatches(gives, toMonth) {
+  const done = new Set(), byP = {};
+  gives.forEach(r => { const k = udhKey(r.who); (byP[k] = byP[k] || []).push(r); });
+  Object.keys(byP).forEach(k => {
+    const occ = [], lim = monthAdd(toMonth, 2);
+    byP[k].forEach(r => { for (let ym = r.start, i = 0; ym && ym <= lim && (!r.end || ym <= r.end) && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) if (recurDue(r, ym)) occ.push({ key: r.id + '|' + ym, ym }); });
+    if (!occ.length) return;
+    all('fin').filter(e => e.kind === 'lent' && e.date && udhKey(e.who) === k && !udhIsExtra(e)).map(e => e.date.slice(0, 7)).sort().forEach(m => {
+      let best = null, bd = 3;
+      occ.forEach(o => { if (done.has(o.key)) return; const dd = Math.abs(monthsBetween(m, o.ym)); if (dd <= 2 && (dd < bd || (dd === bd && o.ym < best.ym))) { bd = dd; best = o; } });
+      if (best) done.add(best.key);
+    });
+  });
+  return done;
 }
 /* v2.26: how the plan pays each credit card. Default: the whole bill from the default account. Off when a recurring transfer into the card exists. */
 function cardBillPlans(c) {
@@ -4148,7 +4278,7 @@ function renderAccts() {
     <div class="plan-sec"><h3 class="plan-h">Recurring</h3>
       ${recurs().length ? recurGroupedHtml(r => `<button class="row plan-li" data-recur="${r.id}"><div class="row-main"><div class="row-title">${esc(r.name)}${r.budget || r.kind === 'udhgive' ? ' <span class="pill">estimate</span>' : ''}</div>
         <div class="row-sub">${dupEmiOf(r) ? `<span class="st st-late">same as ${esc(dupEmiOf(r).name)} EMI — counted twice</span>` : ''}<span>${r.kind === 'udhgive' ? 'udhaar to ' + esc(r.who || '?') + ' from ' + esc(acctName(r.from)) + ' · estimate' : r.kind === 'udhback' ? 'udhaar back from ' + esc(r.who || '?') + ' into ' + esc(acctName(r.to)) + ' · ' + esc(rs(udhOwedBy(r.who))) + ' still owed' : r.kind === 'income' ? 'into ' + esc(acctName(r.to)) : r.kind === 'expense' ? 'from ' + esc(acctName(r.from)) : esc(acctName(r.from)) + ' → ' + esc(acctName(r.to))}</span>
-        <span>${['', 'monthly', '', 'every 3 months', '', '', 'every 6 months', '', '', '', '', '', 'yearly'][+r.every || 1] || 'every ' + r.every + ' months'}</span><span>${monthShort(r.start)}${r.end ? ' – ' + monthShort(r.end) : ' onwards'}</span>${(r.steps || []).length ? `<span>then ${esc(recurStepsText(r))}</span>` : ''}</div></div>
+        <span>${r.end && r.end === r.start ? 'once' : ['', 'monthly', '', 'every 3 months', '', '', 'every 6 months', '', '', '', '', '', 'yearly'][+r.every || 1] || 'every ' + r.every + ' months'}</span><span>${r.end && r.end === r.start ? monthShort(r.start) : monthShort(r.start) + (r.end ? ' – ' + monthShort(r.end) : ' onwards')}</span>${(r.steps || []).length ? `<span>then ${esc(recurStepsText(r))}</span>` : ''}</div></div>
         <span class="amt ${r.kind === 'income' || r.kind === 'udhback' ? 'pos' : r.kind === 'expense' || r.kind === 'udhgive' ? 'neg' : ''}">${rs(recurAmt(r, cur < r.start ? r.start : cur))}</span></button>`, cur) : '<p class="hint" style="margin:0 4px 8px">Nothing yet. Add salary, rent, household spending, monthly transfers or the credit-card bill.</p>'}
       <button class="btn ghost small" id="acRecAdd">＋ Add recurring item</button>
       <p class="hint">SIPs and EMIs are set inside their mutual fund and loan accounts. "Estimate" items (like household spending) are replaced by what you actually spend in the Ledger.</p></div>`;
@@ -4189,7 +4319,8 @@ function stmtFlowLine(f) {
   if (f.cat === 'exp') return { ...base, label: e.planRef && desc ? desc : e.category === 'Investment' ? 'Investment' + (desc ? ' · ' + desc : '') : e.category ? 'Spending: ' + e.category : 'Spending: other' };
   if (f.cat === 'out') { const T = acctById(e.to); return { ...base, label: e.planRef && desc ? stmtXferLabel(desc, T, '→') : 'To ' + (T ? T.name : '—'), peer: e.to || null }; }
   if (f.cat === 'in') { const F = acctById(e.acct); return { ...base, label: e.planRef && desc ? stmtXferLabel(desc, F, '←') : 'From ' + (F ? F.name : '—'), peer: e.acct || null }; }
-  if (f.cat === 'udh') return { ...base, label: (String(e.who || '').trim() || '?') + ' (udhaar)', grp: 'udh' };
+  if (f.cat === 'udh') { const who = String(e.who || '').trim() || '?';   // v2.26.1: one name per stream, same as the plan's
+    return { ...base, label: e.kind === 'lent' ? (f.amt < 0 ? `Udhaar to ${who}` : `${who} (udhaar back)`) : (f.amt > 0 ? `Borrowed from ${who}` : `Paid back to ${who}`), grp: 'udh' }; }
   return { ...base, label: desc || 'Other' };
 }
 const Stmt = { acct: null, from: null, to: null, focus: null, person: '' };
@@ -4512,14 +4643,15 @@ function recurSheet(id, preset) {
       <p class="hint" style="margin:4px 0 0">Each instalment you tick in the check-up is recorded as money paid back in Udhaar: the account goes up and what they owe goes down. It is not counted as income. In the plan, instalments continue as long as they owe — including udhaar you plan to give them (Udhaar give).</p></div>
     <div class="field" id="rcGiveW"><label>Udhaar to (person)</label><input id="rcGiveWho" list="peopleDl" value="${esc(r.kind === 'udhgive' ? r.who || '' : '')}" placeholder="e.g. X" autocomplete="off">
       <p class="hint" style="margin:4px 0 0"><b>An estimate for the plan only.</b> In the months set here the plan takes the amount out of the account and adds it to what this person owes, so their Udhaar back instalments can carry on. Nothing is written to the Ledger: when you really give the money, add it in Udhaar as usual — in the current month that replaces the estimate.</p></div>
-    <div class="grid2"><div class="field"><label>Amount ₹</label>${amtIn('rcAmt', r.amt)}</div><div class="field"><label>How often</label><select id="rcEvery">${[[1, 'Every month'], [2, 'Every 2 months'], [3, 'Every 3 months'], [6, 'Every 6 months'], [12, 'Every year']].map(([v, l]) => `<option value="${v}"${+r.every === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div></div>
+    <div class="grid2"><div class="field"><label>Amount ₹</label>${amtIn('rcAmt', r.amt)}</div><div class="field"><label>How often</label><select id="rcEvery">${(() => { const once = !!(id && r.start && r.end === r.start); return [[1, 'Every month'], [2, 'Every 2 months'], [3, 'Every 3 months'], [6, 'Every 6 months'], [12, 'Every year']].map(([v, l]) => `<option value="${v}"${!once && +r.every === v ? ' selected' : ''}>${l}</option>`).join('') + `<option value="once"${once ? ' selected' : ''}>Once (one month only)</option>`; })()}</select></div></div>
     <div class="grid2"><div class="field" id="rcFromW"><label>From account</label><select id="rcFrom">${acctOptions(r.from)}</select></div><div class="field" id="rcToW"><label>Into account</label><select id="rcTo">${acctOptions(r.to)}</select></div></div>
-    <div class="grid2"><div class="field"><label>First month</label>${monthIn('rcStart', r.start)}</div><div class="field"><label>Last month (optional)</label>${monthIn('rcEnd', r.end)}</div></div>
+    <div class="grid2"><div class="field"><label id="rcStartLbl">First month</label>${monthIn('rcStart', r.start)}</div><div class="field" id="rcEndW"><label>Last month (optional)</label>${monthIn('rcEnd', r.end)}</div></div>
     <div class="group" id="rcBudgetW"><label class="switch-row"><span>Estimate only<small>For day-to-day spending: the Ledger replaces it as you spend. Can't be ticked.</small></span><input type="checkbox" class="sw" id="rcBudget"${r.budget ? ' checked' : ''}></label></div>
     <div class="group" id="rcAutoW"><label class="switch-row"><span>Auto-record each month<small>Written into the Ledger by itself on the chosen day, as if you ticked it. Untick it in that month's check-up if it did not happen.</small></span><input type="checkbox" class="sw" id="rcAuto"${r.auto ? ' checked' : ''}></label>
       <div class="set-row" id="rcDayW">On day<input id="rcDay" inputmode="numeric" value="${esc(String(r.day || 1))}" style="width:70px;text-align:right" aria-label="Day of month"></div></div>
     <div class="group" id="rcRemW"><label class="switch-row"><span>Remind me in Dates<small>For premiums, renewals and fees: the next due date goes into Dates (no amount).</small></span><input type="checkbox" class="sw" id="rcRemind"${r.remind ? ' checked' : ''}></label>
       <div class="set-row" id="rcRemDW"><span>Next due date</span><input type="date" id="rcRemDate" value="${esc(r.remindDate || '')}" style="width:auto;margin-left:auto" aria-label="Next due date"></div></div>
+    ${(() => { const n = id ? monthOverrides(c, 'r:' + id).length : 0; return n ? `<p class="hint" style="margin:0 4px 10px"><b>${n} month${n > 1 ? 's have' : ' has'} an amount set for that month only</b> — those months ignore the amounts here. <button class="linkbtn" id="rcOvr" style="display:inline;padding:0">Review ›</button></p>` : ''; })()}
     <h4 class="plan-sub">Amount changes from a month onwards</h4>
     <div id="rcSteps">${(r.steps || []).map(monthRow).join('')}</div>
     <button class="btn ghost small" id="rcStepAdd">＋ Add a change (e.g. raise)</button>
@@ -4527,8 +4659,10 @@ function recurSheet(id, preset) {
     ${id ? '<button class="btn danger block" id="rcDel" style="margin-top:12px">Delete recurring item</button>' : ''}`;
   planSheet(id ? 'Recurring item' : 'New recurring item', html, () => {
     try {
-      const name = $('rcName').value.trim(); if (!name) throw new Error('Give it a name.');
-      const kind = $('rcKind').querySelector('.on').dataset.k, start = $('rcStart').value, end = $('rcEnd').value || null;
+      const kind = $('rcKind').querySelector('.on').dataset.k, once = $('rcEvery').value === 'once', start = $('rcStart').value, end = once ? start : $('rcEnd').value || null;
+      let name = $('rcName').value.trim();
+      if (!name && kind === 'udhgive' && $('rcGiveWho').value.trim()) name = 'Udhaar to ' + $('rcGiveWho').value.trim().replace(/\s+/g, ' ');   // v2.26.1
+      if (!name) throw new Error('Give it a name.');
       if (!ymOk(start)) throw new Error('Pick the first month.'); if (end && end < start) throw new Error('Last month is before the first.');
       const from = $('rcFrom').value, to = $('rcTo').value;
       if (kind === 'transfer' && from === to) throw new Error('From and Into must be different accounts.');
@@ -4543,7 +4677,7 @@ function recurSheet(id, preset) {
       const autoFrom = auto ? (rec_autoFrom(id) || isoMonth(new Date())) : null;
       const remind = $('rcRemind').checked, remindDate = $('rcRemDate').value;
       if (remind && !ISO_DATE_RX.test(remindDate)) throw new Error('Pick the next due date for the reminder.');
-      const draft = { remind, remindDate: remind ? remindDate : null, auto, autoFrom, day, who, steps, name, kind, amt: readAmt('rcAmt', 'Amount', true), every: +$('rcEvery').value, start, end, from: kind === 'income' || kind === 'udhback' ? null : from, to: kind === 'expense' || kind === 'udhgive' ? null : to, budget: kind === 'expense' && $('rcBudget').checked };
+      const draft = { remind, remindDate: remind ? remindDate : null, auto, autoFrom, day, who, steps, name, kind, amt: readAmt('rcAmt', 'Amount', true), every: once ? 1 : +$('rcEvery').value, start, end, from: kind === 'income' || kind === 'udhback' ? null : from, to: kind === 'expense' || kind === 'udhgive' ? null : to, budget: kind === 'expense' && $('rcBudget').checked };
       const dup = dupEmiOf(draft);
       if (dup && !Plan.dupOk) { Plan.dupOk = true; throw new Error(`This looks like the EMI already set inside the "${dup.name}" account (${rs(dup.emi)} from ${acctName(dup.payFrom)}). Saving it would count the EMI twice. Tap Save again only if this is a different payment.`); }
       Plan.dupOk = false;
@@ -4554,13 +4688,14 @@ function recurSheet(id, preset) {
       return true;
     } catch (e) { planMsg(e.message, true); return false; }
   });
-  const sync = () => { const k = $('rcKind').querySelector('.on').dataset.k; $('rcDayW').classList.toggle('hidden', !$('rcAuto').checked); $('rcRemDW').classList.toggle('hidden', !$('rcRemind').checked); $('rcFromW').classList.toggle('hidden', k === 'income' || k === 'udhback'); $('rcWhoW').classList.toggle('hidden', k !== 'udhback'); $('rcGiveW').classList.toggle('hidden', k !== 'udhgive'); $('rcAutoW').classList.toggle('hidden', k === 'udhgive'); $('rcToW').classList.toggle('hidden', k === 'expense' || k === 'udhgive'); $('rcBudgetW').classList.toggle('hidden', k !== 'expense'); };
+  const sync = () => { const k = $('rcKind').querySelector('.on').dataset.k, once = $('rcEvery').value === 'once'; $('rcEndW').classList.toggle('hidden', once); $('rcStartLbl').textContent = once ? 'Month' : 'First month'; $('rcName').placeholder = k === 'udhgive' ? 'Optional — e.g. Udhaar to X' : "e.g. Rahul's salary"; $('rcDayW').classList.toggle('hidden', !$('rcAuto').checked); $('rcRemDW').classList.toggle('hidden', !$('rcRemind').checked); $('rcFromW').classList.toggle('hidden', k === 'income' || k === 'udhback'); $('rcWhoW').classList.toggle('hidden', k !== 'udhback'); $('rcGiveW').classList.toggle('hidden', k !== 'udhgive'); $('rcAutoW').classList.toggle('hidden', k === 'udhgive'); $('rcToW').classList.toggle('hidden', k === 'expense' || k === 'udhgive'); $('rcBudgetW').classList.toggle('hidden', k !== 'expense'); };
   $$('#rcKind button').forEach(b => b.addEventListener('click', () => { $$('#rcKind button').forEach(x => x.classList.toggle('on', x === b)); sync(); }));
-  $('rcAuto').addEventListener('change', sync); $('rcRemind').addEventListener('change', sync);
+  $('rcAuto').addEventListener('change', sync); $('rcRemind').addEventListener('change', sync); $('rcEvery').addEventListener('change', sync);
   $$('[data-pre]', $('pshBody')).forEach(b => b.addEventListener('click', () => { const p = presets[+b.dataset.pre][1]; Plan.save = null; recurSheet(null, p); }));
   sync();
   wireMonthRows('rcSteps');
   $('rcStepAdd').addEventListener('click', () => { $('rcSteps').insertAdjacentHTML('beforeend', monthRow({})); wireMonthRows('rcSteps'); });
+  if ($('rcOvr')) $('rcOvr').addEventListener('click', () => overrideSheet('r:' + id));
   if (id) $('rcDel').addEventListener('click', () => { Sheets.close('shPlan', true); deleteWithUndo(id, r.name); });
 }
 
@@ -4866,6 +5001,7 @@ function renderPlan() {
   body.innerHTML = `<div class="plan-until"><label for="plUntil">Show plan until</label><select id="plUntil"><option value=""${c.showUntil ? '' : ' selected'}>Automatic</option>${untilOpts}</select>
       ${hidden ? `<span class="hint" style="margin:0">${hidden} planned month(s) lie beyond this.</span>` : ''}</div>
     ${pend.length ? `<button class="plan-banner" id="plPend"><b>${pend.length} month${pend.length > 1 ? 's need' : ' needs'} a check-up.</b> Start with ${monthLong(pend[0])}.</button>` : ''}
+    ${(() => { const ov = monthOverrides(c).filter(x => x.diff); return ov.length ? `<button class="plan-banner" id="plOvr"><b>${ov.length} month${ov.length > 1 ? 's use' : ' uses'} an amount set for that month only</b>, different from Recurring (${esc([...new Set(ov.map(x => x.label))].slice(0, 3).join(', '))}). Review ›</button>` : ''; })()}
     <div class="group plan-card plan-hero"><div class="plan-hero-top"><span class="eyebrow">Money you'll have at end of</span><select id="plYear" aria-label="Year">${years.map(y => `<option value="${y.k}"${y.k === Plan.year ? ' selected' : ''}>${y.label}</option>`).join('')}</select><span class="muted">${monthLong(L.ym)}</span></div>
       <div class="plan-big ${L.worth < 0 ? 'neg' : ''}">${rsShort(L.worth)}</div>
       <div class="plan-split"><span>Bank & cash <b>${rsShort(L.liquid)}</b></span><span>Investments <b>${rsShort(L.invest)}</b>${accts().some(a => isInvest(a.kind) && +a.ret) ? '<i class="est">estimate</i>' : ''}</span>${L.cardDue ? `<span>Card dues <b>−${rsShort(L.cardDue)}</b></span>` : ''}${L.udh ? `<span>Udhaar <b>${rsShort(L.udh)}</b></span>` : ''}${L.loanBal ? `<span>Loan balance <b>${rsShort(L.loanBal)}</b></span>` : ''}</div>
@@ -4897,6 +5033,7 @@ function renderPlan() {
   $('plYear').addEventListener('change', e => { Plan.year = +e.target.value; renderPlan(); });
   $('plUntil').addEventListener('change', e => { c.showUntil = e.target.value || null; put(c, { render: false }); Plan.year = null; renderPlan(); });
   if ($('plPend')) $('plPend').addEventListener('click', () => planMonthSheet(pend[0]));
+  if ($('plOvr')) $('plOvr').addEventListener('click', () => overrideSheet());   // v2.26.1
   $$('[data-year]', body).forEach(tr => tr.addEventListener('click', () => { Plan.year = +tr.dataset.year; renderPlan(); }));
   $$('[data-ym]', body).forEach(tr => { const go = () => planMonthSheet(tr.dataset.ym); tr.addEventListener('click', go); tr.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }); });
   $('plGoalAdd').addEventListener('click', () => planGoalSheet(null));
@@ -9439,11 +9576,11 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
-  { t: '<b>Udhaar give (estimate)</b>: a new recurring type in Accounts → Recurring. Plan the udhaar you expect to give someone (e.g. every few months): the plan takes it out of the account and adds it to what they owe, so their <b>Udhaar back</b> instalments carry on instead of stopping when today’s udhaar runs out. Nothing goes into the Ledger.', priv: true },
-  { t: '<b>Credit cards in the plan</b>: from this month on, the plan pays each card’s bill (whole bill by default, or a fixed amount, or not at all) from the account you pick in the card’s settings. Past months are not changed; a recurring card-bill transfer replaces it.', priv: true },
-  { t: '<b>Udhaar statement</b>: Plan → “Accounts at end of …” now has <b>Udhaar (net)</b> — month by month, what is given and paid back, for everyone or one person. Also from a person’s screen in Udhaar (📒 Month by month).', priv: true },
-  { t: '<b>⤓ Export Excel</b> on the statement screen: a Summary plus one sheet per account and one for Udhaar, for the period chosen.', priv: true },
-  { t: '<b>Into investments</b> (Ledger) now counts transfers into mutual fund accounts too, and FDs if you switch it on in the account; hidden when there is nothing. The net worth graph has been removed from Plan, and “Accounts at end of …” and Recurring categories now start folded.', priv: true }
+  { t: '<b>📒 Full ledger</b> for each person in Udhaar: every udhaar and payment by date with one running balance (you gave · you got · balance). A payment that went over what was owed shows as one payment — the part that settled and the extra.', priv: true },
+  { t: 'An <b>“Extra when settling”</b> entry now shows how it started (the original udhaar and its payments), and the original shows where the extra went. Works for older entries too.', priv: true },
+  { t: '<b>Udhaar give</b>: real udhaar you give the person now uses up the nearest planned give within 2 months either side — so giving earlier, later, more or less is never counted twice. Name can be left blank (it becomes “Udhaar to …”).', priv: true },
+  { t: '<b>Once</b> in “How often” for recurring items — for a one-off in a single month.', priv: true },
+  { t: '<b>Amounts set for one month only</b>: Plan now warns when some months use an amount typed for that month (they ignore raises in Recurring), and lets you review and clear them. Statements name udhaar the same way everywhere (“X (udhaar back)”, “Udhaar to X”).', priv: true }
 ];
 function showWhatsNew() {
   const L = WHATS_NEW.filter(x => !x.priv || finUnlocked());
