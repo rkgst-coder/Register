@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.26.1';
+const APP_VERSION = '2.27.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -524,7 +524,7 @@ async function unsealWith(key, s, noCheck) {
 }
 
 const finConfigured = () => !!(records[FINKEY_ID] && !records[FINKEY_ID].deleted);
-const finUnlocked = () => !!Fin.key;
+const finUnlocked = () => !!Fin.key && Fin.scope !== 'docs';   // v2.27: a documents-only unlock never counts as Money being open
 
 async function setupFinance(code) {
   const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
@@ -592,7 +592,7 @@ async function changeFinanceCode(newCode) {
 function lockFinance(silent) {
   if (!Fin.key) return;
   if (typeof beforeFinanceLock === 'function') beforeFinanceLock();
-  Fin.key = null; Fin.salt = null; Fin.kid = null; Fin.iters = FIN_ITERS; Fin.lockedOut = []; Fin.tampered = []; Fin.tamperedRows = null; keyCache.clear();
+  Fin.key = null; Fin.salt = null; Fin.kid = null; Fin.iters = FIN_ITERS; Fin.lockedOut = []; Fin.tampered = []; Fin.tamperedRows = null; keyCache.clear(); Fin.scope = null; Fin.wantScope = null; clearTimeout(DocUnlock.t);
   try { const pa = document.getElementById('printArea'); if (pa) pa.innerHTML = ''; } catch (e) {}
   for (const id in records) if (SEALED_TYPES.has(records[id].type)) delete records[id];
   storeVer++;
@@ -1767,12 +1767,13 @@ function previewNote(id) {
   $('nvHead').textContent = n.type === 'snote' ? '🔒 Private note' : (noteFolder(n) || 'Note');
   $('nvMeta').textContent = [n.pinned ? '📌 Pinned' : '', 'Edited ' + timeAgo(n.updatedAt), wordStats(n.text).words + ' words'].filter(Boolean).join(' · ');
   $('nvTitle').textContent = n.title || 'Untitled';
-  $('nvBody').innerHTML = n.text ? md(n.text) : '<p class="muted"><i>Empty note — tap Edit to start writing.</i></p>';
+  $('nvBody').innerHTML = (n.text ? md(n.text) : (n.tables || []).length ? '' : '<p class="muted"><i>Empty note — tap Edit to start writing.</i></p>') + (n.type === 'snote' && typeof tbHtml === 'function' ? tbHtml(n) : '');
+  if (n.type === 'snote' && typeof tbWire === 'function') tbWire($('nvBody'), n);
   const imgs = (n.imgs || []).map(i => records[i]).filter(b => b && !b.deleted);
   $('nvImgs').innerHTML = imgs.map(b => `<div class="img"><img data-blob="${b.id}" alt="loading"></div>`).join('') +
     `<div class="action-grid" style="width:100%">
       <button data-na="edit"><b>✎</b>Edit</button><button data-na="pin"><b>📌</b>${n.pinned ? 'Unpin' : 'Pin'}</button>
-      <button data-na="share"><b>⤴︎</b>Share</button><button data-na="del" class="danger"><b>🗑</b>Delete</button></div>`;
+      ${n.type === 'snote' ? '<button data-na="tbl"><b>▦</b>Add table</button>' : ''}<button data-na="share"><b>⤴︎</b>Share</button><button data-na="del" class="danger"><b>🗑</b>Delete</button></div>`;
   hydrateImgs($('nvImgs'));
   $$('img[data-blob]', $('nvImgs')).forEach(im => im.addEventListener('click', () => im.src && openLightbox(im.src)));
   $$('[data-na]', $('nvImgs')).forEach(b => b.addEventListener('click', () => {
@@ -1780,6 +1781,7 @@ function previewNote(id) {
     if (a === 'edit') { Sheets.close('shNoteView', true); openNoteEditor(id); }
     else if (a === 'pin') { nn.pinned = !nn.pinned; put(nn); previewNote(id); }
     else if (a === 'share') shareNote(nn);
+    else if (a === 'tbl') openTable(id, null);
     else if (a === 'del') { Sheets.close('shNoteView', true); deleteNote(id); }
   }));
   // tick checklist items straight from the reading view
@@ -2265,6 +2267,10 @@ function renderBills() {
   });
 }
 $('billPrev').addEventListener('click', () => { billMonth = monthAdd(billMonth, -1); renderBills(); });
+/* v2.27: tapping a month name opens the month wheel */
+function monthJump(id, get, set) { const el = $(id); if (!el) return; const sync = () => { el.value = get(); };
+  el.addEventListener('focus', sync); el.addEventListener('pointerdown', sync); el.addEventListener('change', () => { if (ymOk(el.value)) set(el.value); }); }
+monthJump('billMonthPick', () => billMonth, v => { billMonth = v; renderBills(); });
 $('billNext').addEventListener('click', () => { billMonth = monthAdd(billMonth, 1); renderBills(); });
 
 let payTarget = null;
@@ -2416,7 +2422,8 @@ function renderDocsBase() {
   $('docChips').innerHTML = ''; $('docChips').classList.add('hidden');
   const allYears = [...new Set(docs.flatMap(docYears))].sort().reverse();
   if (docYear !== 'All' && !allYears.includes(docYear)) docYear = 'All';
-  $('docYearBar').innerHTML = allYears.length ? `<div class="doc-yearbar"><span class="muted">Year</span><select id="docYearSel" aria-label="Financial year"><option value="All">All years</option>${allYears.map(y => `<option value="${esc(y)}"${y === docYear ? ' selected' : ''}>FY ${esc(y)}</option>`).join('')}</select></div>` : '';
+  $('docYearBar').innerHTML = '';   // v2.27: the year picker sits in the top row
+  { const slot = $('docYearSlot'); if (slot) slot.innerHTML = allYears.length ? `<select id="docYearSel" aria-label="Financial year"><option value="All">All years</option>${allYears.map(y => `<option value="${esc(y)}"${y === docYear ? ' selected' : ''}>FY ${esc(y)}</option>`).join('')}</select>` : ''; }
   if ($('docYearSel')) $('docYearSel').addEventListener('change', e => { docYear = e.target.value; renderDocs(); });
   const shown = docs.filter(d => docYear === 'All' || docYears(d).includes(docYear));
   const people = orderPeople([...shown.flatMap(docOwners), ...(docYear === 'All' ? docCfgPeople() : [])]);
@@ -2777,7 +2784,7 @@ $('doFileIn').addEventListener('change', e => { const files = [...e.target.files
 $('doLock').addEventListener('change', () => {
   const d = records[editDocId]; if (!d) return;
   const want = $('doLock').checked;
-  if (!Fin.key) { $('doLock').checked = !want; toast('Unlock first to change this.'); return; }
+  if (!Fin.key) { $('doLock').checked = !want; if (finConfigured()) needUnlock(() => { if (editDocId === d.id && Sheets.isOpen('shDoc')) { $('doLock').checked = want; $('doLock').dispatchEvent(new Event('change')); } }, 'docs'); else toast('Set up the private section first — tap “Register” three times.'); return; }   // v2.27: asks for the code here (documents only)
   d.lockFiles = want; put(d, { render: false });
   sealDocNumber(d).then(ch => { if (ch) put(d, { render: false }); });
   convertDocFiles(d);
@@ -2920,7 +2927,7 @@ async function renderPdfInto(box, blob, password) {
   await batch();
 }
 $('dvEdit').addEventListener('click', () => { const id = viewDocId; Sheets.close('shDocView', true); openDoc(id); });
-$('dvUnlock').addEventListener('click', () => { docReturn = viewDocId; openVault('unlock'); });
+$('dvUnlock').addEventListener('click', () => { docReturn = viewDocId; Fin.wantScope = 'docs'; openVault('unlock'); });   // v2.27: documents only
 $('dvShare').addEventListener('click', () => openDocShare());
 
 /* ---------- share (optional watermark) ---------- */
@@ -3263,6 +3270,7 @@ function initFinFilter() {
 function clearFinFilter() { $('finQ').value = ''; $('finCatF').value = ''; $('finKindF').value = ''; $('finAllM').checked = false; if ($('finFilterDot')) $('finFilterDot').classList.add('hidden'); }
 initFinFilter();
 $('finPrev').addEventListener('click', () => { finMonth = monthAdd(finMonth, -1); renderLedger(); });
+monthJump('finMonthPick', () => finMonth, v => { finMonth = v; renderLedger(); });   // v2.27
 $('finNext').addEventListener('click', () => { finMonth = monthAdd(finMonth, 1); renderLedger(); });
 
 /* v2.25: Udhaar in three levels — people (net) → one person's entries (Settle here) → one entry's ledger */
@@ -3526,6 +3534,7 @@ function renderBudgets() {
   }).join('') : '<div class="empty">No spending recorded this month.</div>';
 }
 $('budPrev').addEventListener('click', () => { budMonth = monthAdd(budMonth, -1); renderBudgets(); });
+monthJump('budMonthPick', () => budMonth, v => { budMonth = v; renderBudgets(); });
 $('budNext').addEventListener('click', () => { budMonth = monthAdd(budMonth, 1); renderBudgets(); });
 $('budSetBtn').addEventListener('click', () => {
   chipGroup($('bgCat'), FIN_CATS.filter(c => c !== 'Salary'), 'Household', v => { const b = all('budget').find(x => x.category === v); $('bgAmt').value = b ? b.amount : ''; });
@@ -4748,6 +4757,7 @@ function setCheckupReminder(on) {
 }
 /* Called by the app each time the private section is unlocked. */
 function finAfterUnlock() {
+  try { const moved = vaultToNote(); if (moved) setTimeout(() => toast(`${moved} card & account detail${moved > 1 ? 's' : ''} moved to PNote → “Cards & accounts” (the old copies are in Recently deleted).`), 1500); } catch (e) { RLOG.error('vault move', e); }   // v2.27
   try {
     cleanZeroTicks();
     const go = () => { const n = autoRecord(); if (n) { toast(`${n} recurring entr${n > 1 ? 'ies' : 'y'} recorded automatically.`); scheduleRender(); } };
@@ -4795,7 +4805,9 @@ function fixWhat(c, ym, a, diff, rowEl) {
       ? `<option value="lend">I lent to someone (new udhaar)</option>${borP.map(([n, v]) => `<option value="repay|${esc(n)}">I repaid ${esc(n)} (I owe ${rs(v)})</option>`).join('')}`
       : `${lentP.map(([n, v]) => `<option value="back|${esc(n)}">${esc(n)} paid me back (owes ${rs(v)})</option>`).join('')}<option value="borrow">I borrowed from someone (new udhaar)</option>`}</select>
       <input id="fxWho" placeholder="Name" list="peopleDl"></div>
-    ${opt('open', 'The opening balance was wrong', 'Corrects the opening balance; no income or spending')}
+    ${opt('split', 'More than one thing', `Split ${rs(amt)} into parts — e.g. spent ${rs(amt + 50)} and got ₹50 interest`)}
+    <div class="fix-sub" data-for="split"><div id="fxParts"></div><button class="linkbtn" id="fxAddPart">＋ Add a part</button><div class="hint" id="fxLeft" style="margin:4px 0 0"></div></div>
+    ${opt('open', 'The opening balance was wrong', 'Changes the balance on ' + fmtDate(monthEnd(monthAdd(c.startMonth, -1)), true) + ' — every month shifts. Only if the starting figure was typed wrong.')}
     ${opt('unk', "Don't know", `Recorded as unrecorded ${out ? 'spending' : 'income'} (category Adjustment)`)}
     <div class="btn-row" style="margin-top:8px"><button class="btn small" id="fxOk">Record</button><button class="btn small ghost" id="fxCancel">Cancel</button></div>`;
   const old = $('fixBox'); if (old) old.remove();
@@ -4804,6 +4816,19 @@ function fixWhat(c, ym, a, diff, rowEl) {
     $$('.fix-sub', box).forEach(x => x.classList.toggle('hidden', x.dataset.for !== v));
     const u = $('fxUdh'); $('fxWho').classList.toggle('hidden', !(v === 'udh' && u && (u.value === 'lend' || u.value === 'borrow'))); };
   $$('input[name=fixWhat]', box).forEach(r => r.addEventListener('change', sync)); $('fxUdh').addEventListener('change', sync); sync();
+  // v2.27: split one difference into several entries
+  const partKinds = [['exp', 'Spending'], ['inc', 'Income'], ...(others.length ? [['xout', 'Moved to my account'], ['xin', 'Came from my account']] : [])];
+  const partRow = (k, v) => `<div class="fx-part"><select class="fxK">${partKinds.map(([x, l]) => `<option value="${x}"${x === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <input class="fxA" inputmode="decimal" placeholder="₹" value="${v || ''}"><select class="fxC">${FIN_CATS.map(x => `<option${x === (k === 'inc' ? 'Other' : 'Household') ? ' selected' : ''}>${x}</option>`).join('')}</select>
+      <select class="fxO hidden">${others.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><input class="fxD" placeholder="What (optional)"><button class="icon-btn fxX" aria-label="Remove part">✕</button></div>`;
+  const sgn = k => (k === 'inc' || k === 'xin') ? 1 : -1;
+  const parts = () => $$('.fx-part', box).map(r => ({ k: r.querySelector('.fxK').value, a: calcAmount(r.querySelector('.fxA').value), cat: r.querySelector('.fxC').value, o: r.querySelector('.fxO').value, d: r.querySelector('.fxD').value.trim(), r }));
+  const left = () => { const sum = parts().reduce((t, p) => t + (isNaN(p.a) ? 0 : sgn(p.k) * p.a), 0); return +(diff - sum).toFixed(2); };
+  const upd = () => { parts().forEach(p => { p.r.querySelector('.fxC').classList.toggle('hidden', p.k === 'xout' || p.k === 'xin'); p.r.querySelector('.fxO').classList.toggle('hidden', !(p.k === 'xout' || p.k === 'xin')); });
+    const l = left(); $('fxLeft').textContent = Math.abs(l) < 0.005 ? '✓ Fully explained' : `${rs(Math.abs(l))} still to explain (${l < 0 ? 'more going out' : 'more coming in'})`; $('fxLeft').className = 'hint ' + (Math.abs(l) < 0.005 ? 'pos' : ''); };
+  const wire = () => { $$('.fx-part', box).forEach(r => { r.querySelectorAll('select,input').forEach(x => { x.oninput = upd; x.onchange = upd; }); r.querySelector('.fxX').onclick = () => { r.remove(); upd(); }; }); upd(); };
+  $('fxParts').innerHTML = partRow(out ? 'exp' : 'inc', amt) + partRow(out ? 'inc' : 'exp', '');
+  $('fxAddPart').addEventListener('click', () => { $('fxParts').insertAdjacentHTML('beforeend', partRow('exp', '')); wire(); }); wire();
   box.querySelector('input[value=unk]').checked = true; sync();
   $('fxCancel').addEventListener('click', () => box.remove());
   $('fxOk').addEventListener('click', () => {
@@ -4817,6 +4842,14 @@ function fixWhat(c, ym, a, diff, rowEl) {
         if (!who) throw new Error('Type the name.');
         if (k === 'lend' || k === 'borrow') put({ ...base, id: uid('f'), desc: 'Udhaar (balance check)', amount: amt, kind: k === 'lend' ? 'lent' : 'borrowed', category: '', acct: a.id, who }, { render: false });
         else udhPayBack(k === 'back' ? 'lent' : 'borrowed', who, a.id, amt, date);
+      } else if (v === 'split') {
+        const P = parts().filter(p => !isNaN(p.a) && p.a > 0);
+        if (P.length < 1) throw new Error('Enter at least one part.');
+        if (Math.abs(left()) >= 0.005) throw new Error(`The parts must add up to ${out ? '−' : '+'}${rs(amt)}. ${rs(Math.abs(left()))} is still to explain.`);
+        P.forEach(p => {
+          if (p.k === 'exp' || p.k === 'inc') put({ ...base, id: uid('f'), desc: p.d || (p.k === 'exp' ? 'Spending (balance check)' : 'Income (balance check)'), amount: p.a, kind: p.k === 'exp' ? 'expense' : 'income', category: p.cat, acct: a.id }, { render: false });
+          else put({ ...base, id: uid('f'), desc: p.d || 'Transfer (balance check)', amount: p.a, kind: 'transfer', category: '', acct: p.k === 'xout' ? a.id : p.o, to: p.k === 'xout' ? p.o : a.id }, { render: false });
+        });
       } else if (v === 'open') { a.open = Math.round(((+a.open || 0) + (isLiab(a.kind) ? -diff : diff)) * 100) / 100; put(a, { render: false }); }
       else put({ ...base, id: uid('f'), desc: out ? 'Unrecorded spending (balance check)' : 'Unrecorded income (balance check)', amount: amt, kind: out ? 'expense' : 'income', category: 'Adjustment', acct: a.id }, { render: false });
     } catch (e) { planMsg(e.message, true); return; }
@@ -4867,7 +4900,7 @@ function planMonthSheet(ym) {
     const v = (a.values || []).find(x => x.month === ym);
     return `<div class="pl-row src" data-val="${a.id}"><span class="r-name">${esc(a.name)}<small class="dq-sub">value at month end</small></span>${amtIn('cv_' + a.id, v ? v.a : '', 'statement value')}</div>`;
   }).join('') : '';
-  const html = `<div class="month-nav" style="margin-bottom:10px"><button id="pmPrev" aria-label="Previous month">‹</button><b>${monthLong(ym)}</b><button id="pmNext" aria-label="Next month">›</button></div>
+  const html = `<div class="month-nav" style="margin-bottom:10px"><button id="pmPrev" aria-label="Previous month">‹</button><span class="mj"><b>${monthLong(ym)}</b><input type="month" class="mj-in" id="pmPick" value="${ym}" min="${c.startMonth}" aria-label="Pick a month"></span><button id="pmNext" aria-label="Next month">›</button></div>
     <p class="hint" style="margin:0 4px 6px">${ym < cur ? 'Monthly check-up: tick what actually came in and went out, correcting amounts if they differed. Each tick is written into the Ledger.' : ym === cur ? 'This month: tick items as they happen. Unticked items still count in the plan. The balance check opens after the month ends.' : 'Future month: change amounts for this month only. Ticking opens when the month arrives.'}</p>
     ${grp('Income', items.filter(i => i.kind === 'income'))}
     ${grp('Udhaar coming back', items.filter(i => i.kind === 'udhback'))}
@@ -4911,6 +4944,7 @@ function planMonthSheet(ym) {
   const go = d => { if (planMonthSave(ym, true) !== false) planMonthSheet(monthAdd(ym, d)); };
   $('pmPrev').addEventListener('click', () => { if (ym > c.startMonth) go(-1); else planMsg('This is the first month of the plan.', true); });
   $('pmNext').addEventListener('click', () => go(1));
+  $('pmPick').addEventListener('change', e => { const v = e.target.value; if (ymOk(v) && v !== ym) { if (v < c.startMonth) { planMsg('That is before the plan starts.', true); e.target.value = ym; return; } if (planMonthSave(ym, true) !== false) planMonthSheet(v); } });   // v2.27
 }
 function planMonthSave(ym, quiet) {
   const c = planCfg(), root = $('pshBody'); if (!root || !c) return true;
@@ -5007,6 +5041,7 @@ function renderPlan() {
       <div class="plan-split"><span>Bank & cash <b>${rsShort(L.liquid)}</b></span><span>Investments <b>${rsShort(L.invest)}</b>${accts().some(a => isInvest(a.kind) && +a.ret) ? '<i class="est">estimate</i>' : ''}</span>${L.cardDue ? `<span>Card dues <b>−${rsShort(L.cardDue)}</b></span>` : ''}${L.udh ? `<span>Udhaar <b>${rsShort(L.udh)}</b></span>` : ''}${L.loanBal ? `<span>Loan balance <b>${rsShort(L.loanBal)}</b></span>` : ''}</div>
       ${L.loanBal ? `<div class="hint" style="margin:4px 0 0">After loans: ${rsShort(L.afterLoans)}</div>` : ''}
 </div>
+    <button class="btn ghost block" id="plHold" style="margin:0 0 10px">👥 Who holds what</button>
     <details class="fold plan-acc"><summary>Accounts at end of ${Y.label}<span class="muted"> · statements</span></summary><div class="group">${
       accts(true).filter(a => !a.archived || Math.abs(L.accts[a.id] || 0) >= 0.5).map(a => { const v = L.accts[a.id] || 0, nm = L.neg.includes(a.id);
         return `<button class="row plan-li" data-plstmt="${a.id}"><div class="row-main"><div class="row-title">${esc(a.name)}</div><div class="row-sub"><span>${kindLabel(a.kind)}</span>${nm ? '<span class="st st-late">below ₹0</span>' : ''}</div></div><span class="amt ${v < 0 ? 'neg' : ''}">${rs(v)}</span><span class="chev" aria-hidden="true">›</span></button>`; }).join('')}
@@ -5021,12 +5056,15 @@ function renderPlan() {
       yrows.map(r => `<tr data-ym="${r.ym}" class="${r.cur ? 'hl' : ''}" tabindex="0"><td>${monthShort(r.ym)}</td><td>${r.inc ? rs(r.inc) : '–'}</td><td>${r.exp ? rs(r.exp) : '–'}</td><td class="${r.net < 0 ? 'neg' : 'pos'}">${rs(r.net)}</td><td>${r.invIn ? rs(r.invIn) : '–'}</td><td>${rs(r.worth)}</td><td>${status(r)}</td></tr>`).join('')}</tbody></table></div>
       <p class="hint">Tap a past month for its check-up, or any month to change amounts or add a one-off. "Money you have" = bank + cash + investments + udhaar net − card dues (udhaar at today's figure). Loans are shown separately.</p></div>
     <div class="plan-sec"><h3 class="plan-h">Goals</h3>${goals.length ? goals.map(g => {
-      const hit = rows.find(r => r.worth >= (+g.amt || 0)), pct = g.amt ? Math.max(0, Math.min(100, nowRow.worth / g.amt * 100)) : 0;
+      const own = goalMode(g) === 'own', nowB = own ? balancesOn(c, todayISO()).accts : null;   // v2.27
+      const nowV = own ? goalValue(g, null, nowB) : nowRow.worth, paid = own ? goalPaidTo(g) : 0;
+      const hit = rows.find(r => r.ym >= cur && goalValue(g, r) >= (+g.amt || 0)) || (nowV >= (+g.amt || 0) ? { ym: cur } : null), pct = g.amt ? Math.max(0, Math.min(100, nowV / g.amt * 100)) : 0;
       const st = !hit ? ['Not reached in plan', 'st-warn'] : hit.ym <= g.by ? ['On track', 'st-ok'] : ['Late', 'st-late'];
       const need = goalMonthly(g, rows, cur);
+      const from = own ? [goalLinked(g).map(acctName).join(' + '), paid ? 'paid ' + rsShort(paid) : ''].filter(Boolean).join(' · ') : 'all your money (not linked)';
       return `<button class="goal-row" data-goal="${g.id}"><div class="goal-top"><b>${esc(g.name)}</b><span class="st ${st[1]}">${st[0]}</span></div><div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%"></div></div>
-        <div class="hint" style="margin:4px 0 0">${rsShort(nowRow.worth)} of ${rsShort(g.amt)} now (${pct.toFixed(0)}%) · wanted by ${monthLong(g.by)} · plan reaches it ${hit ? 'in ' + monthLong(hit.ym) : 'after ' + monthLong(rows[rows.length - 1].ym)}</div>${need}</button>`; }).join('')
-      + '<p class="hint">Goals are checked against savings (loans not subtracted). Each goal is checked on its own, so two goals can count the same money.</p>' : '<p class="hint" style="margin:0 4px 8px">No goals yet.</p>'}
+        <div class="hint" style="margin:4px 0 0">${rsShort(nowV)} of ${rsShort(g.amt)} now (${pct.toFixed(0)}%) · counts ${esc(from)} · wanted by ${monthLong(g.by)} · plan reaches it ${hit ? 'in ' + monthLong(hit.ym) : 'after ' + monthLong(rows[rows.length - 1].ym)}</div>${need}</button>`; }).join('')
+      + '<p class="hint">A goal counts its own accounts plus payments made towards it (set in the goal). A goal with nothing linked counts all your money, so such goals share the same money.</p>' : '<p class="hint" style="margin:0 4px 8px">No goals yet.</p>'}
       <button class="btn ghost small" id="plGoalAdd">＋ Add goal</button></div>
     <div class="plan-sec"><div class="btn-row" style="flex-wrap:wrap"><button class="btn ghost small" id="plSettings">Plan settings</button><button class="btn ghost small" id="plXlsx">Export Excel</button></div>
       <p class="hint">Started ${monthLong(c.startMonth)} · opening balances as on ${fmtDate(monthEnd(monthAdd(c.startMonth, -1)), true)} · ${mode === 'fy' ? 'financial years (Apr–Mar)' : 'calendar years'}.</p></div>`;
@@ -5034,6 +5072,7 @@ function renderPlan() {
   $('plUntil').addEventListener('change', e => { c.showUntil = e.target.value || null; put(c, { render: false }); Plan.year = null; renderPlan(); });
   if ($('plPend')) $('plPend').addEventListener('click', () => planMonthSheet(pend[0]));
   if ($('plOvr')) $('plOvr').addEventListener('click', () => overrideSheet());   // v2.26.1
+  $('plHold').addEventListener('click', () => { Hold.edit = false; holdersSheet(isoMonth(new Date())); });   // v2.27
   $$('[data-year]', body).forEach(tr => tr.addEventListener('click', () => { Plan.year = +tr.dataset.year; renderPlan(); }));
   $$('[data-ym]', body).forEach(tr => { const go = () => planMonthSheet(tr.dataset.ym); tr.addEventListener('click', go); tr.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }); });
   $('plGoalAdd').addEventListener('click', () => planGoalSheet(null));
@@ -5049,10 +5088,84 @@ function goalMonthly(g, rows, cur) {
   const amt = +g.amt || 0; if (!amt || !ymOk(g.by)) return '';
   if (g.by < cur) return '';
   const at = rows.find(r => r.ym === g.by) || null, last = rows[rows.length - 1];
-  const base = at ? at.worth : last ? last.worth : 0, gap = amt - base, n = Math.max(1, monthsBetween(cur, g.by) + 1);
+  const base = goalValue(g, at || last) || 0, gap = amt - base, n = Math.max(1, monthsBetween(cur, g.by) + 1);
   if (gap <= 0.5) return '<div class="hint" style="margin:2px 0 0">Nothing extra needed — the plan gets there on time.</div>';
   return `<div class="hint goal-need" style="margin:2px 0 0">Save <b>${rs(Math.ceil(gap / n / 100) * 100)} a month</b> more than the plan (${n} month${n > 1 ? 's' : ''}) to reach it by ${monthLong(g.by)}.${at ? '' : ' The plan does not reach that month, so this uses its last month.'}</div>`;
 }
+/* v2.27: a goal counts the balance of its own accounts plus payments made towards it (Ledger spending marked with the goal).
+   An account can belong to one goal only. A goal with neither counts all your money, as before. */
+function goalTaken(exceptId) { const t = {}; all('goal').forEach(g => { if (g.id !== exceptId) (g.links || []).forEach(a => { t[a] = g.name; }); }); return t; }
+function goalOptions(sel) { return `<option value="">— none —</option>` + all('goal').map(g => `<option value="${g.id}"${g.id === sel ? ' selected' : ''}>${esc(g.name)}</option>`).join(''); }
+const goalLinked = g => (g.links || []).filter(id => acctById(id));
+const goalPaidTo = (g, ym) => all('fin').filter(e => e.goal === g.id && e.kind === 'expense' && (!ym || (e.date || '').slice(0, 7) <= ym)).reduce((t, e) => t + (+e.amount || 0), 0);
+const goalMode = g => goalLinked(g).length || all('fin').some(e => e.goal === g.id) ? 'own' : 'all';
+function goalValue(g, row, nowBal) {   // row: a plan month row; nowBal: today's balances (B.accts) for "now"
+  if (goalMode(g) === 'all') return row ? row.worth : null;
+  const acc = goalLinked(g).reduce((t, id) => t + ((nowBal || (row && row.accts) || {})[id] || 0), 0);
+  return acc + goalPaidTo(g, nowBal ? null : row && row.ym);
+}
+/* v2.27: "Who holds what" — money held by each person (groups of accounts) at the end of a month, plus udhaar with chosen people */
+function holderGroups(c) {
+  if (Array.isArray(c.holders)) return c.holders.map(h => ({ ...h, accts: (h.accts || []).filter(id => acctById(id)) }));
+  const A = accts(), used = new Set(), pick = f => A.filter(a => !used.has(a.id) && f(a)).map(a => (used.add(a.id), a.id));
+  const has = (a, w) => new RegExp('(^|\\s)' + w + '(\\s|$)', 'i').test(a.name);
+  return [
+    { id: 'h1', name: 'Rahul — accounts', accts: pick(a => /^rk\s*(sbi|hdfc)$/i.test(a.name.trim()) || (a.kind === 'mf' && /mutual/i.test(a.name))) },
+    { id: 'h2', name: 'Rahul — cash', accts: pick(a => a.kind === 'cash' && /^rk/i.test(a.name)) },
+    { id: 'h3', name: 'Moni', accts: pick(a => has(a, 'moni')) },
+    { id: 'h4', name: 'Papa', accts: pick(a => has(a, 'papa')) },
+    { id: 'h5', name: 'Mummy', accts: pick(a => has(a, 'mummy')) }
+  ].filter(h => h.accts.length);
+}
+const Hold = { ym: null, edit: false, draft: null };
+const hdCollect = () => $$('.hd-g', $('pshBody')).map((el, i) => ({ id: el.dataset.hg, name: el.querySelector('.hdName').value.trim() || 'Group ' + (i + 1), accts: $$('[data-ha]', el).filter(b => b.checked).map(b => b.dataset.ha) }));
+function holdersSheet(ym) {
+  const c = planCfg(); if (!c) return;
+  const cur = isoMonth(new Date());
+  Hold.ym = ym || Hold.ym || cur;
+  const G = Hold.edit && Hold.draft ? Hold.draft : holderGroups(c), people = udhGroups().sort((a, b) => a.name.localeCompare(b.name)), sel = new Set(Hold.edit && Hold.selDraft ? Hold.selDraft : c.holderUdh || []);
+  const rows = planCompute(c, Hold.ym < c.startMonth ? c.startMonth : Hold.ym), row = rows[rows.length - 1];
+  const bal = Hold.ym === cur ? balancesOn(c, todayISO()).accts : row.accts;
+  const val = ids => ids.reduce((t, id) => t + (bal[id] || 0), 0);
+  const inG = new Set(G.flatMap(h => h.accts)), rest = accts(true).filter(a => a.kind !== 'loan' && !inG.has(a.id) && Math.abs(bal[a.id] || 0) >= 0.5);
+  const udhOf = k => { try { return stmtDataUdh(c, Hold.ym, Hold.ym, k).close; } catch (e) { return 0; } };
+  const when = Hold.ym < cur ? 'end of ' + monthLong(Hold.ym) + ' (actual)' : Hold.ym === cur ? 'today' : 'end of ' + monthLong(Hold.ym) + ' (plan)';
+  let html;
+  if (!Hold.edit) {
+    const udhRows = [...sel].map(k => { const g = people.find(p => p.k === k); return g ? [g.name, udhOf(k)] : null; }).filter(Boolean);
+    const line = (n, sub, v, cls) => `<div class="pl-row"><span class="r-name">${esc(n)}${sub ? `<small class="dq-sub">${esc(sub)}</small>` : ''}</span><b class="mono ${cls || (v < 0 ? 'neg' : '')}">${rs(v)}</b></div>`;
+    const tot = G.reduce((t, h) => t + val(h.accts), 0);
+    html = `<div class="field"><label>Month</label>${monthIn('hdYm', Hold.ym)}</div>
+      <p class="hint" style="margin:-6px 4px 10px">Balances at ${esc(when)}.</p>
+      <div class="group pl-group">${G.map(h => line(h.name, h.accts.map(acctName).join(' + '), val(h.accts))).join('') || '<p class="hint" style="margin:8px">No groups yet — tap Edit groups.</p>'}
+        ${G.length ? line('Total of these', '', tot, 'pos') : ''}</div>
+      <h4 class="plan-sub">Udhaar (net) · people you chose</h4>
+      <div class="group pl-group">${udhRows.length ? udhRows.map(([n, v]) => line(n, v > 0 ? 'owes you' : v < 0 ? 'you owe' : 'settled', v)).join('') + (udhRows.length > 1 ? line('Net', '', udhRows.reduce((t, x) => t + x[1], 0)) : '') : '<p class="hint" style="margin:8px">Nobody chosen — tap Edit groups.</p>'}</div>
+      ${rest.length ? `<details class="fold"><summary>Not in any group (${rest.length})</summary><div class="group pl-group">${rest.map(a => line(a.name, kindLabel(a.kind), bal[a.id] || 0)).join('')}</div></details>` : ''}
+      <button class="btn ghost small" id="hdEdit" style="margin-top:10px">✎ Edit groups</button>`;
+  } else {
+    const owner = {}; G.forEach(h => h.accts.forEach(id => { owner[id] = h.id; }));
+    html = `<p class="hint" style="margin:0 4px 10px">Each account can be in one group. Loans are left out.</p>
+      <div id="hdGroups">${G.map((h, i) => `<div class="group pl-group hd-g" data-hg="${esc(h.id)}" style="padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;gap:8px;align-items:center"><input class="hdName" value="${esc(h.name)}" aria-label="Group name"><button class="icon-btn hdDel" aria-label="Remove group">✕</button></div>
+        ${accts().filter(a => a.kind !== 'loan').map(a => `<label class="switch-row"><span>${esc(a.name)}<small>${kindLabel(a.kind)}</small></span><input type="checkbox" class="sw" data-ha="${a.id}"${owner[a.id] === h.id ? ' checked' : ''}></label>`).join('')}</div>`).join('')}</div>
+      <button class="linkbtn" id="hdAdd">＋ Add a group</button>
+      <h4 class="plan-sub">Udhaar: people to show</h4>
+      <div class="group pl-group">${people.map(p => `<label class="switch-row"><span>${esc(p.name)}</span><input type="checkbox" class="sw" data-hp="${esc(p.k)}"${sel.has(p.k) ? ' checked' : ''}></label>`).join('') || '<p class="hint" style="margin:8px">No udhaar yet.</p>'}</div>`;
+  }
+  planSheet('Who holds what', html, () => {
+    if (!Hold.edit) return true;
+    const gs = hdCollect();
+    const seen = new Set(); for (const g of gs) for (const a of g.accts) { if (seen.has(a)) { planMsg(`${acctName(a)} is ticked in two groups — keep it in one.`, true); return false; } seen.add(a); }
+    c.holders = gs; c.holderUdh = $$('[data-hp]', $('pshBody')).filter(b => b.checked).map(b => b.dataset.hp); put(c, { render: false });
+    Hold.edit = false; Hold.draft = null; Hold.selDraft = null; setTimeout(() => holdersSheet(), 0); return false;
+  }, Hold.edit ? 'Save' : 'Done');
+  if ($('hdYm')) $('hdYm').addEventListener('change', e => { if (ymOk(e.target.value)) holdersSheet(e.target.value); });
+  if ($('hdEdit')) $('hdEdit').addEventListener('click', () => { Hold.edit = true; Hold.draft = null; Hold.selDraft = null; holdersSheet(); });
+  if ($('hdAdd')) $('hdAdd').addEventListener('click', () => { Hold.draft = hdCollect(); Hold.draft.push({ id: uid('h'), name: 'New group', accts: [] }); Hold.selDraft = $$('[data-hp]', $('pshBody')).filter(b => b.checked).map(b => b.dataset.hp); holdersSheet(); });
+  $$('.hdDel', $('pshBody')).forEach(b => b.addEventListener('click', () => b.closest('.hd-g').remove()));
+}
+Sheets.onClose.shPlan = (prev => () => { Hold.edit = false; Hold.draft = null; Hold.selDraft = null; if (prev) prev(); })(Sheets.onClose.shPlan);
 function planGoalSheet(id) {
   const g = id ? records[id] : { name: '', amt: '', by: '' }, c = planCfg(), cur = isoMonth(new Date());
   const past = planCompute(c, cur < c.startMonth ? c.startMonth : cur).filter(r => r.exp > 0).slice(-6);
@@ -5061,13 +5174,18 @@ function planGoalSheet(id) {
     <div class="field"><label>Goal</label><input id="pgName" value="${esc(g.name)}"></div>
     <div class="grid2"><div class="field"><label>Amount ₹</label>${amtIn('pgAmt', g.amt)}</div><div class="field"><label>Wanted by</label>${monthIn('pgBy', g.by)}</div></div>
     ${avg ? `<button class="linkbtn" id="pgSix">Use 6 months of spending (${rs(avg * 6)})</button>` : ''}
+    <h4 class="plan-sub">Counts from</h4>
+    <div class="group pl-group">${(() => { const taken = goalTaken(id); return accts().filter(a => a.kind !== 'loan' && a.kind !== 'card').map(a => { const other = taken[a.id];
+      return `<label class="switch-row"><span>${esc(a.name)}<small>${other ? 'used by “' + esc(other) + '”' : kindLabel(a.kind)}</small></span><input type="checkbox" class="sw" data-pgl="${a.id}"${(g.links || []).includes(a.id) ? ' checked' : ''}${other ? ' disabled' : ''}></label>`; }).join(''); })()}</div>
+    <p class="hint">Tick the account(s) where this goal's money is kept — e.g. a separate savings account, an FD or PPF. Money you put into them (transfers, SIPs) counts. Payments you make towards the goal count too: pick the goal on that spending entry in the Ledger (“Towards a goal”). Leave all unticked to measure the goal against all your money, as before.</p>
     ${id ? '<button class="btn danger block" id="pgDel" style="margin-top:14px">Delete goal</button>' : ''}`;
   planSheet(id ? 'Goal' : 'New goal', html, () => {
     try {
       const name = $('pgName').value.trim(); if (!name) throw new Error('Name the goal.');
       const by = $('pgBy').value; if (!ymOk(by)) throw new Error('Pick the month you want it by.');
       const rec = id ? records[id] : { id: uid('gl'), type: 'goal', deleted: false };
-      Object.assign(rec, { name, amt: readAmt('pgAmt', 'Amount', true), by }); put(rec, { render: false }); toast('Goal saved.'); return true;
+      const links = $$('[data-pgl]', $('pshBody')).filter(b => b.checked && !b.disabled).map(b => b.dataset.pgl);
+      Object.assign(rec, { name, amt: readAmt('pgAmt', 'Amount', true), by, links }); put(rec, { render: false }); toast('Goal saved.'); return true;
     } catch (e) { planMsg(e.message, true); return false; }
   });
   $$('[data-gq]', $('pshBody')).forEach(b => b.addEventListener('click', () => { $('pgName').value = b.dataset.gq; }));
@@ -7162,7 +7280,8 @@ function openFin(id) {
   $('feAmt').value = e.amount; $('feDesc').value = e.desc || ''; $('feWho').value = e.who || ''; $('feDate').value = e.date || '';
   $('feCat').innerHTML = ['', ...FIN_CATS].map(c => `<option value="${c}" ${c === (e.category || '') ? 'selected' : ''}>${c || '— none —'}</option>`).join('');
   $('fePaid').value = e.paidAmount || 0; $('feSettled').value = e.settled ? 'yes' : 'no'; $('feRecur').checked = !!e.recurring;
-  const sync = k => { $('feWhoWrap').classList.toggle('hidden', !isUdhaar(k)); $('fePaidWrap').classList.toggle('hidden', !isUdhaar(k)); acctPick('fe', k, k === e.kind ? e.acct : null, e.to); };
+  $('feGoal').innerHTML = goalOptions(e.goal || ''); $('feGoalWrap').classList.toggle('hidden', !all('goal').length || uiKind(e) !== 'expense');   // v2.27
+  const sync = k => { $('feWhoWrap').classList.toggle('hidden', !isUdhaar(k)); $('fePaidWrap').classList.toggle('hidden', !isUdhaar(k)); $('feGoalWrap').classList.toggle('hidden', !all('goal').length || k !== 'expense'); acctPick('fe', k, k === e.kind ? e.acct : null, e.to); };
   chipGroup($('feKind'), KINDS, uiKind(e), sync); sync(uiKind(e));
   Sheets.open('shFin');
 }
@@ -7177,6 +7296,7 @@ $('feSave').addEventListener('click', () => {
   e.desc = $('feDesc').value.trim(); e.who = $('feWho').value.trim();
   if (isPaidBy(e) && !e.who) { toast('Who paid for it? Add the name.'); $('feWho').focus(); return; }
   e.date = $('feDate').value || e.date; e.category = $('feCat').value; e.recurring = $('feRecur').checked;
+  { const gl = e.kind === 'expense' && !e.paidBy ? $('feGoal').value : ''; if (gl && records[gl]) e.goal = gl; else delete e.goal; }   // v2.27
   const oldPaid = +e.paidAmount || 0;
   e.paidAmount = Math.max(0, Math.min(calcAmount($('fePaid').value) || 0, e.amount)); e.settled = $('feSettled').value === 'yes';
   if (e.settled) e.paidAmount = e.amount;
@@ -7357,10 +7477,11 @@ function renderAddForm0(focus) {
       <div class="field" id="afSplitWrap"><label>Split with (optional)</label><input id="afSplit" placeholder="e.g. Ravi, Amit — each owes you an equal share" autocomplete="off"><div class="guess" id="afSplitHint"></div></div>
       <div class="grid2 hidden" id="afAcctWrap"><div class="field"><label id="afAcctLbl">Paid from</label><select id="afAcct"></select></div><div class="field hidden" id="afToWrap"><label>To</label><select id="afTo"></select></div></div>
       <div class="field" id="afCatWrap"><label>Category</label><div class="wrapchips" id="afCat"></div></div>
+      ${all('goal').length ? `<div class="field" id="afGoalWrap"><label>Towards a goal (optional)</label><select id="afGoal">${goalOptions('')}</select></div>` : ''}
       <div class="field"><label>Date</label><div class="wrapchips" id="afWhen"></div><input type="date" id="afDate" class="hidden" style="margin-top:8px"></div>
       <div class="group"><label class="switch-row">Repeats every month<input type="checkbox" class="sw" id="afRecur"></label></div>`;
     AF.kind = 'expense'; AF.cat = ''; AF.when = todayISO();
-    const kindChips = sel => chipGroup($('afKind'), KINDS, sel, v => { AF.kind = v; $('afWhoWrap').classList.toggle('hidden', !isUdhaar(v)); acctPick('af', v); if (v === 'paidby') $('afAcctWrap').classList.add('hidden'); if ($('afSplitWrap')) $('afSplitWrap').classList.toggle('hidden', v !== 'expense'); { const g = $('afRecur') && $('afRecur').closest('.group'); if (g) g.classList.toggle('hidden', v === 'paidby'); } $('afWhoLbl') && ($('afWhoLbl').textContent = v === 'paidby' ? 'Who paid for it' : 'Person'); });
+    const kindChips = sel => chipGroup($('afKind'), KINDS, sel, v => { AF.kind = v; if ($('afGoalWrap')) $('afGoalWrap').classList.toggle('hidden', v !== 'expense'); $('afWhoWrap').classList.toggle('hidden', !isUdhaar(v)); acctPick('af', v); if (v === 'paidby') $('afAcctWrap').classList.add('hidden'); if ($('afSplitWrap')) $('afSplitWrap').classList.toggle('hidden', v !== 'expense'); { const g = $('afRecur') && $('afRecur').closest('.group'); if (g) g.classList.toggle('hidden', v === 'paidby'); } $('afWhoLbl') && ($('afWhoLbl').textContent = v === 'paidby' ? 'Who paid for it' : 'Person'); });
     kindChips('expense');
     acctPick('af', 'expense');
     const catChips = sel => chipGroup($('afCat'), [{ v: '', l: 'None' }, ...FIN_CATS.map(c => ({ v: c, l: c }))], sel, v => { AF.cat = v; AF.catTouched = true; }, c => FIN_COLORS[c]);
@@ -7450,7 +7571,8 @@ function saveAdd(another, thenScan) {
   } else if (k === 'money') {
     const useAcct = !$('afAcctWrap').classList.contains('hidden');
     const rec = saveMoneyEntry({ amount: calcAmount(v('afAmt')), kind: AF.kind, desc: v('afTitle'), who: v('afWho'), cat: AF.kind === 'transfer' ? '' : AF.cat || '',
-      date: AF.when || todayISO(), acct: useAcct ? $('afAcct').value : undefined, to: useAcct && AF.kind === 'transfer' ? $('afTo').value : undefined, recurring: $('afRecur').checked, fromForm: true });
+      date: AF.when || todayISO(), acct: useAcct ? $('afAcct').value : undefined, to: useAcct && AF.kind === 'transfer' ? $('afTo').value : undefined, recurring: $('afRecur').checked, fromForm: true,
+      goal: AF.kind === 'expense' && $('afGoal') ? $('afGoal').value : '' });
     if (!rec) return;
     toast(`Recorded ${fmtMoney(rec.amount)}.`, 'Undo', () => softDelete(rec.id));
   }
@@ -7508,7 +7630,7 @@ function runSearchBase() {
     else if (has(t.notes)) hits.push({ k: 'Task', id: t.id, t: esc(t.title) + '<br><small class="muted">' + hl(t.notes, q) + '</small>' });
     else { const st = (t.subs || []).find(s => has(s.text) || has(s.notes)); if (st) hits.push({ k: 'Step', id: t.id, t: hl(st.text, q) + '<br><small class="muted">in ' + esc(t.title) + '</small>' }); }
   });
-  if (finUnlocked()) all('snote').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder)) hits.push({ k: 'Private', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: 'private note' }); });
+  if (finUnlocked()) all('snote').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder) || (n.tables || []).some(t => has(t.title) || (t.rows || []).some(r => r.c.some((v, i) => t.cols[i] && !t.cols[i].s && has(v))))) hits.push({ k: 'Private', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: 'private note' }); });
   all('note').forEach(n => { if (has(n.title) || has(n.text) || has(n.folder)) hits.push({ k: 'Note', id: n.id, t: has(n.title) ? hl(n.title, q) : esc(n.title || 'Untitled') + '<br><small class="muted">' + hl(n.text, q) + '</small>', s: n.folder || '' }); });
   all('date').forEach(d => { if (has(d.label)) hits.push({ k: 'Date', id: d.id, t: hl(d.label, q), s: d.when ? fmtDate(isoLocal(nextOccurrence(d))) : 'no date yet' }); });
   { const norm = s => String(s || '').toLowerCase().replace(/aadhaar/g, 'aadhar').replace(/licen[cs]e/g, 'licence');
@@ -7609,6 +7731,8 @@ $('wordmark').addEventListener('click', () => {
   wmTaps = 0;
   if (window.GHOST) { ghostCrash(true); return; }
   if (finUnlocked()) { showTab('money'); return; }
+  if (Fin.key && Fin.scope === 'docs') lockFinance(true);              // v2.27: opening Money always asks for the code
+  Fin.wantScope = null;
   openVault();
 });
 function openVault(mode) {
@@ -7675,7 +7799,29 @@ const VaultLimit = {
   reset() { this.set({ n: 0, until: 0 }); },
   say(ms) { const s = Math.ceil(ms / 1000); return s >= 60 ? Math.ceil(s / 60) + ' min' : s + ' sec'; }
 };
+/* v2.27: a code typed for a locked document opens documents only — Money, PNote and Plan stay hidden — and locks again
+   once no document screen is open (checked every 20 s) or after 3 minutes. */
+const DocUnlock = { t: null, at: 0,
+  DOC_SHEETS: ['shDocView', 'shDoc', 'shDocShare', 'shScan', 'shCrop', 'shVault'],
+  start() { this.at = Date.now(); this.tick(); },
+  tick() { clearTimeout(this.t); this.t = setTimeout(() => { if (!Fin.key || Fin.scope !== 'docs') return;
+    const busy = this.DOC_SHEETS.some(id => Sheets.isOpen(id));
+    if (!busy || Date.now() - this.at > 180000) { lockFinance(true); toast('Locked documents closed again.'); } else this.tick(); }, 20000); },
+  closed() { if (Fin.key && Fin.scope === 'docs' && !this.DOC_SHEETS.some(id => Sheets.isOpen(id))) setTimeout(() => { if (Fin.scope === 'docs' && !this.DOC_SHEETS.some(id => Sheets.isOpen(id))) lockFinance(true); }, 1500); }
+};
+Sheets.onClose.shVault = () => { if (!Fin.key) { Fin.wantScope = null; pendingAfterUnlock = null; } };   // cancelled
 function afterFinanceUnlock() {
+  if (Fin.wantScope === 'docs') {                                          // v2.27: documents only
+    Fin.scope = 'docs'; Fin.wantScope = null;
+    $('moneyTab').classList.add('hidden'); document.documentElement.classList.remove('fin-open');
+    sealDocNumbers(); flushPendingPosts(); healFileKeys();
+    DocUnlock.start();
+    if (pendingAfterUnlock) { const f = pendingAfterUnlock; pendingAfterUnlock = null; docReturn = null; setTimeout(() => { try { f(); } catch (e) { RLOG.error('after unlock', e); } }, 350); return; }
+    const back = docReturn; docReturn = null;
+    if (back) openDocView(back);
+    return;
+  }
+  Fin.scope = null;
   if (lsGet('r2_seenVer') !== APP_VERSION && !window.GHOST && !document.documentElement.classList.contains('decoy-on')) { lsSet('r2_seenVer', APP_VERSION); setTimeout(() => { if (!Sheets.top()) showWhatsNew(); }, 1200); }   // v2.25
   $('moneyTab').classList.remove('hidden'); document.documentElement.classList.add('fin-open');
   if (typeof finAfterUnlock === 'function') finAfterUnlock();
@@ -7690,14 +7836,14 @@ function afterFinanceUnlock() {
   showTab('money');
 }
 function onFinanceLocked(silent) {
-  ['stmBody', 'ulBody'].forEach(id => { if ($(id)) $(id).innerHTML = ''; });   // v2.25
+  ['stmBody', 'ulBody', 'tbBody'].forEach(id => { if ($(id)) $(id).innerHTML = ''; });   // v2.25
   if ($('vtBody')) $('vtBody').innerHTML = ''; if ($('docVault')) $('docVault').innerHTML = '';   // v2.23: nothing readable left on screen
   $('moneyTab').classList.add('hidden'); clearFinFilter();
   Bio.pending = null;                                                    // a half-finished Face ID setup keeps no code
   if (!$('lightbox').classList.contains('hidden')) $('lbClose').click();
   if (Sheets.isOpen('shDoc')) { const d = records[editDocId]; if (d && (d.lockFiles || d.numEnc)) { $('doNumber').value = d.numEnc ? '•••• ' + (d.numTail || '') : ''; $('doNumber').disabled = true; } }
   const sd = records[Scan.docId], lockedScan = (Scan.replace && Scan.replace.locked) || (sd && sd.lockFiles);
-  ['shFin', 'shSettle', 'shBudget', 'shInsights', 'shUdhLed', 'shStmt', 'shEmerg', 'shCards', 'shDocView', 'shDocShare', 'shPlan', ...(lockedScan ? ['shScan', 'shCrop'] : [])].forEach(id => Sheets.close(id, true));
+  ['shFin', 'shSettle', 'shBudget', 'shInsights', 'shUdhLed', 'shStmt', 'shTbl', 'shEmerg', 'shCards', 'shDocView', 'shDocShare', 'shPlan', ...(lockedScan ? ['shScan', 'shCrop'] : [])].forEach(id => Sheets.close(id, true));
   pendingAfterUnlock = null;
   forgetLockedPlain(); forgetSecretImgs();
   if (currentTab === 'money') showTab(prefs.lastTab || 'tasks');
@@ -8670,17 +8816,19 @@ function renderDocs() {
   syncDocCfg(); renderDocsBase(); renderVaultCard();
   const fbox = $('docFolders'); if (!fbox || window.GHOST) return;
   const crumb = fbox.querySelector('.doc-crumb'); if (!crumb) return;
-  const acts = document.createElement('div'); acts.className = 'crumb-acts';
+  let items = [];   // v2.27: one ⋯ menu instead of a row of buttons
   if (docPath.who && !docPath.grp) {
-    acts.innerHTML = `<button data-ca="new">＋ Document here</button><button data-ca="gnew">＋ New category</button><button data-ca="ren">✎ Rename</button><button data-ca="mv">⇢ Move all…</button>${FAM_PEOPLE.includes(docPath.who) ? '<button data-ca="chk">✅ Checklist</button>' : ''}<button data-ca="em">🆘 Emergency sheet</button><button data-ca="zip">⤓ All as .zip</button><button data-ca="off">📱 Keep on this iPhone</button>`;
+    items = [['new', '＋ Document here'], ['gnew', '＋ New category'], ['ren', '✎ Rename person'], ['mv', '⇢ Move all…'], ...(FAM_PEOPLE.includes(docPath.who) ? [['chk', '✅ Checklist']] : []), ['em', '🆘 Emergency sheet'], ['zip', '⤓ Download all (zip)'], ['off', '📱 Keep on this iPhone']];
     if (!all('doc').some(d => docOwners(d).includes(docPath.who))) fbox.insertAdjacentHTML('beforeend', '<div class="empty">No documents for this person yet.</div>');
   } else if (docPath.grp) {
-    acts.innerHTML = `<button data-ca="gnew2">＋ Document here</button><button data-ca="gren">✎ Rename category</button><button data-ca="gmv">⇢ Move these…</button><button data-ca="gdel">🗑 Delete category</button><button data-ca="off">📱 Keep on this iPhone</button>`;
+    items = [['gnew2', '＋ Document here'], ['gren', '✎ Rename category'], ['gmv', '⇢ Move these…'], ['off', '📱 Keep on this iPhone'], ['gdel', '🗑 Delete category', 'danger']];
   }
-  crumb.after(acts);
+  if (!items.length) return;
+  const more = document.createElement('button'); more.className = 'crumb-more'; more.setAttribute('aria-label', 'Actions'); more.setAttribute('aria-haspopup', 'menu'); more.textContent = '⋯';
+  crumb.appendChild(more);
+  const acts = { querySelectorAll: () => [] };
   const who = docPath.who, grp = docPath.grp, here = () => all('doc').filter(d => docOwners(d).includes(who) && (!grp || docGroup(d) === grp)).map(d => d.id);
-  $$('[data-ca]', acts).forEach(b => b.addEventListener('click', () => {
-    const a = b.dataset.ca;
+  const run = a => {
     if (a === 'ren') { const nu = prompt(`New name for ${who}`, who); if (nu) renamePerson(who, nu); }
     else if (a === 'mv') movePersonAll(who);
     else if (a === 'new') openAdd('doc');
@@ -8693,8 +8841,26 @@ function renderDocs() {
     else if (a === 'em') openEmergency(who);
     else if (a === 'zip') exportPersonZip(who);
     else if (a === 'off') keepOffline(here().map(id => records[id]), grp ? `${who}'s ${grp}` : `${who}'s documents`);
-  }));
+  };
+  more.addEventListener('click', () => popMenu(more, items.map(([k, l, cls]) => ({ l, cls, fn: () => run(k) }))));
 }
+/* v2.27: a small menu under a button */
+function popMenu(anchor, items) {
+  const old = $('popMenu'); if (old) { old.remove(); if (old.dataset.for === anchor.id + anchor.className) return; }
+  const m = document.createElement('div'); m.className = 'pop-menu'; m.id = 'popMenu'; m.setAttribute('role', 'menu'); m.dataset.for = anchor.id + anchor.className;
+  m.innerHTML = items.map((x, i) => `<button role="menuitem" data-pm="${i}" class="${x.cls || ''}">${esc(x.l)}</button>`).join('');
+  document.body.appendChild(m);
+  const r = anchor.getBoundingClientRect(), W = m.offsetWidth || 240, H = m.offsetHeight || 200;
+  m.style.top = Math.max(8, Math.min(window.innerHeight - H - 8, r.bottom + 6)) + 'px';
+  m.style.left = Math.max(8, Math.min(window.innerWidth - W - 8, r.right - W)) + 'px';
+  const close = () => { m.remove(); document.removeEventListener('pointerdown', outside, true); };
+  const outside = e => { if (!m.contains(e.target) && e.target !== anchor) close(); };
+  setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+  $$('[data-pm]', m).forEach(b => b.addEventListener('click', () => { close(); try { items[+b.dataset.pm].fn(); } catch (e) { RLOG.error('menu', e); } }));
+}
+$('docMoreBtn').addEventListener('click', () => popMenu($('docMoreBtn'), [
+  { l: '🗂 People & categories', fn: openDocFolders }, { l: '✅ Family checklist', fn: () => openFamily() },
+  { l: '📱 Keep on this iPhone…', fn: () => keepOffline(all('doc'), 'all documents') }]));
 function renderSelBar() {
   renderSelBarBase();
   if (!docSel) return;
@@ -9115,7 +9281,7 @@ const clampDay = v => { const n = parseInt(String(v == null ? '' : v).trim(), 10
 const normName = x => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 function waitAge(t) { const n = t.waitingSince ? -daysUntilISO(t.waitingSince) : 0; return n <= 0 ? 'since today' : n === 1 ? '1 day' : n + ' days'; }
 let pendingAfterUnlock = null;                  // something to open once the private section is unlocked
-function needUnlock(then) { if (Fin.key) { then(); return; } if (!finConfigured()) { toast('Set up the private section first — tap “Register” three times.'); return; } pendingAfterUnlock = then; openVault('unlock'); }
+function needUnlock(then, scope) { if (Fin.key) { then(); return; } Fin.wantScope = scope || null; if (!finConfigured()) { toast('Set up the private section first — tap “Register” three times.'); return; } pendingAfterUnlock = then; openVault('unlock'); }
 
 /* ---------- a job with a progress sheet (zip export, making scans searchable) ---------- */
 const Job = { stop: false, running: false };
@@ -9257,7 +9423,7 @@ function saveMoneyEntry(x) {
   const date = ISO_DATE_RX.test(x.date || '') ? x.date : todayISO();
   const desc = String(x.desc || '').trim().slice(0, 200) || (kind === 'expense' ? 'Spent' : kind === 'income' ? 'Received' : kind === 'transfer' ? 'Transfer' : 'Udhaar');
   return put({ id: x.id || uid('f'), type: 'fin', desc, amount: Math.round(amt * 100) / 100, kind, category: kind === 'transfer' ? '' : (FIN_CATS.includes(x.cat) ? x.cat : ''), date,
-    who: isUdhaar(kind) ? who : '', acct, to, recurring: !!x.recurring, paidAmount: 0, settled: false, deleted: false });
+    who: isUdhaar(kind) ? who : '', acct, to, recurring: !!x.recurring, paidAmount: 0, settled: false, deleted: false, ...(kind === 'expense' && x.goal && records[x.goal] ? { goal: x.goal } : {}) });
 }
 /* the last distinct entries you made (what, type, category, account), newest first */
 function moneyRecents() {
@@ -9400,7 +9566,8 @@ function syncAllAcctDates() {
   accts(true).forEach(a => syncAcctDates(a, false));
   all('recur').forEach(r => sysDate('rd-' + r.id, recurDateWant(r), false));
   all('vault').forEach(v => sysDate('vd-' + v.id, vaultDateWant(v), false));   // v2.24: card / policy expiry from Card & account details
-  if (!(Fin.lockedOut || []).length) all('date').forEach(d => { if (d.sysSrc && (d.sysSrc === 'acct' || d.sysSrc === 'recur' || d.sysSrc === 'vault')) { const s = records[d.srcRef]; if (!s || s.deleted) sysDate(d.id, null); } });
+  all('snote').forEach(n => { if ((n.tables || []).length) tbSyncDates(n); });   // v2.27: expiry dates from PNote tables
+  if (!(Fin.lockedOut || []).length) all('date').forEach(d => { if (d.sysSrc && (d.sysSrc === 'acct' || d.sysSrc === 'recur' || d.sysSrc === 'vault' || d.sysSrc === 'snote')) { const s = records[d.srcRef]; if (!s || s.deleted) sysDate(d.id, null); } });
 }
 { const sd = softDelete, rs0 = restore;
   softDelete = function (id, opt) { const r = records[id]; sd(id, opt); if (r && (r.type === 'acct' || r.type === 'recur')) setTimeout(() => { try { syncAllAcctDates(); } catch (e) { RLOG.warn('acct dates', e.message); } }, 0); };
@@ -9576,11 +9743,14 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
-  { t: '<b>📒 Full ledger</b> for each person in Udhaar: every udhaar and payment by date with one running balance (you gave · you got · balance). A payment that went over what was owed shows as one payment — the part that settled and the extra.', priv: true },
-  { t: 'An <b>“Extra when settling”</b> entry now shows how it started (the original udhaar and its payments), and the original shows where the extra went. Works for older entries too.', priv: true },
-  { t: '<b>Udhaar give</b>: real udhaar you give the person now uses up the nearest planned give within 2 months either side — so giving earlier, later, more or less is never counted twice. Name can be left blank (it becomes “Udhaar to …”).', priv: true },
-  { t: '<b>Once</b> in “How often” for recurring items — for a one-off in a single month.', priv: true },
-  { t: '<b>Amounts set for one month only</b>: Plan now warns when some months use an amount typed for that month (they ignore raises in Recurring), and lets you review and clear them. Statements name udhaar the same way everywhere (“X (udhaar back)”, “Udhaar to X”).', priv: true }
+  { t: '<b>Locked documents open without opening Money</b>: the code typed for a 🔒 document unlocks documents only — Money, PNote and Plan stay hidden — and they lock again when you close the document (or after 3 minutes).' },
+  { t: '<b>Documents</b>: a tidier top — ＋ Add, the year, and ⋯ More (People & categories, Family checklist, Keep on this iPhone). A person’s or category’s actions are under one ⋯ button.' },
+  { t: '<b>Next / previous</b>: swipe left or right (or use ‹ ›) to go through the list you opened from — documents (also the “needs attention” list), notes, tasks and Money entries. The one you leave is saved first.' },
+  { t: 'Tap a <b>month name</b> (Ledger, Budgets, Bills, a month in Plan) to jump with the month wheel.' },
+  { t: '<b>▦ Tables in PNote</b>: add a table to a private note — e.g. card numbers, expiry dates, document numbers. 🔒 columns show dots until tapped (tap again quickly to copy). Expiry dates go to Dates. <b>Card & account details</b> moved from Documents into PNote → “Cards & accounts”.', priv: true },
+  { t: '<b>👥 Who holds what</b> in Plan: for any month, each person’s accounts (you choose the groups), and udhaar with the people you pick.', priv: true },
+  { t: '<b>Goals</b> can now count their own accounts (e.g. a PPF or a separate savings account) plus payments made towards them — pick “Towards a goal” on a spending entry.', priv: true },
+  { t: '<b>Balance check → “More than one thing”</b>: split a difference into parts, e.g. spent ₹150 and got ₹50 interest.', priv: true }
 ];
 function showWhatsNew() {
   const L = WHATS_NEW.filter(x => !x.priv || finUnlocked());
@@ -10350,6 +10520,7 @@ const vaultAll = () => finUnlocked() && !window.GHOST ? all('vault') : [];
 let vtEdit = null, vtQ = '', vtShown = new Set(), vtTimer = null;
 function renderVaultCard() {
   const box = $('docVault'); if (!box) return;
+  box.innerHTML = ''; return;   // v2.27: moved to Money → PNote → “Cards & accounts”
   if (window.GHOST || !finUnlocked()) { box.innerHTML = ''; return; }
   const n = vaultAll().length;
   box.innerHTML = `<button type="button" class="vault-card priv-only" id="vaultGo"><span class="vc-i">🔐</span><span class="vc-t"><b>Card &amp; account details</b><small>${n ? plural(n, 'entry').replace('entrys', 'entries') + ' · ' : ''}encrypted · numbers, CVV, consumer no.</small></span><span class="chev">›</span></button>`;
@@ -10357,7 +10528,8 @@ function renderVaultCard() {
 }
 function openCards(editId) {
   if (window.GHOST) { ghostCrash(true); return; }
-  if (!Fin.key) { needUnlock(() => openCards(editId)); return; }
+  if (!finUnlocked()) { toast('Card & account details are now in Money → PNote → “Cards & accounts”. Open Money first.'); return; }
+  { vaultToNote(); const n = all('snote').find(x => x.fromVault); if (n) { setPref('moneySeg', 'snotes'); showTab('money'); previewNote(n.id); return; } }   // v2.27
   vtShown = new Set();
   if (editId !== undefined) vaultEditor(editId); else vaultList();
   if (!Sheets.isOpen('shCards')) Sheets.open('shCards');
@@ -10708,3 +10880,187 @@ function healthExtra(add) {
   const fl = offFiles(); if (fl.length) { const n = fl.filter(fileOnDevice).length; add('info', 'Files on this iPhone', `${n} of ${fl.length} document files open without downloading.`, { label: 'Manage', fn: () => { Sheets.close('shHealth', true); openOffline(); } }); }
 }
 setTimeout(() => confLoad(), 1500);
+/* ==========================================================================
+   v2.27 — TABLES IN PRIVATE NOTES (PNote): card numbers, expiry dates, document numbers…
+   Kept inside the note, so encrypted with the private code like the rest of it.
+   Columns marked 🔒 show dots until tapped and never leave the app (not shared, not printed, not searched).
+   ======================================================================== */
+const TB = { note: null, id: null, shown: new Set(), t: null };
+const tbDateCol = l => /valid|expir|renew|due|till|upto|up to|maturity/i.test(l || '');
+function tbRowName(t, r) { const i = t.cols.findIndex(c => !c.s && !tbDateCol(c.l)); return String((i >= 0 ? r.c[i] : '') || t.title || 'Entry').trim(); }
+/* expiry / renewal dates from tables → Dates (name and date only) */
+function tbDateWants(n) {
+  const W = {};
+  if (!n || n.deleted || n.type !== 'snote') return W;
+  (n.tables || []).forEach(t => (t.rows || []).forEach(r => {
+    const i = t.cols.findIndex((c, k) => !c.s && tbDateCol(c.l) && parseExpiry(String(r.c[k] || '')));
+    if (i < 0) return;
+    const when = parseExpiry(String(r.c[i])), lbl = t.cols[i].l;
+    W['td-' + n.id + '-' + r.id] = { label: `${tbRowName(t, r)} — ${/renew/i.test(lbl) ? 'renewal' : /card/i.test(t.title + ' ' + t.cols.map(c => c.l).join(' ')) ? 'card expires' : 'expires'}`, when, repeat: 'once', cat: t.dateCat || 'other', srcRef: n.id, sysSrc: 'snote' };
+  }));
+  return W;
+}
+function tbSyncDates(n) {
+  if (!Fin.key) return;
+  const W = tbDateWants(n);
+  Object.entries(W).forEach(([id, w]) => sysDate(id, w, false));
+  all('date').forEach(d => { if (d.sysSrc === 'snote' && d.srcRef === n.id && !W[d.id]) sysDate(d.id, null); });
+}
+function tbHtml(n) {
+  return (n.tables || []).map(t => `<div class="tb-wrap"><div class="tb-h"><b>▦ ${esc(t.title || 'Table')}</b><button class="btn ghost small" data-tbe="${t.id}">✎ Edit</button></div>
+    <div class="tw"><table class="pt tb"><thead><tr>${t.cols.map(c => `<th>${c.s ? '🔒 ' : ''}${esc(c.l || '')}</th>`).join('')}</tr></thead><tbody>${(t.rows || []).map(r => `<tr>${t.cols.map((c, i) => {
+      const v = String(r.c[i] || ''), k = t.id + ':' + r.id + ':' + i, show = !c.s || TB.shown.has(k);
+      return `<td class="tb-c${c.s ? ' tb-sec' : ''}" data-tbc="${k}" title="${c.s ? 'Tap to show · double-tap to copy' : 'Tap to copy'}">${v ? (show ? esc(v) : '••••••') : '<span class="muted">—</span>'}</td>`; }).join('')}</tr>`).join('') || `<tr><td colspan="${t.cols.length}" class="muted">No rows yet.</td></tr>`}</tbody></table></div></div>`).join('');
+}
+function tbWire(box, n) {
+  $$('[data-tbe]', box).forEach(b => b.addEventListener('click', () => openTable(n.id, b.dataset.tbe)));
+  $$('[data-tbc]', box).forEach(td => {
+    const [tid, rid, i] = td.dataset.tbc.split(':'), t = (records[n.id].tables || []).find(x => x.id === tid), r = t && t.rows.find(x => x.id === rid), c = t && t.cols[+i];
+    if (!t || !r || !c) return;
+    const v = String(r.c[+i] || ''); if (!v) return;
+    const copy = async () => { try { await navigator.clipboard.writeText(v); if (c.s) { clipArm(); toast(`Copied ${c.l || 'it'} — wiped from the clipboard the next time you tap in Register after 30 s.`); } else toast(`Copied ${c.l || 'it'}.`); } catch (e) { toast('Could not copy here.'); } };
+    if (!c.s) { td.addEventListener('click', copy); return; }
+    let last = 0;
+    td.addEventListener('click', () => { const now = Date.now(); if (now - last < 400 && TB.shown.has(td.dataset.tbc)) { copy(); return; } last = now;
+      const k = td.dataset.tbc; TB.shown.has(k) ? TB.shown.delete(k) : TB.shown.add(k);
+      clearTimeout(TB.t); TB.t = setTimeout(() => { TB.shown.clear(); if (Sheets.isOpen('shNoteView') && viewNoteId === n.id) previewNote(n.id); }, 30000);
+      previewNote(n.id); });
+  });
+}
+function openTable(noteId, tableId) {
+  const n = records[noteId]; if (!n || n.type !== 'snote') return;
+  if (!finUnlocked()) { toast('Open Money first.'); return; }
+  TB.note = noteId; TB.id = tableId || null;
+  const t0 = tableId && (n.tables || []).find(x => x.id === tableId);
+  const t = t0 ? JSON.parse(JSON.stringify(t0)) : { id: uid('tb'), title: '', cols: [{ l: 'Name', s: false }, { l: 'Number', s: true }, { l: 'Valid till', s: false }], rows: [] };
+  $('tbTitleH').textContent = t0 ? 'Edit table' : 'New table';
+  const colRow = (c, i) => `<div class="tb-col" data-ci="${i}"><input class="tbL" value="${esc(c.l || '')}" placeholder="Column name" maxlength="40"><button type="button" class="tb-lock${c.s ? ' on' : ''}" aria-label="Hidden column">${c.s ? '🔒' : '🔓'}</button><button type="button" class="icon-btn tbCx" aria-label="Remove column">✕</button></div>`;
+  const rowBox = r => `<div class="tb-row" data-ri="${esc(r.id)}">${t.cols.map((c, i) => `<input class="tbV${c.s ? ' vt-sec' : ''}" data-col="${i}" value="${esc(String(r.c[i] || ''))}" placeholder="${esc(c.l || 'Value')}" maxlength="300" autocomplete="off">`).join('')}<button type="button" class="icon-btn tbRx" aria-label="Remove row">✕</button></div>`;
+  const read = () => {   // what is on screen now
+    const cols = $$('.tb-col', $('tbBody')).map(el => ({ l: el.querySelector('.tbL').value.trim().slice(0, 40), s: el.querySelector('.tb-lock').classList.contains('on') }));
+    const rows = $$('.tb-row', $('tbBody')).map(el => ({ id: el.dataset.ri, c: $$('.tbV', el).map(x => x.value.trim().slice(0, 300)) }));
+    return { ...t, title: $('tbName').value.trim().slice(0, 60), cols, rows };
+  };
+  const draw = () => {
+    $('tbBody').innerHTML = `<div class="field"><label>Table name</label><input id="tbName" value="${esc(t.title || '')}" placeholder="e.g. Cards, Bank accounts, Policies" maxlength="60"></div>
+      <div class="group-title">Columns <span class="muted" style="font-weight:400;text-transform:none">· 🔒 = shown as dots until tapped, never shared or printed</span></div>
+      <div id="tbCols">${t.cols.map(colRow).join('')}</div><button class="linkbtn" id="tbAddC">＋ Column</button>
+      <div class="group-title">Rows</div><div id="tbRows">${t.rows.map(rowBox).join('') || ''}</div><button class="btn ghost small" id="tbAddR">＋ Row</button>
+      <p class="hint">A column named like “Valid till”, “Expiry” or “Renewal” (08/29, 31/08/2029…) puts that date in Dates — only the row's name and the date.</p>
+      ${t0 ? '<div class="btn-row"><button class="btn ghost" type="button" id="tbDel" style="color:var(--seal)">🗑 Delete this table</button></div>' : ''}<div class="msg" id="tbMsg"></div>`;
+    $$('.tb-lock', $('tbBody')).forEach(b => b.onclick = () => { Object.assign(t, read()); const i = +b.closest('.tb-col').dataset.ci; t.cols[i].s = !t.cols[i].s; draw(); });
+    $$('.tbCx', $('tbBody')).forEach(b => b.onclick = () => { Object.assign(t, read()); const i = +b.closest('.tb-col').dataset.ci; if (t.cols.length < 2) return; t.cols.splice(i, 1); t.rows.forEach(r => r.c.splice(i, 1)); draw(); });
+    $$('.tbRx', $('tbBody')).forEach(b => b.onclick = () => { Object.assign(t, read()); t.rows = t.rows.filter(r => r.id !== b.closest('.tb-row').dataset.ri); draw(); });
+    $('tbAddC').onclick = () => { Object.assign(t, read()); if (t.cols.length >= 12) return; t.cols.push({ l: '', s: false }); t.rows.forEach(r => r.c.push('')); draw(); const L = $$('.tbL', $('tbBody')); L[L.length - 1].focus(); };
+    $('tbAddR').onclick = () => { Object.assign(t, read()); if (t.rows.length >= 200) return; t.rows.push({ id: uid('r'), c: t.cols.map(() => '') }); draw(); const R = $$('.tb-row', $('tbBody')); const f = R[R.length - 1].querySelector('.tbV'); if (f) f.focus(); };
+    $$('.tbL', $('tbBody')).forEach(x => x.addEventListener('change', () => { Object.assign(t, read()); draw(); }));
+    if ($('tbDel')) $('tbDel').onclick = () => { if (!confirm('Delete this table?')) return; const nn = records[noteId], keep = JSON.parse(JSON.stringify(nn.tables || []));
+      nn.tables = (nn.tables || []).filter(x => x.id !== t.id); put(nn, { render: false }); tbSyncDates(nn); Sheets.close('shTbl', true); if (Sheets.isOpen('shNoteView')) previewNote(noteId);
+      toast('Table deleted.', 'Undo', () => { const m = records[noteId]; m.tables = keep; put(m, { render: false }); tbSyncDates(m); if (Sheets.isOpen('shNoteView')) previewNote(noteId); }, 7000); };
+  };
+  TB.read = read;
+  draw();
+  if (!Sheets.isOpen('shTbl')) Sheets.open('shTbl');
+  if (!t0) setTimeout(() => $('tbName') && $('tbName').focus(), 300);
+}
+$('tbSave').addEventListener('click', () => {
+  const n = records[TB.note]; if (!n || !TB.read) return;
+  if (!Fin.key) { toast('The private section locked — open it again to save.'); return; }
+  const t = TB.read();
+  if (!t.cols.some(c => c.l)) { const m = $('tbMsg'); m.className = 'msg err'; m.textContent = 'Name at least one column.'; return; }
+  t.rows = t.rows.filter(r => r.c.some(v => v));
+  n.tables = (n.tables || []).filter(x => x.id !== t.id).concat([t]).sort((a, b) => (n.tables || []).findIndex(x => x.id === a.id) - (n.tables || []).findIndex(x => x.id === b.id));
+  put(n, { render: false }); tbSyncDates(n);
+  Sheets.close('shTbl', true);
+  if (Sheets.isOpen('shNoteView')) previewNote(n.id);
+  toast('Table saved (encrypted).');
+});
+Sheets.onClose.shTbl = () => { $('tbBody').innerHTML = ''; TB.read = null; };
+/* move "Card & account details" (Docs) into a private note with one table per kind — once, and again if an older device adds more */
+function vaultToNote() {
+  if (!finUnlocked() || window.GHOST) return 0;
+  const V = all('vault').filter(v => !v.deleted); if (!V.length) return 0;
+  let n = all('snote').find(x => x.fromVault);
+  if (!n) n = put({ id: uid('sn'), type: 'snote', title: 'Cards & accounts', text: 'Moved here from “Card & account details” in Documents. Tap a 🔒 value to show it; tap again quickly to copy.', color: NOTE_COLORS[0], pinned: true, folder: '', docRefs: [], imgs: [], tables: [], fromVault: 1, deleted: false }, { render: false });
+  n.tables = n.tables || [];
+  VAULT_KINDS.forEach(k => {
+    const es = V.filter(v => vKind(v.kind)[0] === k[0]); if (!es.length) return;
+    let t = n.tables.find(x => x.vkind === k[0]);
+    if (!t) { t = { id: uid('tb'), vkind: k[0], dateCat: VAULT_DATE_CAT[k[0]] || 'other', title: k[2], cols: [{ l: 'Name', s: false }, { l: 'Belongs to', s: false }], rows: [] }; n.tables.push(t); }
+    es.forEach(v => (v.fields || []).forEach(f => { const l = (f.l || 'Field').trim(); const c = t.cols.find(x => x.l.toLowerCase() === l.toLowerCase()); if (!c) { t.cols.push({ l, s: !!f.s }); t.rows.forEach(r => r.c.push('')); } else if (f.s) c.s = true; }));
+    if (es.some(v => v.notes) && !t.cols.some(c => c.l === 'Notes')) { t.cols.push({ l: 'Notes', s: false }); t.rows.forEach(r => r.c.push('')); }
+    es.filter(v => !t.rows.some(r => r.id === 'v' + v.id)).forEach(v => { const c = t.cols.map(col => col.l === 'Name' ? v.title || '' : col.l === 'Belongs to' ? v.who || '' : col.l === 'Notes' ? v.notes || '' : ((v.fields || []).find(f => (f.l || '').trim().toLowerCase() === col.l.toLowerCase()) || {}).v || '');
+      t.rows.push({ id: 'v' + v.id, c }); });
+  });
+  put(n, { render: false });
+  V.forEach(v => softDelete(v.id, { render: false }));                     // kept in Recently deleted, so nothing is lost
+  tbSyncDates(n);
+  return V.length;
+}
+/* ==========================================================================
+   v2.27 — NEXT / PREVIOUS: swipe left or right (or ‹ ›) to go through the list an item was opened from.
+   Docs, the Attention list, notes, private notes, tasks and Money entries. Moving on saves the current one first:
+   documents, tasks and notes save themselves as they close; a Money entry is saved only if it is valid (else it stays).
+   ======================================================================== */
+const Nav = { kind: null, ids: [], id: null };
+const NAV_SHEETS = { doc: ['shDoc', 'shDocView'], note: ['shNoteView', 'shNote'], task: ['shTask'], fin: ['shFin'] };
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-doc],[data-attid],[data-note],[data-task],[data-fin],[data-udl]'); if (!t) return;
+  if (e.target.closest('.sheet') && !t.closest('#docList,#docAttn')) return;            // buttons inside an open sheet are not lists
+  let kind, ids, id;
+  if (t.dataset.attid) { if (t.dataset.attk === 'inbox' || t.dataset.attk === 'datefill') return;
+    const sec = t.closest('.attn-sec') || t.parentNode; kind = 'doc'; ids = $$('[data-attid]', sec).map(x => x.dataset.attid); id = t.dataset.attid; }
+  else if (t.dataset.doc) { kind = 'doc'; ids = $$('[data-doc]', t.closest('#docList') || t.closest('section') || document).map(x => x.dataset.doc); id = t.dataset.doc; }
+  else if (t.dataset.note) { kind = 'note'; ids = $$('[data-note]', t.closest('section') || document).map(x => x.dataset.note); id = t.dataset.note; }
+  else if (t.dataset.task) { kind = 'task'; ids = $$('[data-task]', t.closest('section') || document).map(x => x.dataset.task); id = t.dataset.task; }
+  else if (t.dataset.fin) { kind = 'fin'; ids = $$('[data-fin]', t.closest('[id]') || document).map(x => x.dataset.fin); id = t.dataset.fin; }
+  else return;
+  Nav.kind = kind; Nav.ids = [...new Set(ids)].filter(x => records[x]); Nav.id = id;
+  setTimeout(navShow, 60);
+}, true);
+function navOpenSheet() { const top = Sheets.top(); return Nav.kind && top && NAV_SHEETS[Nav.kind].includes(top) ? top : null; }
+function navCurrent() { const sh = navOpenSheet(); if (!sh) return null;
+  return sh === 'shDoc' ? editDocId : sh === 'shDocView' ? viewDocId : sh === 'shNoteView' ? viewNoteId : sh === 'shNote' ? (typeof editNoteId !== 'undefined' ? editNoteId : Nav.id) : sh === 'shTask' ? editTaskId : sh === 'shFin' ? editFinId : null; }
+function navShow() {
+  $$('.navx').forEach(x => x.classList.add('hidden'));
+  const sh = navOpenSheet(), cur = navCurrent(); if (!sh || !cur) return;
+  const i = Nav.ids.indexOf(cur); if (i < 0 || Nav.ids.length < 2) return;
+  const card = $(sh).querySelector('.sheet-card'); let bar = card.querySelector('.navx');
+  if (!bar) { bar = document.createElement('div'); bar.className = 'navx'; bar.innerHTML = '<button type="button" class="navp" aria-label="Previous">‹</button><span></span><button type="button" class="navn" aria-label="Next">›</button>';
+    const head = card.querySelector('.sheet-head'); head.after(bar);
+    bar.querySelector('.navp').addEventListener('click', () => navGo(-1)); bar.querySelector('.navn').addEventListener('click', () => navGo(1)); }
+  bar.classList.remove('hidden');
+  bar.querySelector('span').textContent = `${i + 1} of ${Nav.ids.length}`;
+  bar.querySelector('.navp').disabled = i === 0; bar.querySelector('.navn').disabled = i === Nav.ids.length - 1;
+}
+function navGo(d) {
+  const sh = navOpenSheet(), cur = navCurrent(); if (!sh || !cur) return;
+  Nav.ids = Nav.ids.filter(x => records[x] && !records[x].deleted);
+  const i = Nav.ids.indexOf(cur), next = Nav.ids[i + d]; if (i < 0 || !next) { toast(d > 0 ? 'That was the last one.' : 'This is the first one.'); return; }
+  const open = () => { Nav.id = next;
+    if (sh === 'shDoc') openDoc(next); else if (sh === 'shDocView') { if (typeof showDoc === 'function' && !docFilesOf(next).length) { Sheets.close('shDocView', true); openDoc(next); } else openDocView(next); }
+    else if (sh === 'shNoteView') previewNote(next); else if (sh === 'shNote') openNoteEditor(next);
+    else if (sh === 'shTask') openTaskEditor(next); else if (sh === 'shFin') openFin(next);
+    setTimeout(navShow, 80); };
+  if (sh === 'shFin') { $('feSave').click(); if (Sheets.isOpen('shFin')) return; setTimeout(open, 60); return; }      // not valid: stay and show why
+  if (sh === 'shDoc' || sh === 'shTask' || sh === 'shNote') { Sheets.close(sh); setTimeout(open, 120); return; }     // saves itself as it closes
+  open();
+}
+/* swipe on the sheet: left = next, right = previous; not from the screen edges (iPhone back gesture), text boxes or sideways tables */
+Object.values(NAV_SHEETS).flat().forEach(id => {
+  const card = $(id) && $(id).querySelector('.sheet-card'); if (!card) return;
+  let x0 = null, y0 = 0;
+  card.addEventListener('touchstart', e => {
+    const t = e.touches[0], tg = e.target;
+    if (e.touches.length > 1 || t.clientX < 24 || t.clientX > window.innerWidth - 24 || tg.closest('input,textarea,select,[contenteditable],.tw,.navx,.dv-body img,.sheet-head') ) { x0 = null; return; }
+    x0 = t.clientX; y0 = t.clientY;
+  }, { passive: true });
+  card.addEventListener('touchend', e => {
+    if (x0 == null || !navOpenSheet()) return;
+    const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0; x0 = null;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 45 && Math.abs(dx) > 2 * Math.abs(dy)) navGo(dx < 0 ? 1 : -1);
+  });
+});
+['shDoc', 'shDocView', 'shNoteView', 'shNote', 'shTask', 'shFin'].forEach(id => { const prev = Sheets.onOpen[id]; Sheets.onOpen[id] = () => { if (prev) prev(); setTimeout(navShow, 60); }; });
+/* v2.27: documents-only unlock ends when no document screen is open (wrapped last, after every other close handler is set) */
+['shDocView', 'shDoc'].forEach(id => { const prev = Sheets.onClose[id]; Sheets.onClose[id] = () => { if (prev) { try { prev(); } catch (e) { RLOG.warn('onClose ' + id, e.message); } } DocUnlock.closed(); }; });

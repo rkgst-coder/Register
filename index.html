@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.26.1">
+<meta name="app-version" content="2.27.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -611,6 +611,37 @@ html.app-hidden #app{filter:blur(24px)}
 
 /* v2.8 */
 .doc-yearbar{display:flex;align-items:center;gap:8px;margin:0 2px 10px;font-size:.875rem}
+/* v2.27 — tidy Docs header: one row (Add · year · More), category actions in one ⋯ menu */
+.doc-top{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+.doc-top #docMoreBtn{margin-left:auto}
+#docYearSlot select{width:auto;padding:6px 26px 6px 10px;font-size:.8125rem;border-radius:16px}
+.crumb-more{margin-left:auto;width:36px;height:32px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--ink-soft);font-size:1.1rem;line-height:1}
+.pop-menu{position:fixed;z-index:400;min-width:220px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:6px 0}
+.pop-menu button{display:block;width:100%;text-align:left;padding:11px 16px;font:inherit;font-size:.9375rem;background:none;border:none;color:var(--ink)}
+.pop-menu button:active{background:var(--line)}
+.pop-menu button.danger{color:var(--seal)}
+/* v2.27 — tables in private notes */
+.tb-wrap{margin:14px 0 6px}
+.tb-h{display:flex;align-items:center;gap:8px;margin:0 0 6px}
+.tb-h b{flex:1}
+.tb td{white-space:nowrap}
+.tb td.tb-c{cursor:pointer}
+.tb .tb-sec{font-family:ui-monospace,monospace;letter-spacing:.08em}
+.tb-col,.tb-row{display:flex;gap:6px;align-items:center;margin:0 0 6px}
+.tb-row{flex-wrap:wrap;padding:8px;border:1px solid var(--line);border-radius:10px}
+.tb-row input{flex:1 1 140px;min-width:0}
+.tb-col input{flex:1}
+.tb-lock{width:36px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--card)}
+.tb-lock.on{background:var(--ink);color:var(--paper)}
+/* v2.27 — next / previous */
+.navx{display:flex;align-items:center;justify-content:center;gap:14px;padding:0 0 6px;font-size:.8125rem;color:var(--ink-soft)}
+.navx button{width:40px;height:30px;border-radius:15px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:1.1rem;line-height:1}
+.navx button:disabled{opacity:.35}
+/* v2.27 — one month picker: tapping a month name opens the same month/year wheel as every month field */
+.mj{position:relative;display:inline-flex;align-items:center;cursor:pointer}
+.mj b{text-decoration:underline dotted;text-underline-offset:3px}
+.mj-in{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;-webkit-appearance:none;appearance:none;font-size:16px}
+.fx-part{display:grid;grid-template-columns:1fr 90px;gap:6px;padding:8px 0;border-bottom:.5px solid var(--line)}.fx-part .fxD{grid-column:1/2}.fx-part .fxX{justify-self:end}.fx-part select,.fx-part input{font-size:.875rem;padding:6px 8px}
 .doc-yearbar select{width:auto;padding:6px 8px;font-size:.875rem}
 .dfyear{font-size:.75rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);margin:10px 4px 4px}
 .dffy{width:auto;padding:2px 4px;font-size:.75rem;min-height:0}
@@ -1180,7 +1211,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <button data-v="dates">Key dates</button>
       </div>
       <div id="billsPane" class="hidden">
-        <div class="month-nav"><button id="billPrev">‹</button><b id="billMonthLbl"></b><button id="billNext">›</button></div>
+        <div class="month-nav"><button id="billPrev">‹</button><span class="mj"><b id="billMonthLbl"></b><input type="month" class="mj-in" id="billMonthPick" aria-label="Pick a month"></span><button id="billNext">›</button></div>
         <div class="group" id="billList"></div>
         <p class="hint">Swipe a bill right to mark it paid. Missed months from earlier stay at the top until you settle or skip them.</p>
       </div>
@@ -1193,8 +1224,8 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
     <!-- DOCUMENTS -->
     <section class="screen" id="scr-docs">
       <div class="large-title">Documents</div>
-      <div class="btn-row doc-top" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn brass small" id="docAddBtn">＋ Add document</button><button class="btn ghost small" id="docFoldersBtn">🗂 People &amp; categories</button><button class="btn ghost small" id="docFamBtn">✅ Family checklist</button>
-        <span class="hidden"><button id="docQuickBtn"></button><button id="docImportBtn"></button><button id="docScanBtn"></button><button id="docSelBtn"></button></span></div>
+      <div class="doc-top"><button class="btn brass small" id="docAddBtn">＋ Add</button><span id="docYearSlot"></span><button class="btn ghost small" id="docMoreBtn" aria-label="More document options" aria-haspopup="menu">⋯ More</button>
+        <span class="hidden"><button id="docFoldersBtn"></button><button id="docFamBtn"></button><button id="docQuickBtn"></button><button id="docImportBtn"></button><button id="docScanBtn"></button><button id="docSelBtn"></button></span></div>
       <div id="docVault"></div>
       <div class="chips" id="docChips"></div>
       <div id="docChkNote"></div>
@@ -1221,7 +1252,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <!-- v2.19: sticky month header · balances · this month · entries. Filters and Insights open on demand. -->
         <div class="led-head" id="ledHead">
           <button class="led-nav" id="finPrev" aria-label="Previous month">‹</button>
-          <b id="finMonthLbl"></b>
+          <span class="mj"><b id="finMonthLbl"></b><input type="month" class="mj-in" id="finMonthPick" aria-label="Pick a month"></span>
           <button class="led-nav" id="finNext" aria-label="Next month">›</button>
           <span class="led-sp"></span>
           <button class="led-ic" id="finFilterBtn" aria-label="Search and filter" aria-expanded="false" aria-controls="finFilterPanel"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16l-6.2 7.3V18l-3.6 1.8v-7z"/></svg><i class="led-dot hidden" id="finFilterDot"></i></button>
@@ -1726,7 +1757,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
       <div id="usualBox"></div>
       <div class="plan-sec" id="budSec">
         <h3 class="plan-h">Budgets</h3>
-        <div class="month-nav"><button id="budPrev" aria-label="Previous month">‹</button><b id="budMonthLbl"></b><button id="budNext" aria-label="Next month">›</button></div>
+        <div class="month-nav"><button id="budPrev" aria-label="Previous month">‹</button><span class="mj"><b id="budMonthLbl"></b><input type="month" class="mj-in" id="budMonthPick" aria-label="Pick a month"></span><button id="budNext" aria-label="Next month">›</button></div>
         <div class="group" id="budBars"></div>
         <button class="btn ghost block" id="budSetBtn">Set a monthly budget</button>
       </div>
@@ -1756,6 +1787,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <div class="field"><label>Paid back so far ₹</label><input id="fePaid" inputmode="decimal"></div>
         <div class="field"><label>Status</label><select id="feSettled"><option value="no">Outstanding</option><option value="yes">Settled</option></select></div>
       </div>
+      <div class="field hidden" id="feGoalWrap"><label>Towards a goal (optional)</label><select id="feGoal"></select></div>
       <div class="group"><label class="switch-row">Repeats every month<input type="checkbox" class="sw" id="feRecur"></label></div>
     </div>
   </div>
@@ -1871,6 +1903,13 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
   <div class="sheet-card"><div class="sheet-grab"></div>
     <div class="sheet-head"><button class="sh-l" id="vtBack">Close</button><h2 id="vtTitle">Card &amp; account details</h2><button class="sh-r" id="vtSave">Done</button></div>
     <div class="sheet-body" id="vtBody"></div>
+  </div>
+</div>
+<!-- v2.27: a table inside a private note -->
+<div class="sheet full" id="shTbl">
+  <div class="sheet-card"><div class="sheet-grab"></div>
+    <div class="sheet-head"><button class="sh-l" data-close>Cancel</button><h2 id="tbTitleH">Table</h2><button class="sh-r" id="tbSave">Save</button></div>
+    <div class="sheet-body" id="tbBody"></div>
   </div>
 </div>
 <div class="sheet" id="shWork">
@@ -2016,6 +2055,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.26.1"></script>
+<script src="app.js?v=2.27.0"></script>
 </body>
 </html>
