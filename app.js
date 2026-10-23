@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.27.0';
+const APP_VERSION = '2.27.1';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -849,7 +849,10 @@ const Sync = {
       batch.forEach(row => {
         if (row.chunkOf) { if (rejected.has(row.id) || stale.has(row.id)) badChunk.add(row.chunkOf); return; }
         const cur = sealed[row.id] || records[row.id];
-        if (!cur || cur.updatedAt !== row.updatedAt) return;    // edited again meanwhile — stays dirty
+        if (!cur || cur.updatedAt !== row.updatedAt) {           // edited again meanwhile — stays dirty
+          // v2.27.1: but the Sheet now holds THIS device's copy, so the next push starts from it (not a "changed on two devices")
+          if (cur && !stale.has(row.id) && !rejected.has(row.id) && !row.stubN) { const r = records[row.id]; if (r && r._dirty) { r._base = row.updatedAt; persist(r); } }
+          return; }
         if (stale.has(row.id) && CONFLICT_TYPES.has(cur.type)) conflictStash(row.id, records[row.id] ? stripLocal(records[row.id]) : stripLocal(cur), 'mine');   // v2.24: the Sheet kept the other device's — keep ours to choose
         if (stale.has(row.id) && (cur.type === 'note' || cur.type === 'snote')) {   // v2.19 (B6): the Sheet has a newer copy from another device — keep ours to compare
           const plain = records[row.id]; if (plain && (plain.type === 'note' || plain.type === 'snote')) (this.conflicts = this.conflicts || {})[row.id] = { id: plain.id, type: plain.type, title: plain.title, text: plain.text, folder: plain.folder, color: plain.color, docRefs: plain.docRefs, imgs: plain.imgs };
@@ -9743,6 +9746,7 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
+  { t: '<b>Fixed</b>: editing a task (or anything else) quickly while it was syncing made Register say it was “changed on two devices” when it was not. Any such entries already in the list are your own edits — tap Keep “In use”.' },
   { t: '<b>Locked documents open without opening Money</b>: the code typed for a 🔒 document unlocks documents only — Money, PNote and Plan stay hidden — and they lock again when you close the document (or after 3 minutes).' },
   { t: '<b>Documents</b>: a tidier top — ＋ Add, the year, and ⋯ More (People & categories, Family checklist, Keep on this iPhone). A person’s or category’s actions are under one ⋯ button.' },
   { t: '<b>Next / previous</b>: swipe left or right (or use ‹ ›) to go through the list you opened from — documents (also the “needs attention” list), notes, tasks and Money entries. The one you leave is saved first.' },
