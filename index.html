@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.28.0">
+<meta name="app-version" content="2.29.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -229,9 +229,10 @@ details.fold[open] summary::before{transform:rotate(90deg)}
   position:relative;display:flex;flex-direction:column;justify-content:space-between;text-align:left;width:100%}
 .note-card .nt{font-family:var(--serif);font-weight:600;font-size:0.96875rem;line-height:1.3;word-break:break-word;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.row.task.tp-High{background:color-mix(in srgb,var(--seal) 9%,var(--card))}
-.row.task.tp-Medium{background:color-mix(in srgb,var(--brass) 8%,var(--card))}
-.row.task.tp-Low{background:color-mix(in srgb,#4A6FA5 9%,var(--card))}
+.row.task.tp-High{background:#F7DDD8}.row.task.tp-Medium{background:#F6EBCB}.row.task.tp-Low{background:#DCE9F4}
+html[data-theme="dark"] .row.task.tp-High{background:#3D2624} html[data-theme="dark"] .row.task.tp-Medium{background:#38301D} html[data-theme="dark"] .row.task.tp-Low{background:#1D2D3B}
+.ck-line{display:flex;align-items:center;gap:8px;margin:10px 0 4px;padding:8px 10px;border-radius:var(--r-sm);background:rgba(128,128,128,.08);font-size:0.8125rem;color:var(--ink-soft)}
+.ck-line span{flex:1}
 .tbl-bar{align-items:center;border-top:1px dashed var(--line-strong);margin-top:2px}
 .tbl-bar .tb-l{flex:none;font-size:0.75rem;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em;padding:0 2px}
 .tbl-bar button{font-size:0.8125rem}
@@ -2069,6 +2070,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.28.0"></script>
+<script src="app.js?v=2.29.0"></script>
 </body>
 </html>

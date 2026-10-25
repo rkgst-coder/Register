@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.28.0';
+const APP_VERSION = '2.29.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -660,7 +660,7 @@ const all = type => {
   if (!l) { l = Object.values(records).filter(r => r.type === type && !r.deleted); allCache.by.set(type, l); }
   return l.slice();
 };
-const trashed = () => window.GHOST ? [] : Object.values(records).filter(r => r.deleted && r.deletedAt && r.type !== 'chunk' && r.type !== 'blob' && r.type !== 'billpay' && r.type !== 'finkey' && r.type !== 'docfile' && r.type !== 'filekey' && r.type !== 'planmonth' && r.type !== 'plancfg' && r.type !== 'erasekey' && r.type !== 'erased' && r.type !== 'qlog' && r.type !== 'dropkey');
+const trashed = () => window.GHOST ? [] : Object.values(records).filter(r => r.deleted && r.deletedAt && r.type !== 'chunk' && r.type !== 'blob' && r.type !== 'billpay' && r.type !== 'finkey' && r.type !== 'cardkey' && r.type !== 'docfile' && r.type !== 'filekey' && r.type !== 'planmonth' && r.type !== 'plancfg' && r.type !== 'erasekey' && r.type !== 'erased' && r.type !== 'qlog' && r.type !== 'dropkey');
 
 /* ---------- write ---------- */
 function persist(rec) {
@@ -7839,6 +7839,7 @@ function afterFinanceUnlock() {
   showTab('money');
 }
 function onFinanceLocked(silent) {
+  if (typeof cardLock === 'function') cardLock(true);                   // v2.29
   ['stmBody', 'ulBody', 'tbBody'].forEach(id => { if ($(id)) $(id).innerHTML = ''; });   // v2.25
   if ($('vtBody')) $('vtBody').innerHTML = ''; if ($('docVault')) $('docVault').innerHTML = '';   // v2.23: nothing readable left on screen
   $('moneyTab').classList.add('hidden'); clearFinFilter();
@@ -9746,6 +9747,8 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
+  { t: '<b>🔐 Card code</b> (PNote tables): an optional second code just for 🔒 values — card and account numbers. Each 🔒 value is encrypted again with it, so the private code alone does not show them. Face ID can open it on a device where Money already uses Face ID. It locks again after 60 seconds, when Register goes to the background, and when Money locks. Add it from a PNote table: “＋ Card code”. It cannot be recovered if forgotten.', priv: true },
+  { t: '<b>Tasks</b>: clearer priority colours — rose for High, sand for Medium, blue for Low — with darker versions in dark mode.' },
   { t: '<b>Tables in notes</b>: tap inside a table and a bar appears — add a row above or below, a column left or right, or delete a row, column or the table. ▦ inside a table shows the same choices. Tab moves to the next cell; Tab in the last cell adds a row.' },
   { t: '<b>Note toolbar</b>: on a computer, rest the pointer on a button to see what it does. On iPhone, press and hold a button to see its name.' },
   { t: '<b>Tasks</b> are tinted by priority — red High, gold Medium, blue Low — and open sorted <b>by priority</b>, then by date. The other orders are still in the chips.' },
@@ -10917,32 +10920,42 @@ function tbSyncDates(n) {
   all('date').forEach(d => { if (d.sysSrc === 'snote' && d.srcRef === n.id && !W[d.id]) sysDate(d.id, null); });
 }
 function tbHtml(n) {
-  return (n.tables || []).map(t => `<div class="tb-wrap"><div class="tb-h"><b>▦ ${esc(t.title || 'Table')}</b><button class="btn ghost small" data-tbe="${t.id}">✎ Edit</button></div>
+  return cardLine(n) + (n.tables || []).map(t => `<div class="tb-wrap"><div class="tb-h"><b>▦ ${esc(t.title || 'Table')}</b><button class="btn ghost small" data-tbe="${t.id}">✎ Edit</button></div>
     <div class="tw"><table class="pt tb"><thead><tr>${t.cols.map(c => `<th>${c.s ? '🔒 ' : ''}${esc(c.l || '')}</th>`).join('')}</tr></thead><tbody>${(t.rows || []).map(r => `<tr>${t.cols.map((c, i) => {
       const v = String(r.c[i] || ''), k = t.id + ':' + r.id + ':' + i, show = !c.s || TB.shown.has(k);
-      return `<td class="tb-c${c.s ? ' tb-sec' : ''}" data-tbc="${k}" title="${c.s ? 'Tap to show · double-tap to copy' : 'Tap to copy'}">${v ? (show ? esc(v) : '••••••') : '<span class="muted">—</span>'}</td>`; }).join('')}</tr>`).join('') || `<tr><td colspan="${t.cols.length}" class="muted">No rows yet.</td></tr>`}</tbody></table></div></div>`).join('');
+      const pv = isCk(v) ? Card.plain.get(v) : v;                            // v2.29: 🔒 values sealed with the card code
+      return `<td class="tb-c${c.s ? ' tb-sec' : ''}" data-tbc="${k}" title="${c.s ? 'Tap to show · double-tap to copy' : 'Tap to copy'}">${v ? (show && pv != null ? esc(pv) : '••••••') : '<span class="muted">—</span>'}</td>`; }).join('')}</tr>`).join('') || `<tr><td colspan="${t.cols.length}" class="muted">No rows yet.</td></tr>`}</tbody></table></div></div>`).join('');
 }
 function tbWire(box, n) {
   $$('[data-tbe]', box).forEach(b => b.addEventListener('click', () => openTable(n.id, b.dataset.tbe)));
+  $$('[data-ckm]', box).forEach(b => b.addEventListener('click', () => cardMenu(b, n.id)));
   $$('[data-tbc]', box).forEach(td => {
     const [tid, rid, i] = td.dataset.tbc.split(':'), t = (records[n.id].tables || []).find(x => x.id === tid), r = t && t.rows.find(x => x.id === rid), c = t && t.cols[+i];
     if (!t || !r || !c) return;
-    const v = String(r.c[+i] || ''); if (!v) return;
-    const copy = async () => { try { await navigator.clipboard.writeText(v); if (c.s) { clipArm(); toast(`Copied ${c.l || 'it'} — wiped from the clipboard the next time you tap in Register after 30 s.`); } else toast(`Copied ${c.l || 'it'}.`); } catch (e) { toast('Could not copy here.'); } };
+    const v0 = String(r.c[+i] || ''); if (!v0) return;
+    const plainOf = () => isCk(v0) ? Card.plain.get(v0) : v0;
+    const copy = async () => { const v = plainOf(); if (v == null) return; try { await navigator.clipboard.writeText(v); if (c.s) { clipArm(); toast(`Copied ${c.l || 'it'} — wiped from the clipboard the next time you tap in Register after 30 s.`); } else toast(`Copied ${c.l || 'it'}.`); } catch (e) { toast('Could not copy here.'); } };
     if (!c.s) { td.addEventListener('click', copy); return; }
     let last = 0;
     td.addEventListener('click', () => { const now = Date.now(); if (now - last < 400 && TB.shown.has(td.dataset.tbc)) { copy(); return; } last = now;
-      const k = td.dataset.tbc; TB.shown.has(k) ? TB.shown.delete(k) : TB.shown.add(k);
+      const k = td.dataset.tbc;
+      if (!TB.shown.has(k) && !cardOpen()) { cardAsk(() => { TB.shown.add(k); previewNote(n.id); }); return; }   // v2.29: Face ID or the card code first
+      if (!TB.shown.has(k) && isCk(v0) && !Card.plain.has(v0)) { cardPlainAll().then(() => { if (!Card.plain.has(v0)) { toast('This value was locked with a different card code.'); return; } TB.shown.add(k); previewNote(n.id); }); return; }
+      TB.shown.has(k) ? TB.shown.delete(k) : TB.shown.add(k);
       clearTimeout(TB.t); TB.t = setTimeout(() => { TB.shown.clear(); if (Sheets.isOpen('shNoteView') && viewNoteId === n.id) previewNote(n.id); }, 30000);
       previewNote(n.id); });
   });
 }
-function openTable(noteId, tableId) {
+function openTable(noteId, tableId, tried) {
   const n = records[noteId]; if (!n || n.type !== 'snote') return;
   if (!finUnlocked()) { toast('Open Money first.'); return; }
+  const t00 = tableId && (n.tables || []).find(x => x.id === tableId);
+  if (t00 && tbHasSecret(t00) && !cardOpen()) { cardAsk(() => openTable(noteId, tableId)); return; }       // v2.29
+  if (!tried && Card.key && t00 && (t00.rows || []).some(r => r.c.some(v => isCk(v) && !Card.plain.has(v)))) { cardPlainAll().then(() => openTable(noteId, tableId, true)); return; }
   TB.note = noteId; TB.id = tableId || null;
   const t0 = tableId && (n.tables || []).find(x => x.id === tableId);
   const t = t0 ? JSON.parse(JSON.stringify(t0)) : { id: uid('tb'), title: '', cols: [{ l: 'Name', s: false }, { l: 'Number', s: true }, { l: 'Valid till', s: false }], rows: [] };
+  t.rows.forEach(r => { r.c = r.c.map(v => isCk(v) ? (Card.plain.get(v) ?? v) : v); });                 // v2.29: plain while editing
   $('tbTitleH').textContent = t0 ? 'Edit table' : 'New table';
   const colRow = (c, i) => `<div class="tb-col" data-ci="${i}"><input class="tbL" value="${esc(c.l || '')}" placeholder="Column name" maxlength="40"><button type="button" class="tb-lock${c.s ? ' on' : ''}" aria-label="Hidden column">${c.s ? '🔒' : '🔓'}</button><button type="button" class="icon-btn tbCx" aria-label="Remove column">✕</button></div>`;
   const rowBox = r => `<div class="tb-row" data-ri="${esc(r.id)}">${t.cols.map((c, i) => `<input class="tbV${c.s ? ' vt-sec' : ''}" data-col="${i}" value="${esc(String(r.c[i] || ''))}" placeholder="${esc(c.l || 'Value')}" maxlength="300" autocomplete="off">`).join('')}<button type="button" class="icon-btn tbRx" aria-label="Remove row">✕</button></div>`;
@@ -10973,10 +10986,12 @@ function openTable(noteId, tableId) {
   if (!Sheets.isOpen('shTbl')) Sheets.open('shTbl');
   if (!t0) setTimeout(() => $('tbName') && $('tbName').focus(), 300);
 }
-$('tbSave').addEventListener('click', () => {
+$('tbSave').addEventListener('click', async () => {
   const n = records[TB.note]; if (!n || !TB.read) return;
   if (!Fin.key) { toast('The private section locked — open it again to save.'); return; }
   const t = TB.read();
+  if (ckRec() && tbHasSecret(t) && !cardOpen()) { toast('The card code locked — tap Save again after unlocking.'); cardAsk(() => {}); return; }
+  if (ckRec() && Card.key) { try { await cardSealTable(t); } catch (e) { toast(e.message); return; } }   // v2.29: 🔒 values sealed with the card code
   if (!t.cols.some(c => c.l)) { const m = $('tbMsg'); m.className = 'msg err'; m.textContent = 'Name at least one column.'; return; }
   t.rows = t.rows.filter(r => r.c.some(v => v));
   n.tables = (n.tables || []).filter(x => x.id !== t.id).concat([t]).sort((a, b) => (n.tables || []).findIndex(x => x.id === a.id) - (n.tables || []).findIndex(x => x.id === b.id));
@@ -11166,3 +11181,169 @@ document.addEventListener('mouseover', e => {
   ['touchend', 'touchmove', 'touchcancel'].forEach(ev => document.addEventListener(ev, () => clearTimeout(timer), { passive: true }));
   document.addEventListener('click', e => { if (shown && e.target.closest && e.target.closest('#neBar,#neTblBar')) { shown = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);   // a hold only shows the name
 })();
+
+/* ==========================================================================
+   v2.29 — CARD CODE: a second code for 🔒 values in PNote tables
+   The note is already encrypted with the private code. With a card code set,
+   each 🔒 value inside it is encrypted AGAIN with a key from the card code
+   (PBKDF2-SHA-256, 600,000 rounds, its own salt), so the private code alone
+   does not show card numbers. Face ID (where Money's Face ID is on) can open
+   it instead of typing. It locks again after 60 seconds, when Register goes
+   to the background, and when Money locks. Forgotten card code = those values
+   cannot be read; the rest of the note is not affected.
+   ======================================================================== */
+const CK_ID = '__cardkey__', CK_PRE = '§c1:', CK_ITERS = 600000, CK_HOLD = 60000;
+const Card = { key: null, salt: null, plain: new Map(), t: null, fails: 0, waitTill: 0, after: null };
+const ckRec = () => { const r = records[CK_ID]; return r && !r.deleted && r.salt && r.check ? r : null; };
+const isCk = v => typeof v === 'string' && v.startsWith(CK_PRE);
+const tbHasSecret = t => (t.cols || []).some(c => c.s);
+const cardOpen = () => !!(Card.key || !ckRec());          // no card code set: 🔒 values open as before
+async function cardDerive(code, salt, iters) {           // not cached: the key lives only while the card code is open
+  const base = await crypto.subtle.importKey('raw', te.encode(code), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: unb64(salt), iterations: +iters || CK_ITERS, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+function cardHold() {
+  clearTimeout(Card.t);
+  Card.t = setTimeout(() => { if (Sheets.isOpen('shTbl')) { cardHold(); return; } cardLock(); }, CK_HOLD);   // stays open while a table is being edited
+}
+function cardLock(silent) {
+  if (!Card.key && !Card.plain.size) return;
+  Card.key = null; Card.salt = null; Card.plain.clear(); clearTimeout(Card.t);
+  if (typeof TB !== 'undefined') TB.shown.clear();
+  if (!silent && Sheets.isOpen('shNoteView') && records[viewNoteId] && records[viewNoteId].type === 'snote') previewNote(viewNoteId);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) cardLock(true); });
+async function cardPlainAll() {                           // decrypt every sealed 🔒 value (in memory only, for 60 s)
+  if (!Card.key) return;
+  for (const n of all('snote')) for (const t of (n.tables || [])) for (const r of (t.rows || [])) for (const v of r.c)
+    if (isCk(v) && !Card.plain.has(v)) { try { Card.plain.set(v, await aesDec(Card.key, v.slice(CK_PRE.length))); } catch (e) { RLOG.warn('card value not readable with this card code'); } }   // left sealed, never overwritten
+}
+async function cardSealTable(t) {                         // 🔒 columns → sealed; other columns → plain
+  const r0 = ckRec(); if (!Card.key || !r0 || r0.salt !== Card.salt) { cardLock(true); throw new Error('The card code was changed on another device — unlock again.'); }
+  for (const r of (t.rows || [])) for (let i = 0; i < r.c.length; i++) {
+    const v = r.c[i], c = t.cols[i];
+    if (c && c.s && v && !isCk(v)) { const enc = CK_PRE + await aesEnc(Card.key, String(v)); Card.plain.set(enc, String(v)); r.c[i] = enc; }
+    else if (c && !c.s && isCk(v) && Card.plain.has(v)) r.c[i] = Card.plain.get(v);   // unreadable values stay as they are
+  }
+}
+async function cardSealAll() {                            // after unlocking: anything still plain (older device, moved card details) gets sealed
+  if (!Card.key || !finUnlocked()) return 0;
+  let k = 0;
+  for (const n of all('snote')) {
+    if (!(n.tables || []).length) continue;
+    const before = JSON.stringify(n.tables);
+    for (const t of n.tables) await cardSealTable(t);
+    if (JSON.stringify(n.tables) !== before) { put(n, { render: false }); k++; }
+  }
+  return k;
+}
+async function cardOpenWith(key, salt) {
+  Card.key = key; Card.salt = salt; Card.fails = 0; cardHold();
+  await cardPlainAll(); await cardSealAll();
+  const f = Card.after; Card.after = null; if (f) f();
+}
+async function cardTry(code) {
+  const r = ckRec(); if (!r) return false;
+  const key = await cardDerive(code, r.salt, r.iters);
+  try { if (await aesDec(key, r.check) !== 'register-card-ok') return false; } catch (e) { return false; }
+  await cardOpenWith(key, r.salt); return true;
+}
+/* Face ID: the card code is kept on THIS device only, locked by Face ID (same passkey as Money's Face ID, different salt) */
+const CardBio = {
+  KEY: 'r2_cardbio',
+  get() { try { const b = JSON.parse(localStorage.getItem(this.KEY) || 'null'); const r = ckRec(); return b && r && b.ck === r.salt && Bio.get() && Bio.get().id === b.id ? b : null; } catch (e) { return null; } },
+  forget() { try { localStorage.removeItem(this.KEY); } catch (e) {} },
+  async wrap(out) { const base = await crypto.subtle.importKey('raw', out, 'HKDF', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: te.encode('register-card-v1'), info: te.encode('card-code') }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); },
+  async enable(code) { const bio = Bio.get(); if (!bio) throw new Error('Turn on Face ID for Money first (Settings).');
+    const salt = Bio.rnd(32), out = await Bio.prf(unb64(bio.id), salt);
+    localStorage.setItem(this.KEY, JSON.stringify({ id: bio.id, salt: b64(salt), ck: ckRec().salt, box: await aesEnc(await this.wrap(out), code) })); },
+  async unlock() { const b = this.get(); if (!b) return false;
+    const code = await aesDec(await this.wrap(await Bio.prf(unb64(b.id), unb64(b.salt))), b.box);
+    const ok = await cardTry(code); if (!ok) this.forget(); return ok; }
+};
+/* ask for the card code — Face ID first when this device has it (called inside the tap, so Face ID can start at once) */
+function cardAsk(then) {
+  if (cardOpen()) { then && then(); return; }
+  Card.after = then || null;
+  if (CardBio.get()) {
+    CardBio.unlock().then(ok => { if (!ok) cardCodeSheet(); }).catch(e => { RLOG.warn('card face id', e.name, e.message); cardCodeSheet(e.name === 'NotAllowedError' ? 'Face ID cancelled — type the card code instead.' : ''); });
+    return;
+  }
+  cardCodeSheet();
+}
+function cardCodeSheet(msg) {
+  planSheet('🔐 Card code', `<p class="hint" style="margin:0 4px 10px">🔒 values (card and account numbers) need the card code. They lock again after 60 seconds.</p>
+    <div class="field"><label>Card code</label><input id="ckIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done"></div>
+    ${Bio.get() && !CardBio.get() ? '<label class="switch-row">Use Face ID for this next time<input type="checkbox" class="sw" id="ckBio" checked></label>' : ''}`, () => {
+    const c = $('ckIn').value;
+    if (Date.now() < Card.waitTill) { planMsg('Too many wrong tries. Wait a minute.', true); return false; }
+    if (!c) { planMsg('Type the card code.', true); return false; }
+    const wantBio = $('ckBio') && $('ckBio').checked;
+    $('pshSave').disabled = true; planMsg('Checking…');
+    cardTry(c).then(async ok => {
+      $('pshSave').disabled = false;
+      if (!ok) { Card.fails++; if (Card.fails >= 5) { Card.waitTill = Date.now() + 60000; Card.fails = 0; } planMsg('That is not the card code.', true); return; }
+      Sheets.close('shPlan', true);
+      if (wantBio) toast('Use Face ID for the card code on this device?', 'Turn on', () => CardBio.enable(c).then(() => toast('Face ID opens the card code on this device now.')).catch(e => toast(e.name === 'NotAllowedError' ? 'Face ID cancelled.' : (e.message || 'Could not turn on Face ID.'))), 12000);
+    });
+    return false;
+  }, 'Unlock');
+  if (msg) planMsg(msg, true);
+  setTimeout(() => $('ckIn') && $('ckIn').focus(), 250);
+}
+function cardLine(n) {
+  if (!(n.tables || []).some(tbHasSecret)) return '';
+  const r = ckRec();
+  return `<div class="ck-line"><span>${r ? (Card.key ? '🔓 Card code open — locks in a minute' : '🔐 🔒 values need the card code') : '🔒 values open with the private code only'}</span><button class="btn ghost small" type="button" data-ckm="1">${r ? 'Card code ⋯' : '＋ Card code'}</button></div>`;
+}
+function cardMenu(anchor, noteId) {
+  const r = ckRec(), refresh = () => { if (Sheets.isOpen('shNoteView')) previewNote(noteId); };
+  if (!r) { cardSetSheet(null, refresh); return; }
+  const items = [];
+  if (Card.key) items.push({ l: '🔐 Lock now', fn: () => { cardLock(); refresh(); } });
+  items.push({ l: '✎ Change card code', fn: () => cardAsk(() => cardSetSheet('change', refresh)) });
+  if (Bio.get()) items.push(CardBio.get() ? { l: 'Face ID for card code: turn off', fn: () => { CardBio.forget(); toast('Face ID for the card code is off on this device.'); } }
+    : { l: 'Face ID for card code: turn on', fn: () => { Card.after = null; cardCodeSheet(); } });
+  items.push({ l: 'Remove card code', cls: 'danger', fn: () => cardAsk(() => cardRemove(refresh)) });
+  popMenu(anchor, items);
+}
+function cardSetSheet(mode, done) {
+  planSheet(mode ? 'Change card code' : 'Add a card code', `<p class="hint" style="margin:0 4px 10px">${mode ? '' : 'A second code just for 🔒 values in PNote tables — card numbers, account numbers. Someone who knows (or sees) your private code still cannot see them. '}At least 8 characters, different from your private code. <b>It cannot be recovered</b> — if you forget it, the 🔒 values are lost (the rest of the notes are not).</p>
+    <div class="field"><label>New card code</label><input id="ckN1" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false"></div>
+    <div class="field"><label>Again</label><input id="ckN2" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false"></div>`, () => {
+    const a = $('ckN1').value, b = $('ckN2').value;
+    if (a.length < 8) { planMsg('At least 8 characters.', true); return false; }
+    if (a !== b) { planMsg('The two do not match.', true); return false; }
+    $('pshSave').disabled = true; planMsg('Setting it up…');
+    cardSet(a).then(res => { $('pshSave').disabled = false;
+      if (res === 'same') { planMsg('Use a code different from your private code.', true); return; }
+      Sheets.close('shPlan', true); toast(mode ? 'Card code changed.' : 'Card code on. 🔒 values now need it (or Face ID).'); if (done) done(); })
+      .catch(e => { $('pshSave').disabled = false; RLOG.error('card code', e); planMsg('Could not set it: ' + (e.message || e), true); });
+    return false;
+  }, mode ? 'Change' : 'Turn on');
+  setTimeout(() => $('ckN1') && $('ckN1').focus(), 250);
+}
+async function cardSet(code) {
+  const fk = records[FINKEY_ID];
+  if (fk) { try { const k = await deriveFinKey(code, fk.salt, fk.iters); if (await aesDec(k, fk.check) === 'register-ok') return 'same'; } catch (e) {} }
+  if (ckRec()) await cardPlainAll();                                       // changing: read everything with the old key first
+  const old = new Map(Card.plain);
+  // every sealed value back to plain (in memory), then seal with the new key
+  const notes = all('snote').filter(n => (n.tables || []).length);
+  notes.forEach(n => n.tables.forEach(t => t.rows.forEach(r => { r.c = r.c.map(v => isCk(v) ? (old.has(v) ? old.get(v) : v) : v); })));
+  const salt = b64(crypto.getRandomValues(new Uint8Array(16))), key = await cardDerive(code, salt, CK_ITERS);
+  put({ id: CK_ID, type: 'cardkey', salt, iters: CK_ITERS, check: await aesEnc(key, 'register-card-ok'), createdAt: nowMs(), deleted: false }, { render: false });
+  CardBio.forget();
+  Card.plain.clear(); Card.key = key; Card.salt = salt; cardHold();
+  for (const n of notes) { for (const t of n.tables) await cardSealTable(t); put(n, { render: false }); }
+  return 'ok';
+}
+async function cardRemove(done) {
+  if (!Card.key) return;
+  await cardPlainAll();
+  for (const n of all('snote')) { if (!(n.tables || []).some(t => t.rows.some(r => r.c.some(isCk)))) continue;
+    n.tables.forEach(t => t.rows.forEach(r => { r.c = r.c.map(v => isCk(v) ? (Card.plain.get(v) ?? v) : v); })); put(n, { render: false }); }
+  const r = records[CK_ID]; if (r) { r.deleted = true; r.deletedAt = nowMs(); put(r, { render: false }); }
+  CardBio.forget(); cardLock(true); toast('Card code removed. 🔒 values open with the private code again.'); if (done) done();
+}
