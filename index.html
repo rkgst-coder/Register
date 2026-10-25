@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.29.0">
+<meta name="app-version" content="2.30.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -233,10 +233,11 @@ details.fold[open] summary::before{transform:rotate(90deg)}
 html[data-theme="dark"] .row.task.tp-High{background:#3D2624} html[data-theme="dark"] .row.task.tp-Medium{background:#38301D} html[data-theme="dark"] .row.task.tp-Low{background:#1D2D3B}
 .ck-line{display:flex;align-items:center;gap:8px;margin:10px 0 4px;padding:8px 10px;border-radius:var(--r-sm);background:rgba(128,128,128,.08);font-size:0.8125rem;color:var(--ink-soft)}
 .ck-line span{flex:1}
-.tbl-bar{align-items:center;border-top:1px dashed var(--line-strong);margin-top:2px}
-.tbl-bar .tb-l{flex:none;font-size:0.75rem;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em;padding:0 2px}
-.tbl-bar button{font-size:0.8125rem}
-.tbl-bar .tb-x{color:var(--neg)}
+#shNote .sheet-body{position:relative}
+.tbl-float{position:absolute;z-index:6;display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--card);border:1px solid var(--line-strong);box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:nowrap}
+.tbl-float.hidden{display:none}
+.tbl-float button{height:34px;min-width:36px;padding:0 10px;border-radius:8px;background:rgba(128,128,128,.12);font-size:0.8125rem;color:var(--ink)}
+.tbl-float .tb-x{color:var(--neg)}
 .note-card .nx{font-size:0.8125rem;color:var(--ink-soft);line-height:1.45;margin-top:5px;
   display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;white-space:pre-line}
 .note-card .nf{font-size:0.71875rem;color:var(--ink-faint);margin-top:7px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -1403,12 +1404,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <button id="neMic" aria-label="Speak to type" aria-pressed="false">🎤</button><button id="neFindBtn" aria-label="Find and replace">🔎</button>
         <button id="neImgBtn" aria-label="Add picture">🖼</button><button id="nePrevBtn" aria-label="Preview">👁</button>
       </div>
-      <div class="md-bar tbl-bar hidden" id="neTblBar" role="toolbar" aria-label="Table">
-        <span class="tb-l">Table</span>
-        <button data-tb="rowA" aria-label="Add row above">＋ Row ↑</button><button data-tb="rowB" aria-label="Add row below">＋ Row ↓</button>
-        <button data-tb="colL" aria-label="Add column left">＋ Col ←</button><button data-tb="colR" aria-label="Add column right">＋ Col →</button>
-        <button data-tb="rowX" aria-label="Delete row" class="tb-x">− Row</button><button data-tb="colX" aria-label="Delete column" class="tb-x">− Col</button><button data-tb="tblX" aria-label="Delete table" class="tb-x">🗑 Table</button>
-      </div>
       <div class="find-bar hidden" id="neFind">
         <input id="neFindIn" placeholder="Find" autocapitalize="off" autocorrect="off" enterkeyhint="search">
         <span class="fc" id="neFindCount"></span>
@@ -1419,6 +1414,9 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
       <input type="file" id="neImgFile" accept="image/*" multiple class="hidden">
       <div class="mic-live"></div>
       <textarea class="note-body" id="neBody" placeholder="Start writing… markdown works"></textarea>
+      <div class="tbl-float hidden" id="neTblBar" role="toolbar" aria-label="Table">
+        <button data-tb="rowB" aria-label="Add row below">＋ Row</button><button data-tb="more" aria-label="Table: rows, columns, delete" aria-haspopup="menu">▦ ⋯</button>
+      </div>
       <div class="note-body note-rich md" id="neRich" contenteditable="true" spellcheck="true" autocapitalize="sentences" role="textbox" aria-multiline="true" aria-label="Note text" data-ph="Start writing… type 1. or - and a space for a list" style="display:none"></div>
       <div class="md" id="nePreview" style="display:none;min-height:45vh;padding:8px 2px"></div>
       <div class="wc" id="neCount" aria-live="polite"></div>
@@ -2070,6 +2068,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.29.0"></script>
+<script src="app.js?v=2.30.0"></script>
 </body>
 </html>

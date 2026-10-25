@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.29.0';
+const APP_VERSION = '2.30.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -1864,6 +1864,8 @@ Sheets.onClose.shNote = async () => {
 
 /* paste pictures straight into the body */
 ta().addEventListener('paste', e => {
+  const grid = e.clipboardData && clipGrid(e.clipboardData);
+  if (grid && !(grid.length === 1 && grid[0].length === 1)) { e.preventDefault(); insertText('\n' + gridToMd(grid) + '\n'); return; }   // v2.30
   const files = [...(e.clipboardData && e.clipboardData.items || [])].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean);
   if (files.length) { e.preventDefault(); addNoteImages(files); }
 });
@@ -9747,9 +9749,11 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
+  { t: '<b>Paste from Excel</b> (or Google Sheets, Numbers, a web table) into a note: the cells land in separate cells — inside a table they fill from the cell you are in, adding rows and columns as needed; elsewhere they become a new table. No more picture of the cells. Ctrl+Shift+V works the same.' },
+  { t: '<b>Table options</b> now float as a small “＋ Row · ▦ ⋯” at the right, just above the table, while you are in it — the note no longer jumps when they appear or go. ▦ ⋯ has every option.' },
   { t: '<b>🔐 Card code</b> (PNote tables): an optional second code just for 🔒 values — card and account numbers. Each 🔒 value is encrypted again with it, so the private code alone does not show them. Face ID can open it on a device where Money already uses Face ID. It locks again after 60 seconds, when Register goes to the background, and when Money locks. Add it from a PNote table: “＋ Card code”. It cannot be recovered if forgotten.', priv: true },
   { t: '<b>Tasks</b>: clearer priority colours — rose for High, sand for Medium, blue for Low — with darker versions in dark mode.' },
-  { t: '<b>Tables in notes</b>: tap inside a table and a bar appears — add a row above or below, a column left or right, or delete a row, column or the table. ▦ inside a table shows the same choices. Tab moves to the next cell; Tab in the last cell adds a row.' },
+  { t: '<b>Tables in notes</b>: tap inside a table for “＋ Row” and “▦ ⋯” (rows, columns, delete). Tab moves to the next cell; Tab in the last cell adds a row.' },
   { t: '<b>Note toolbar</b>: on a computer, rest the pointer on a button to see what it does. On iPhone, press and hold a button to see its name.' },
   { t: '<b>Tasks</b> are tinted by priority — red High, gold Medium, blue Low — and open sorted <b>by priority</b>, then by date. The other orders are still in the chips.' },
   { t: '<b>Notes</b> show just their headings, in even tiles. A note without a heading shows its first line.' },
@@ -10337,6 +10341,8 @@ if ($('neRich')) {
   });
   r.addEventListener('paste', e => {
     const cd = e.clipboardData; if (!cd) return;
+    const grid = clipGrid(cd);                                             // v2.30: from Excel / Sheets / a web table → cells
+    if (grid) { e.preventDefault(); if (grid.length === 1 && grid[0].length === 1) document.execCommand('insertText', false, grid[0][0]); else tblPasteGrid(grid); return; }
     const files = [...(cd.items || [])].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean);
     if (files.length) { e.preventDefault(); addNoteImages(files); return; }
     const html = cd.getData('text/html'), text = cd.getData('text/plain');
@@ -11108,6 +11114,16 @@ function tblBarSync() {
   if (document.activeElement !== r) return;                              // tapping the bar itself must not hide it
   const td = tblCell(false); TBL.cell = td || null;
   bar.classList.toggle('hidden', !td);
+  if (td) tblBarPlace(td.closest('table'));
+}
+/* v2.30: the bar floats just above the table (below it when there is no room) — the note never moves */
+function tblBarPlace(table) {
+  const bar = $('neTblBar'), box = bar.offsetParent; if (!box || !table) return;
+  const br = box.getBoundingClientRect(), tr = table.getBoundingClientRect(), rr = $('neRich').getBoundingClientRect(), h = bar.offsetHeight || 40;
+  let top = tr.top - br.top + box.scrollTop - h - 6;
+  if (tr.top - h - 6 < Math.max(rr.top, br.top)) top = tr.bottom - br.top + box.scrollTop + 6;
+  bar.style.top = Math.max(0, top) + 'px';
+  bar.style.left = Math.max(4, rr.right - br.left - bar.offsetWidth) + 'px';   // small, at the right edge, where a line of writing seldom reaches   // small, at the table's right corner
 }
 function tblCaret(td) { const s = getSelection(), rg = document.createRange(); rg.selectNodeContents(td); rg.collapse(false); s.removeAllRanges(); s.addRange(rg); TBL.cell = td; }
 function tblOp(op) {
@@ -11156,7 +11172,7 @@ if ($('neTblBar')) {
   $$('#neTblBar [data-tb]').forEach(b => {
     b.addEventListener('pointerdown', e => e.preventDefault());           // keep the caret (and the iPhone keyboard) in the table
     b.addEventListener('mousedown', e => e.preventDefault());
-    b.addEventListener('click', () => tblOp(b.dataset.tb));
+    b.addEventListener('click', () => b.dataset.tb === 'more' ? tblMenu(b) : tblOp(b.dataset.tb));
   });
   document.addEventListener('selectionchange', tblBarSync);
   $('neRich').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('neRich')) $('neTblBar').classList.add('hidden'); }, 200));
@@ -11347,3 +11363,65 @@ async function cardRemove(done) {
   const r = records[CK_ID]; if (r) { r.deleted = true; r.deletedAt = nowMs(); put(r, { render: false }); }
   CardBio.forget(); cardLock(true); toast('Card code removed. 🔒 values open with the private code again.'); if (done) done();
 }
+
+/* ==========================================================================
+   v2.30 — paste a grid (Excel, Google Sheets, Numbers, a web page table)
+   into a note: inside a table it fills the cells from the one you are in
+   (adding rows and columns as needed); elsewhere it becomes a new table.
+   Excel also puts a picture of the cells on the clipboard — the cells win.
+   ======================================================================== */
+function tsvParse(text) {
+  const rows = [], t = String(text).replace(/\r\n?/g, '\n');
+  let row = [], cell = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (q) { if (ch === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; continue; }
+    if (ch === '"' && cell === '') { q = true; continue; }
+    if (ch === '\t') { row.push(cell); cell = ''; continue; }
+    if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
+    cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  while (rows.length && rows[rows.length - 1].every(c => !c.trim())) rows.pop();
+  return rows.map(r => r.map(c => c.replace(/\s*\n\s*/g, ' ').trim()));
+}
+function clipGrid(cd) {
+  const html = cd.getData('text/html') || '', text = cd.getData('text/plain') || '';
+  if (/<table/i.test(html)) {
+    try {
+      const doc = document.implementation.createHTMLDocument(''); doc.body.innerHTML = html;
+      doc.querySelectorAll('style,script,meta,title,link').forEach(x => x.remove());
+      const t = doc.querySelector('table');
+      const all_ = doc.body.textContent.replace(/\s+/g, ''), inT = t.textContent.replace(/\s+/g, '');
+      if (inT.length < all_.length * 0.9) return null;                    // a table with writing around it (Word, a web page): pasted as before
+      const rows = [...t.querySelectorAll('tr')].map(tr => [...tr.children].filter(c => /^T[DH]$/.test(c.tagName)).map(c => c.textContent.replace(/\s+/g, ' ').trim()));
+      const g = rows.filter(r => r.length);
+      if (g.length) return g;
+    } catch (e) { RLOG.warn('paste table', e.message); }
+  }
+  if (/\t/.test(text) || (/\n./.test(text.trim()) && /<table/i.test(html))) { const g = tsvParse(text); if (g.length) return g; }
+  return null;
+}
+const gridToMd = g => { const w = Math.max(...g.map(r => r.length)), fix = r => '| ' + [...r, ...Array(w - r.length).fill('')].map(c => String(c).replace(/\|/g, '/')).join(' | ') + ' |';
+  return [fix(g[0]), '| ' + Array(w).fill('---').join(' | ') + ' |', ...g.slice(1).map(fix)].join('\n'); };
+function tblPasteGrid(g) {
+  const r = $('neRich'), td = tblCell(false), cellHtml = v => esc(v) || '<br>';
+  if (!td) {                                                               // a new table at the caret
+    const w = Math.max(...g.map(x => x.length));
+    document.execCommand('insertHTML', false, `<table><tbody>${g.map(row => `<tr>${Array.from({ length: w }, (_, i) => `<td>${cellHtml(row[i] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table><div><br></div>`);
+    richSync(); toast(`Pasted as a table — ${g.length} row${g.length > 1 ? 's' : ''} × ${w} column${w > 1 ? 's' : ''}.`); return;
+  }
+  const table = td.closest('table'), rows0 = [...table.querySelectorAll('tr')], ri = rows0.indexOf(td.parentNode), ci = [...td.parentNode.children].indexOf(td);
+  const t = table.cloneNode(true), rows = [...t.querySelectorAll('tr')], body = rows[0].parentNode;
+  const w0 = Math.max(...rows.map(x => x.children.length)), gw = Math.max(...g.map(x => x.length)), w = Math.max(w0, ci + gw);
+  rows.forEach(x => { while (x.children.length < w) { const c = document.createElement('td'); c.innerHTML = '<br>'; x.appendChild(c); } });
+  while (rows.length < ri + g.length) { const n = document.createElement('tr'); for (let i = 0; i < w; i++) { const c = document.createElement('td'); c.innerHTML = '<br>'; n.appendChild(c); } body.appendChild(n); rows.push(n); }
+  g.forEach((row, a) => row.forEach((v, b) => { rows[ri + a].children[ci + b].innerHTML = cellHtml(v); }));
+  t.setAttribute('data-tbnew', '1');
+  const sel = getSelection(), rg = document.createRange(); rg.selectNode(table); sel.removeAllRanges(); sel.addRange(rg);
+  document.execCommand('insertHTML', false, t.outerHTML);                // one undoable step
+  const nt = r.querySelector('table[data-tbnew]');
+  if (nt) { nt.removeAttribute('data-tbnew'); const last = nt.querySelectorAll('tr')[ri + g.length - 1]; if (last && last.children[ci + gw - 1]) tblCaret(last.children[ci + gw - 1]); }
+  richSync(); tblBarSync();
+}
+window.addEventListener('resize', () => { const td = TBL.cell; if (td && td.isConnected && !$('neTblBar').classList.contains('hidden')) tblBarPlace(td.closest('table')); });
