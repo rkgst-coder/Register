@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.27.1';
+const APP_VERSION = '2.28.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -444,11 +444,12 @@ const PREF_DEFAULTS = {
   startTab: 'tasks', stepsOpen: true, noteEdit: false,
   decoyLaunch: true, decoyReturn: 60, appIdle: 0, moneyIdle: 5,
   cloudUrl: '', cloudToken: '', driveFolder: '',
-  lastTab: 'tasks', dateSeg: 'bills', moneySeg: 'ledger', noteSort: 'pinned', taskMode: 'due'
+  lastTab: 'tasks', dateSeg: 'bills', moneySeg: 'ledger', noteSort: 'pinned', taskMode: 'prio'
 };
 let prefs = { ...PREF_DEFAULTS };
 async function loadPrefs() {
   try { const p = await DB.get('prefs'); if (p) prefs = { ...PREF_DEFAULTS, ...p }; } catch (e) { RLOG.error('prefs load', e); }
+  if (!prefs.v28prio) { prefs.v28prio = 1; prefs.taskMode = 'prio'; DB.set('prefs', prefs).catch(() => {}); }   // v2.28: tasks open sorted by priority, then date
   // the decoy must be decided before IDB answers, so its flags also live in localStorage
   try { localStorage.setItem('r2_decoy', prefs.decoyLaunch ? '1' : '0'); } catch (e) {}
 }
@@ -1276,7 +1277,7 @@ function taskRow(t, showCat) {
   const open = prefs.stepsOpen ? !openSteps.has('!' + t.id) : (openSteps.has(t.id) || (late > 0 && !openSteps.has('!' + t.id)));
   const od = isOverdue(t), dueToday = t.dueDate === todayISO();
   const st = t.status === 'done' ? 'done' : t.status === 'inprogress' ? 'inprog' : t.status === 'waiting' ? 'wait' : '';
-  const inner = `<div class="row task ${t.status === 'done' ? 'done' : ''}" data-id="${t.id}">
+  const inner = `<div class="row task ${t.status === 'done' ? 'done' : 'tp-' + (PRIOS.includes(t.priority) ? t.priority : 'Medium')}" data-id="${t.id}">
     <i class="prio-bar" style="background:${PRIO_COLOR[t.priority] || 'var(--brass)'}"></i>
     <button class="check ${st}" data-cycle="${t.id}" aria-label="${t.status === 'done' ? 'Reopen' : t.status === 'inprogress' || t.status === 'waiting' ? 'Mark done' : 'Start'}: ${esc(t.title)}">${t.status === 'done' ? '✓' : t.status === 'waiting' ? '⏳' : ''}</button>
     <div class="row-main">
@@ -1728,10 +1729,9 @@ function sortNotes(list, by) {
 }
 function noteCard(n, dups) {
   const title = (n.title || '').trim();
-  const snip = plainText(n.text).slice(0, 220);
-  return `<button class="note-card ${ncls(n.color)} ${n.pinned ? 'pinned' : ''}" data-note="${n.id}" aria-label="Note: ${esc(title || 'untitled')}">
-    <div class="nt">${title ? esc(title) : '<span class="muted" style="font-style:italic;font-weight:400">Untitled</span>'}</div>
-    ${snip ? `<div class="nx">${esc(snip)}</div>` : ''}
+  const first = title ? '' : (plainText(n.text).split('\n').map(x => x.trim()).find(Boolean) || '').slice(0, 80);   // v2.28: heading only; no heading → its first line
+  return `<button class="note-card ${ncls(n.color)} ${n.pinned ? 'pinned' : ''}" data-note="${n.id}" aria-label="Note: ${esc(title || first || 'untitled')}">
+    <div class="nt">${title ? esc(title) : `<span class="muted" style="font-style:italic;font-weight:400">${esc(first || 'Untitled')}</span>`}</div>
     <div class="nf">${n.folder && activeFolder === '__all__' ? `<span class="pill">📁 ${esc(n.folder)}</span>` : ''}${(n.imgs || []).length ? `<span>🖼 ${n.imgs.length}</span>` : ''}${(n.docRefs || []).length ? `<span>📎 ${n.docRefs.length}</span>` : ''}${(() => { const all_ = (String(n.text || '').match(/^\s*[-*+] \[[ xX]\]/gm) || []).length, done = (String(n.text || '').match(/^\s*[-*+] \[[xX]\]/gm) || []).length; return all_ ? `<span class="${done === all_ ? 'pos' : ''}">☑ ${done}/${all_}</span>` : ''; })()}${dups.has(n.id) ? '<span class="pill neg">duplicate?</span>' : ''}<span>${timeAgo(n.updatedAt)}</span></div>
   </button>`;
 }
@@ -1913,7 +1913,7 @@ const stampNow = () => new Date().toLocaleString('en-IN', { day: 'numeric', mont
 $$('#neBar [data-md]').forEach(b => b.addEventListener('click', () => {
   if (nePreview) togglePreview();
   const k = b.dataset.md;
-  if (richActive()) { richCmd(k); return; }
+  if (richActive()) { if (k === 'table' && tblCell(true)) { tblMenu(b); return; } richCmd(k); return; }
   if (k === 'bold') wrapSel('**', '**'); else if (k === 'italic') wrapSel('*', '*'); else if (k === 'underline') wrapSel('++', '++');
   else if (k === 'strike') wrapSel('~~', '~~'); else if (k === 'mark') wrapSel('==', '==');
   else if (k === 'code') wrapSel('`', '`'); else if (k === 'link') wrapSel('[', '](https://)', 'link text');
@@ -7665,7 +7665,7 @@ function runSearchBase() {
     else if (k === '₹') { const f = records[id]; if (f && f.date) finMonth = f.date.slice(0, 7); setPref('moneySeg', 'ledger'); showTab('money'); openFin(id); }
   }));
 }
-function openSearch() { $('searchIn').value = ''; runSearch(); Sheets.open('shSearch'); setTimeout(() => $('searchIn').focus(), 300); }
+function openSearch() { const i = $('searchIn'); i.value = ''; runSearch(); Sheets.open('shSearch'); try { i.focus({ preventScroll: true }); } catch (e) { i.focus(); } setTimeout(() => { if (document.activeElement !== i) i.focus(); }, 300); }   // v2.28: focus during the tap so iPhone shows the keyboard
 $('searchOpen').addEventListener('click', openSearch);
 $('searchIn').addEventListener('input', runSearch);
 
@@ -9746,6 +9746,11 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
+  { t: '<b>Tables in notes</b>: tap inside a table and a bar appears — add a row above or below, a column left or right, or delete a row, column or the table. ▦ inside a table shows the same choices. Tab moves to the next cell; Tab in the last cell adds a row.' },
+  { t: '<b>Note toolbar</b>: on a computer, rest the pointer on a button to see what it does. On iPhone, press and hold a button to see its name.' },
+  { t: '<b>Tasks</b> are tinted by priority — red High, gold Medium, blue Low — and open sorted <b>by priority</b>, then by date. The other orders are still in the chips.' },
+  { t: '<b>Notes</b> show just their headings, in even tiles. A note without a heading shows its first line.' },
+  { t: '<b>Search</b> opens with the keyboard ready on iPhone.' },
   { t: '<b>Fixed</b>: editing a task (or anything else) quickly while it was syncing made Register say it was “changed on two devices” when it was not. Any such entries already in the list are your own edits — tap Keep “In use”.' },
   { t: '<b>Locked documents open without opening Money</b>: the code typed for a 🔒 document unlocks documents only — Money, PNote and Plan stay hidden — and they lock again when you close the document (or after 3 minutes).' },
   { t: '<b>Documents</b>: a tidier top — ＋ Add, the year, and ⋯ More (People & categories, Family checklist, Keep on this iPhone). A person’s or category’s actions are under one ⋯ button.' },
@@ -10304,6 +10309,7 @@ if ($('neRich')) {
     const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
     if (e.key === 'Tab') {
       e.preventDefault();
+      if (tblTab(e.shiftKey)) return;                                     // v2.28: next / previous cell; Tab in the last cell adds a row
       if (!e.shiftKey && richAutoFormat('tab')) { richSync(); return; }
       const inList = !!(richBlock() && richBlock().closest('li'));
       if (inList) document.execCommand(e.shiftKey ? 'outdent' : 'indent');
@@ -11068,3 +11074,95 @@ Object.values(NAV_SHEETS).flat().forEach(id => {
 ['shDoc', 'shDocView', 'shNoteView', 'shNote', 'shTask', 'shFin'].forEach(id => { const prev = Sheets.onOpen[id]; Sheets.onOpen[id] = () => { if (prev) prev(); setTimeout(navShow, 60); }; });
 /* v2.27: documents-only unlock ends when no document screen is open (wrapped last, after every other close handler is set) */
 ['shDocView', 'shDoc'].forEach(id => { const prev = Sheets.onClose[id]; Sheets.onClose[id] = () => { if (prev) { try { prev(); } catch (e) { RLOG.warn('onClose ' + id, e.message); } } DocUnlock.closed(); }; });
+
+/* ==========================================================================
+   v2.28 — tables in notes: add / remove rows and columns
+   While the caret is in a table, a bar under the toolbar offers the changes
+   (▦ also opens them as a menu). Each change replaces the table in one step,
+   so ↶ Undo puts it back. Tab / Shift+Tab move between cells.
+   ======================================================================== */
+const TBL = { cell: null };
+function tblCell(useLast) {
+  const r = $('neRich'), s = getSelection(); if (!r) return null;
+  let n = s.rangeCount ? s.anchorNode : null;
+  if (n && r.contains(n)) { n = n.nodeType === 1 ? n : n.parentNode; const td = n.closest && n.closest('td,th'); if (td && r.contains(td)) return td; if (!useLast) return null; }
+  return useLast && TBL.cell && TBL.cell.isConnected && r.contains(TBL.cell) ? TBL.cell : null;
+}
+function tblBarSync() {
+  const bar = $('neTblBar'), r = $('neRich'); if (!bar || !r) return;
+  if (document.activeElement !== r) return;                              // tapping the bar itself must not hide it
+  const td = tblCell(false); TBL.cell = td || null;
+  bar.classList.toggle('hidden', !td);
+}
+function tblCaret(td) { const s = getSelection(), rg = document.createRange(); rg.selectNodeContents(td); rg.collapse(false); s.removeAllRanges(); s.addRange(rg); TBL.cell = td; }
+function tblOp(op) {
+  const r = $('neRich'), td = tblCell(true);
+  if (!r || !td) { toast('Tap inside a table first.'); return; }
+  const table = td.closest('table'), rows0 = [...table.querySelectorAll('tr')], tr = td.parentNode;
+  let ri = rows0.indexOf(tr), ci = [...tr.children].indexOf(td);
+  const sel = getSelection(), rg = document.createRange();
+  r.focus({ preventScroll: true });
+  if (op === 'tblX') {
+    rg.selectNode(table); sel.removeAllRanges(); sel.addRange(rg); document.execCommand('delete');
+    TBL.cell = null; $('neTblBar').classList.add('hidden'); richSync(); toast('Table deleted — ↶ brings it back.'); return;
+  }
+  const t = table.cloneNode(true), rows = [...t.querySelectorAll('tr')], w = Math.max(...rows.map(x => x.children.length));
+  const blank = () => { const c = document.createElement('td'); c.innerHTML = '<br>'; return c; };
+  if (op === 'rowB' || op === 'rowA') {
+    const n = document.createElement('tr'); for (let i = 0; i < w; i++) n.appendChild(blank());
+    const at = rows[ri]; at.parentNode.insertBefore(n, op === 'rowB' ? at.nextSibling : at); if (op === 'rowB') ri++;
+  } else if (op === 'colR' || op === 'colL') {
+    rows.forEach(x => { while (x.children.length < w) x.appendChild(blank()); const ref = x.children[ci]; x.insertBefore(blank(), op === 'colR' ? ref.nextSibling : ref); });
+    if (op === 'colR') ci++;
+  } else if (op === 'rowX') {
+    if (rows.length <= 1) { tblOp('tblX'); return; }
+    rows[ri].remove(); ri = Math.min(ri, rows.length - 2);
+  } else if (op === 'colX') {
+    if (w <= 1) { tblOp('tblX'); return; }
+    rows.forEach(x => { if (x.children[ci]) x.children[ci].remove(); }); ci = Math.min(ci, w - 2);
+  }
+  t.setAttribute('data-tbnew', '1');
+  rg.selectNode(table); sel.removeAllRanges(); sel.addRange(rg);
+  document.execCommand('insertHTML', false, t.outerHTML);              // one undoable step
+  const nt = r.querySelector('table[data-tbnew]');
+  if (nt) { nt.removeAttribute('data-tbnew'); const row = nt.querySelectorAll('tr')[ri]; const cell = row && (row.children[ci] || row.lastElementChild); if (cell) tblCaret(cell); }
+  richSync(); tblBarSync();
+}
+function tblTab(back) {
+  const td = tblCell(false); if (!td) return false;
+  const cells = [...td.closest('table').querySelectorAll('td,th')], i = cells.indexOf(td);
+  if (back) { if (i > 0) tblCaret(cells[i - 1]); return true; }
+  if (i < cells.length - 1) { tblCaret(cells[i + 1]); return true; }
+  TBL.cell = td; const tr = td.parentNode; tblCaret(tr.firstElementChild); tblOp('rowB'); return true;
+}
+const TBL_OPS = [['rowA', 'Add row above'], ['rowB', 'Add row below'], ['colL', 'Add column left'], ['colR', 'Add column right'], ['rowX', 'Delete row'], ['colX', 'Delete column'], ['tblX', 'Delete table']];
+function tblMenu(anchor) { popMenu(anchor, TBL_OPS.map(([k, l]) => ({ l, fn: () => tblOp(k), cls: /X$/.test(k) ? 'danger' : '' }))); }
+if ($('neTblBar')) {
+  $$('#neTblBar [data-tb]').forEach(b => {
+    b.addEventListener('pointerdown', e => e.preventDefault());           // keep the caret (and the iPhone keyboard) in the table
+    b.addEventListener('mousedown', e => e.preventDefault());
+    b.addEventListener('click', () => tblOp(b.dataset.tb));
+  });
+  document.addEventListener('selectionchange', tblBarSync);
+  $('neRich').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('neRich')) $('neTblBar').classList.add('hidden'); }, 200));
+  { const prev = Sheets.onOpen.shNote; Sheets.onOpen.shNote = () => { if (prev) prev(); TBL.cell = null; $('neTblBar').classList.add('hidden'); }; }
+}
+
+/* ==========================================================================
+   v2.28 — what a button does: its name shows on hover (computer), and on the
+   note toolbars a press-and-hold shows it on iPhone
+   ======================================================================== */
+document.addEventListener('mouseover', e => {
+  const b = e.target.closest && e.target.closest('button[aria-label]:not([title]),a[aria-label]:not([title])');
+  if (b) b.title = b.getAttribute('aria-label');
+});
+(() => {
+  let timer = null, shown = false;
+  document.addEventListener('touchstart', e => {
+    const b = e.target.closest && e.target.closest('#neBar button[aria-label],#neTblBar button[aria-label]'); if (!b) return;
+    shown = false; clearTimeout(timer);
+    timer = setTimeout(() => { shown = true; toast(b.getAttribute('aria-label')); }, 550);
+  }, { passive: true });
+  ['touchend', 'touchmove', 'touchcancel'].forEach(ev => document.addEventListener(ev, () => clearTimeout(timer), { passive: true }));
+  document.addEventListener('click', e => { if (shown && e.target.closest && e.target.closest('#neBar,#neTblBar')) { shown = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);   // a hold only shows the name
+})();

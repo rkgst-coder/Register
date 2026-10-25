@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.27.1">
+<meta name="app-version" content="2.28.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -224,10 +224,18 @@ details.fold[open] summary::before{transform:rotate(90deg)}
   display:flex;flex-direction:column;gap:4px;border-left:4px solid var(--brass)}
 .folder b{font-size:0.9375rem;font-weight:600;word-break:break-word}
 .folder span{font-size:0.78125rem;color:var(--ink-faint)}
-.notes-grid{columns:2;column-gap:10px}
-.note-card{break-inside:avoid;margin-bottom:10px;border-radius:var(--r-sm);padding:12px 12px 10px;box-shadow:var(--shadow);
-  position:relative;display:block;text-align:left;width:100%}
-.note-card .nt{font-family:var(--serif);font-weight:600;font-size:0.96875rem;line-height:1.3;word-break:break-word}
+.notes-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.note-card{border-radius:var(--r-sm);padding:12px 12px 10px;box-shadow:var(--shadow);min-height:64px;
+  position:relative;display:flex;flex-direction:column;justify-content:space-between;text-align:left;width:100%}
+.note-card .nt{font-family:var(--serif);font-weight:600;font-size:0.96875rem;line-height:1.3;word-break:break-word;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.row.task.tp-High{background:color-mix(in srgb,var(--seal) 9%,var(--card))}
+.row.task.tp-Medium{background:color-mix(in srgb,var(--brass) 8%,var(--card))}
+.row.task.tp-Low{background:color-mix(in srgb,#4A6FA5 9%,var(--card))}
+.tbl-bar{align-items:center;border-top:1px dashed var(--line-strong);margin-top:2px}
+.tbl-bar .tb-l{flex:none;font-size:0.75rem;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em;padding:0 2px}
+.tbl-bar button{font-size:0.8125rem}
+.tbl-bar .tb-x{color:var(--neg)}
 .note-card .nx{font-size:0.8125rem;color:var(--ink-soft);line-height:1.45;margin-top:5px;
   display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;white-space:pre-line}
 .note-card .nf{font-size:0.71875rem;color:var(--ink-faint);margin-top:7px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -435,7 +443,7 @@ html[data-theme="dark"] #toast button{color:#8a6a16}
 }
 @media (min-width:700px){
   #main{padding-left:max(16px,calc(50% - 330px));padding-right:max(16px,calc(50% - 330px))}
-  .notes-grid{columns:3}
+  .notes-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 
 /* ---------- accessibility + editor extras ---------- */
@@ -1394,6 +1402,12 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <button id="neMic" aria-label="Speak to type" aria-pressed="false">🎤</button><button id="neFindBtn" aria-label="Find and replace">🔎</button>
         <button id="neImgBtn" aria-label="Add picture">🖼</button><button id="nePrevBtn" aria-label="Preview">👁</button>
       </div>
+      <div class="md-bar tbl-bar hidden" id="neTblBar" role="toolbar" aria-label="Table">
+        <span class="tb-l">Table</span>
+        <button data-tb="rowA" aria-label="Add row above">＋ Row ↑</button><button data-tb="rowB" aria-label="Add row below">＋ Row ↓</button>
+        <button data-tb="colL" aria-label="Add column left">＋ Col ←</button><button data-tb="colR" aria-label="Add column right">＋ Col →</button>
+        <button data-tb="rowX" aria-label="Delete row" class="tb-x">− Row</button><button data-tb="colX" aria-label="Delete column" class="tb-x">− Col</button><button data-tb="tblX" aria-label="Delete table" class="tb-x">🗑 Table</button>
+      </div>
       <div class="find-bar hidden" id="neFind">
         <input id="neFindIn" placeholder="Find" autocapitalize="off" autocorrect="off" enterkeyhint="search">
         <span class="fc" id="neFindCount"></span>
@@ -2055,6 +2069,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.27.1"></script>
+<script src="app.js?v=2.28.0"></script>
 </body>
 </html>
