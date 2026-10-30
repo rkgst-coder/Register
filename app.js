@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.30.0';
+const APP_VERSION = '2.32.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -9749,6 +9749,9 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
+  { t: '<b>A device that fell behind catches up first</b>: if this device has not synced for 30 minutes, opening a task, note, date, document or entry first gets the latest from your other devices. If it has not synced for 6 hours (offline, or a network that blocks Google), a banner at the top says so, with Sync now.' },
+  { t: '<b>“Changed on two devices” is easier to read</b>: when each version was changed, steps as a ticked list, dates as dates, Open / Done instead of code.' },
+  { t: '<b>More room to write on iPhone</b>: while the keyboard is up in a note, the title, folder and ‹ › bar step aside, the toolbar becomes one row that stays at the top (swipe it sideways for more buttons), and the note fills the screen. Tapping a toolbar button no longer closes the keyboard.' },
   { t: '<b>Paste from Excel</b> (or Google Sheets, Numbers, a web table) into a note: the cells land in separate cells — inside a table they fill from the cell you are in, adding rows and columns as needed; elsewhere they become a new table. No more picture of the cells. Ctrl+Shift+V works the same.' },
   { t: '<b>Table options</b> now float as a small “＋ Row · ▦ ⋯” at the right, just above the table, while you are in it — the note no longer jumps when they appear or go. ▦ ⋯ has every option.' },
   { t: '<b>🔐 Card code</b> (PNote tables): an optional second code just for 🔒 values — card and account numbers. Each 🔒 value is encrypted again with it, so the private code alone does not show them. Face ID can open it on a device where Money already uses Face ID. It locks again after 60 seconds, when Register goes to the background, and when Money locks. Add it from a PNote table: “＋ Card code”. It cannot be recovered if forgotten.', priv: true },
@@ -10766,7 +10769,7 @@ async function conflictsSave() {
   RLOG.warn('changed on two devices', fresh.length);
   toast(`${fresh.length} item${fresh.length > 1 ? 's were' : ' was'} changed on two devices.`, 'Review', openConflicts, 12000);
 }
-const CONF_SKIP = new Set(['updatedAt', 'createdAt', 'deletedAt', 'id', 'type', '_dirty', '_base', '_chunked', '_tooBig', 'enc', 'iv', 'salt', 'kid', 'it', 'tag', 'v']);
+const CONF_SKIP = new Set(['completedAt', 'updatedAt', 'createdAt', 'deletedAt', 'id', 'type', '_dirty', '_base', '_chunked', '_tooBig', 'enc', 'iv', 'salt', 'kid', 'it', 'tag', 'v']);
 const recTitle = r => String((r && (r.title || r.label || r.desc || r.name || r.who)) || '(untitled)').slice(0, 80);
 async function confPlain(c) {          // the other version, readable (private ones need the code)
   const d = c.data; if (!d) return null;
@@ -10775,11 +10778,20 @@ async function confPlain(c) {          // the other version, readable (private o
 }
 function confDiff(a, b, type) {
   const keys = [...new Set([...Object.keys(a || {}), ...Object.keys(b || {})])].filter(k => !CONF_SKIP.has(k) && !k.startsWith('_'));
-  const show = (v, k) => { if (v === undefined || v === null || v === '') return '—'; if (type === 'vault' && k === 'fields') return (v || []).map(f => f.l + ': ' + (f.s ? '••••' : f.v)).join(' · ');
-    if (typeof v === 'object') v = JSON.stringify(v); return String(v).slice(0, 120); };
-  const W = { title: 'Title', label: 'Name', priority: 'Priority', notes: 'Notes', dueDate: 'Due', dueTime: 'Time', status: 'Status', when: 'Date', repeat: 'Repeats', amount: 'Amount', desc: 'Details', category: 'Category', number: 'Number', expiry: 'Expiry', who: 'Belongs to', deleted: 'Deleted', subs: 'Steps', fields: 'Fields', docType: 'Type', issuer: 'Issuer', kind: 'Kind', date: 'Date', cat: 'Category', name: 'Name' };
+  const show = (v, k) => { if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) return '—'; if (type === 'vault' && k === 'fields') return (v || []).map(f => f.l + ': ' + (f.s ? '••••' : f.v)).join(' · ');
+    // v2.32: in words, not code — steps as a list, dates as dates, yes / no
+    if (k === 'subs' && Array.isArray(v)) return v.map(x => (x && x.done ? '☑ ' : '☐ ') + String(x && x.text || '').slice(0, 60)).join('\n');
+    if (k === 'status' && CONF_STATUS[v]) return CONF_STATUS[v];
+    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+    if (typeof v === 'number' && v > 1e12) return new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    if (typeof v === 'string' && ISO_DATE_RX.test(v)) return fmtDate(v, true);
+    if (Array.isArray(v) && v.every(x => typeof x !== 'object')) return v.join(', ');
+    if (typeof v === 'object') v = JSON.stringify(v); return String(v).slice(0, 300); };
+  const W = { completedOn: 'Completed on', waitingOn: 'Waiting on', waitingSince: 'Waiting since', pinned: 'Pinned', folder: 'Folder', title: 'Title', label: 'Name', priority: 'Priority', notes: 'Notes', dueDate: 'Due', dueTime: 'Time', status: 'Status', when: 'Date', repeat: 'Repeats', amount: 'Amount', desc: 'Details', category: 'Category', number: 'Number', expiry: 'Expiry', who: 'Belongs to', deleted: 'Deleted', subs: 'Steps', fields: 'Fields', docType: 'Type', issuer: 'Issuer', kind: 'Kind', date: 'Date', cat: 'Category', name: 'Name' };
   return keys.filter(k => JSON.stringify(a ? a[k] : undefined) !== JSON.stringify(b ? b[k] : undefined)).map(k => ({ k: W[k] || k.charAt(0).toUpperCase() + k.slice(1), a: show(a && a[k], k), b: show(b && b[k], k) }));
 }
+const CONF_STATUS = { active: 'Open', inprogress: 'In progress', waiting: 'Waiting', done: 'Done' };
+const confWhen = ts => 'changed ' + new Date(ts).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 async function openConflicts() {
   if (window.GHOST) return;
   const L = await confLoad(), rows = [];
@@ -10796,7 +10808,8 @@ async function openConflicts() {
   planSheet('Changed on two devices', `<p class="hint" style="margin:0 4px 10px">These were edited on this device and on another one before they synced. The version shown in the app now is <b>In use</b>. Pick the other one if it is the right one — nothing is lost until you choose.</p>
     ${rows.length ? rows.map((x, i) => x.locked ? `<div class="cf-card"><b>${esc(word[x.c.type] || x.c.type)}</b><p class="hint">Private — unlock to compare.</p></div>`
       : `<div class="cf-card"><div class="cf-h"><b>${esc(recTitle(x.live || x.other))}</b><span class="pill">${esc(word[x.c.type] || x.c.type)}</span></div>
-        <table class="cf-t"><tr><th></th><th>In use</th><th>${x.c.side === 'mine' ? 'This device’s edit' : 'Other device’s edit'}</th></tr>${x.diff.slice(0, 10).map(d => `<tr><td>${esc(d.k)}</td><td>${esc(d.a)}</td><td>${esc(d.b)}</td></tr>`).join('')}</table>
+        <div class="cf-g"><div class="cf-c cf-hd">In use<small>${x.live && x.live.updatedAt ? esc(confWhen(x.live.updatedAt)) : ''}</small></div><div class="cf-c cf-hd">${x.c.side === 'mine' ? 'This device’s edit' : 'Other device’s edit'}<small>${x.other && x.other.updatedAt ? esc(confWhen(x.other.updatedAt)) : ''}</small></div>
+        ${x.diff.slice(0, 12).map(d => `<div class="cf-k">${esc(d.k)}</div><div class="cf-c">${esc(d.a)}</div><div class="cf-c">${esc(d.b)}</div>`).join('')}</div>
         <div class="btn-row" style="margin:6px 0 0"><button class="btn ghost small" type="button" data-cfk="${i}">Keep “In use”</button><button class="btn brass small" type="button" data-cfo="${i}">Use the other</button></div></div>`).join('')
       : '<div class="empty">Nothing to review.</div>'}`, () => true, 'Done');
   const drop = async c => { const L2 = await confLoad(); const j = L2.indexOf(c); if (j >= 0) L2.splice(j, 1); await DB.set('conflicts', L2); };
@@ -11425,3 +11438,86 @@ function tblPasteGrid(g) {
   richSync(); tblBarSync();
 }
 window.addEventListener('resize', () => { const td = TBL.cell; if (td && td.isConnected && !$('neTblBar').classList.contains('hidden')) tblBarPlace(td.closest('table')); });
+
+/* ==========================================================================
+   v2.31 — more room to write on iPhone: while the keyboard is up in a note,
+   the title, folder and ‹ 1 of 5 › bar step aside, the toolbar becomes one
+   row that stays at the top, and the writing fills the rest of the screen.
+   ======================================================================== */
+const NE_TOUCH = matchMedia('(pointer: coarse)').matches;
+function neTyping(on) { const sh = $('shNote'); if (sh) sh.classList.toggle('ne-typing', !!on); }
+function neCaretIntoView() {
+  const sh = $('shNote'); if (!sh || !sh.classList.contains('ne-typing')) return;
+  const s = getSelection(); if (!s.rangeCount) return;
+  let rc = s.getRangeAt(0).getBoundingClientRect();
+  if (!rc || (!rc.height && !rc.top)) { const n = s.anchorNode, el = n && (n.nodeType === 1 ? n : n.parentNode); if (!el || !el.getBoundingClientRect) return; rc = el.getBoundingClientRect(); }
+  const body = sh.querySelector('.sheet-body'), br = body.getBoundingClientRect(), bar = $('neBar').getBoundingClientRect();
+  if (rc.bottom > br.bottom - 12) body.scrollTop += rc.bottom - br.bottom + 48;          // keep the line you are typing above the keyboard
+  else if (rc.top < bar.bottom + 4) body.scrollTop -= bar.bottom + 4 - rc.top + 24;       // … and below the toolbar
+}
+let neCaretRaf = 0;
+const neCaretSoon = () => { cancelAnimationFrame(neCaretRaf); neCaretRaf = requestAnimationFrame(neCaretIntoView); };
+[$('neRich'), ta()].forEach(el => {
+  if (!el) return;
+  el.addEventListener('focus', () => { if (NE_TOUCH) { neTyping(true); setTimeout(neCaretIntoView, 400); } });
+  el.addEventListener('blur', () => setTimeout(() => { const a = document.activeElement; if (a !== $('neRich') && a !== ta()) neTyping(false); }, 250));
+  el.addEventListener('input', neCaretSoon);
+});
+document.addEventListener('selectionchange', () => { if (document.activeElement === $('neRich')) neCaretSoon(); });
+window.visualViewport && window.visualViewport.addEventListener('resize', () => setTimeout(neCaretIntoView, 120));
+// tapping a toolbar button keeps the keyboard up and the caret where it was
+$$('#neBar button').forEach(b => b.addEventListener('mousedown', e => { const a = document.activeElement; if (a === $('neRich') || a === ta()) e.preventDefault(); }));
+{ const prev = Sheets.onClose.shNote; Sheets.onClose.shNote = () => { neTyping(false); if (prev) prev(); }; }
+
+/* ==========================================================================
+   v2.32 — A DEVICE THAT FELL BEHIND: catch up first
+   • Opening something to edit when this device has not synced for 30 minutes
+     (or a catch-up sync is running) first gets the latest from the Sheet.
+   • A banner says so while it catches up, and stays (with Sync now) when this
+     device has not synced for 6 hours — offline, or the network blocks Google.
+   ======================================================================== */
+const STALE_EDIT = 30 * 60000, STALE_WARN = 6 * 3600000;
+const SyncGate = { catching: false };
+{
+  const run0 = Sync.run.bind(Sync);
+  Sync.run = async function (manual) {
+    let mine = false;
+    if (!this.busy && this.on() && navigator.onLine && !window.GHOST && (!this.lastOk || Date.now() - this.lastOk > STALE_EDIT)) { SyncGate.catching = mine = true; syncBanner(); }
+    try { return await run0(manual); } finally { if (mine) SyncGate.catching = false; syncBanner(); }
+  };
+  const st0 = Sync.status.bind(Sync);
+  Sync.status = function (...a) { st0(...a); syncBanner(); };
+}
+function syncBanner() {
+  const b = $('syncBanner'); if (!b) return;
+  let html = '';
+  if (Sync.on() && !window.GHOST) {
+    const age = Sync.lastOk ? Date.now() - Sync.lastOk : Infinity, since = Sync.lastOk ? 'last synced ' + timeAgo(Sync.lastOk) : 'never synced';
+    if (SyncGate.catching) html = '<span>⟳ Getting the latest from your other devices…</span>';
+    else if (age > STALE_WARN && !Sync.busy) html = `<span>⚠︎ ${navigator.onLine ? 'This device' : 'Offline — this device'} ${esc(since)}. Your other devices may have newer changes; edits made here can clash with them.</span><button type="button" class="btn small" id="syncBannerGo">Sync now</button>`;
+  }
+  b.innerHTML = html; b.classList.toggle('hidden', !html); b.classList.toggle('warn', /⚠/.test(html));
+  const g = $('syncBannerGo'); if (g) g.addEventListener('click', () => Sync.run(true));
+}
+function needsCatchUp(id) {
+  if (window.GHOST || !Sync.on() || !navigator.onLine || !id) return false;
+  if (records[id] && records[id]._dirty) return false;                      // already changed here: nothing to wait for
+  return SyncGate.catching || !Sync.lastOk || Date.now() - Sync.lastOk > STALE_EDIT;
+}
+async function catchUp() {
+  toast('Getting the latest from your other devices first…', null, null, 2500);
+  if (!Sync.busy) Sync.run();
+  const t0 = Date.now();
+  while (Sync.busy && Date.now() - t0 < 10000) await new Promise(r => setTimeout(r, 150));
+}
+['openTaskEditor', 'openNoteEditor', 'openDate', 'openFin', 'openDoc'].forEach(name => {
+  const f = window[name]; if (typeof f !== 'function') return;
+  window[name] = function (id, ...rest) {
+    if (!needsCatchUp(id)) return f.call(this, id, ...rest);
+    catchUp().then(() => { if (!records[id] || !records[id].deleted) f.call(this, id, ...rest); else toast('That item was deleted on another device.'); });
+  };
+});
+['online', 'offline'].forEach(e => window.addEventListener(e, syncBanner));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncBanner(); });
+setInterval(syncBanner, 60000);
+setTimeout(syncBanner, 3000);

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.30.0">
+<meta name="app-version" content="2.32.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -234,6 +234,12 @@ html[data-theme="dark"] .row.task.tp-High{background:#3D2624} html[data-theme="d
 .ck-line{display:flex;align-items:center;gap:8px;margin:10px 0 4px;padding:8px 10px;border-radius:var(--r-sm);background:rgba(128,128,128,.08);font-size:0.8125rem;color:var(--ink-soft)}
 .ck-line span{flex:1}
 #shNote .sheet-body{position:relative}
+@media (max-width:600px){ #neBar{flex-wrap:nowrap;overflow-x:auto;-webkit-mask-image:linear-gradient(to right,#000 86%,transparent);mask-image:linear-gradient(to right,#000 86%,transparent)} }
+#shNote.ne-typing .navx,#shNote.ne-typing .ne-folder,#shNote.ne-typing #neTitle,#shNote.ne-typing .sheet-grab,#shNote.ne-typing .mic-live:empty{display:none}
+#shNote.ne-typing .sheet-head{min-height:38px;padding-top:6px;padding-bottom:2px}
+#shNote.ne-typing #neBar{position:sticky;top:-4px;z-index:4;background:var(--paper);margin:0 -16px;padding:6px 16px 8px}
+#shNote.ne-typing .note-body.note-rich{height:auto;min-height:45vh;overflow:visible}
+#shNote.ne-typing textarea.note-body{height:calc(100dvh - var(--kb) - 150px);min-height:180px}
 .tbl-float{position:absolute;z-index:6;display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--card);border:1px solid var(--line-strong);box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:nowrap}
 .tbl-float.hidden{display:none}
 .tbl-float button{height:34px;min-width:36px;padding:0 10px;border-radius:8px;background:rgba(128,128,128,.12);font-size:0.8125rem;color:var(--ink)}
@@ -1061,6 +1067,13 @@ html.on-money .hint-bubble{bottom:calc(var(--tabbar-h) + var(--safe-b) + 138px)}
 .dv-sheet th{background:rgba(147,115,31,.12);position:sticky;top:0}.dv-tabs{margin:0 0 6px}
 .off-ok{font-size:.75rem;opacity:.8}
 .cf-card{background:var(--card);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:10px 12px;margin:0 0 10px}.cf-h{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:6px}
+.cf-g{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 10px;font-size:.8125rem}
+.cf-k{grid-column:1/-1;font-size:.6875rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);border-top:1px solid var(--line);padding:8px 0 2px;margin-top:4px}
+.cf-c{white-space:pre-line;word-break:break-word;line-height:1.4;padding-bottom:4px}
+.cf-hd{font-weight:700;color:var(--ink-soft)}.cf-hd small{display:block;font-weight:400;color:var(--ink-faint);font-size:.6875rem}
+.sync-banner{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:10px 12px;border-radius:var(--r-sm);background:rgba(128,128,128,.1);font-size:.8125rem;color:var(--ink-soft)}
+.sync-banner.hidden{display:none}.sync-banner span{flex:1}
+.sync-banner.warn{background:color-mix(in srgb,var(--seal) 12%,var(--card));color:var(--ink)}
 .cf-t{width:100%;border-collapse:collapse;font-size:.8rem}.cf-t th,.cf-t td{border-top:1px solid var(--line);padding:4px;text-align:left;vertical-align:top;word-break:break-word}.cf-t th{color:var(--ink-soft);font-weight:600}
 .cf-sr{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left}.cf-sr small{color:var(--ink-soft)}
 .vt-card.flash{outline:2px solid var(--brass)}
@@ -1182,6 +1195,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
   </header>
 
   <main id="main">
+    <div class="sync-banner hidden" id="syncBanner" role="status" aria-live="polite"></div>
     <button class="searchbar" id="searchOpen"><span>🔍</span><span>Search everything</span></button>
 
     <!-- TASKS -->
@@ -2068,6 +2082,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.30.0"></script>
+<script src="app.js?v=2.32.0"></script>
 </body>
 </html>
