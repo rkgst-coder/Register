@@ -7,7 +7,7 @@
    first day. The Apps Script API is never cached.
    With every deploy: bump VERSION here and APP_VERSION in app.js, and the
    ?v= on the app.js script tag and the app-version meta in index.html. */
-const VERSION = '2.32.0';
+const VERSION = '2.33.1';
 const CACHE = 'register-v' + VERSION;
 const SHELL = ['./', './index.html', './app.js?v=' + VERSION, './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png', './icon-512-maskable.png',
   './vendor/pdf-3.11.174.min.js', './vendor/pdf.worker-3.11.174.min.js', './vendor/pdf-lib-1.17.1.min.js', './vendor/xlsx.full-0.18.5.min.js'];

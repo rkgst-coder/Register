@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.32.0">
+<meta name="app-version" content="2.33.1">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -1071,6 +1071,7 @@ html.on-money .hint-bubble{bottom:calc(var(--tabbar-h) + var(--safe-b) + 138px)}
 .cf-k{grid-column:1/-1;font-size:.6875rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);border-top:1px solid var(--line);padding:8px 0 2px;margin-top:4px}
 .cf-c{white-space:pre-line;word-break:break-word;line-height:1.4;padding-bottom:4px}
 .cf-hd{font-weight:700;color:var(--ink-soft)}.cf-hd small{display:block;font-weight:400;color:var(--ink-faint);font-size:.6875rem}
+.cmp-rep{white-space:pre-wrap;word-break:break-word;font:0.75rem/1.45 var(--mono);background:rgba(128,128,128,.08);border-radius:var(--r-sm);padding:10px;margin:0 0 10px;max-height:55vh;overflow:auto}
 .sync-banner{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:10px 12px;border-radius:var(--r-sm);background:rgba(128,128,128,.1);font-size:.8125rem;color:var(--ink-soft)}
 .sync-banner.hidden{display:none}.sync-banner span{flex:1}
 .sync-banner.warn{background:color-mix(in srgb,var(--seal) 12%,var(--card));color:var(--ink)}
@@ -1470,7 +1471,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div class="sheet" id="shVersions">
   <div class="sheet-card"><div class="sheet-grab"></div>
     <div class="sheet-head"><button class="sh-l" data-close>Close</button><h2>Version history</h2><span class="sh-r"></span></div>
-    <div class="sheet-body"><p class="hint" style="margin-bottom:10px">Earlier versions of this note kept on this iPhone (last 10). Restoring keeps the current text as a version too.</p>
+    <div class="sheet-body"><p class="hint" style="margin-bottom:10px">Earlier versions of this note kept on this device (last 10). Restoring keeps the current text as a version too.</p>
       <div class="group" id="verList"></div></div>
   </div>
 </div>
@@ -2033,10 +2034,10 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
         <div class="group">
           <button class="set-row" id="setBin">Recently deleted<span class="v">🗑</span></button>
           <button class="set-row" id="setArchive">Archive old years<span class="v">🗄</span></button>
-          <button class="set-row" id="setOff">Files on this iPhone (open offline)<span class="v" id="setOffV">›</span></button>
+          <button class="set-row" id="setOff">Files on this device (open offline)<span class="v" id="setOffV">›</span></button>
           <button class="set-row" id="setScanIdx">Make scanned PDFs searchable<span class="v" id="setScanIdxV">›</span></button>
           <button class="set-row" id="setTpl">Task templates<span class="v">›</span></button>
-          <button class="set-row" id="setLegacyLocal">Import from the old app on this iPhone<span class="v">›</span></button>
+          <button class="set-row" id="setLegacyLocal">Import from the old app on this device<span class="v">›</span></button>
           <button class="set-row" id="setLegacySheet">Import from the old encrypted Sheet tab<span class="v">›</span></button>
         </div>
         <div class="group-title">Diagnostics</div>
@@ -2082,6 +2083,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.32.0"></script>
+<script src="app.js?v=2.33.1"></script>
 </body>
 </html>

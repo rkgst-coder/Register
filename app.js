@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.32.0';
+const APP_VERSION = '2.33.1';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -775,7 +775,7 @@ const Sync = {
   async run(manual) {
     if (window.GHOST) return false;
     if (!this.on()) { this.status('', 'Local only — connect a Sheet in Settings'); if (manual) toast('Sync is not set up — see Settings.'); return false; }
-    if (!navigator.onLine) { this.status('err', 'Offline — changes are saved on this iPhone'); if (manual) toast('Offline. Everything is saved here and will sync later.'); return false; }
+    if (!navigator.onLine) { this.status('err', 'Offline — changes are saved on this device'); if (manual) toast('Offline. Everything is saved here and will sync later.'); return false; }
     if (this.busy) { this.again = true; return false; }
     this.busy = true; this.status('busy', 'Syncing…');
     try {
@@ -796,7 +796,7 @@ const Sync = {
       const msg = String(e && e.message || e || ''), net = e && e.transient || /load failed|fetch is aborted|aborted|failed to fetch|networkerror|network error/i.test(msg);
       if (net && !manual && !this.retried) { this.retried = true; RLOG.warn('sync hiccup, trying again:', msg); this.status('busy', 'Syncing…'); setTimeout(() => this.run(), 6000); return false; }
       RLOG.error('sync failed:', msg);
-      this.status('err', 'Sync error — saved on this iPhone. ' + (e.message || ''));
+      this.status('err', 'Sync error — saved on this device. ' + (e.message || ''));
       if (manual) toast('Sync failed: ' + (e.message || 'network error') + '. Your changes are safe here.');
       return false;
     } finally {
@@ -863,7 +863,7 @@ const Sync = {
         if (records[row.id]) records[row.id]._dirty = 0;
         if (!rejected.has(row.id)) delete cur._tooBig;
         if (row.stubN) { cur._chunked = row.stubN; if (records[row.id]) records[row.id]._chunked = row.stubN; } else { delete cur._chunked; if (records[row.id]) delete records[row.id]._chunked; }
-        if (rejected.has(row.id)) { cur._tooBig = true; if (!this.warnedBig) { this.warnedBig = true; toast(`"${(cur.title || cur.label || 'An item').slice(0, 30)}" is too large to sync (Sheet cell limit). It stays on this iPhone.`); } }
+        if (rejected.has(row.id)) { cur._tooBig = true; if (!this.warnedBig) { this.warnedBig = true; toast(`"${(cur.title || cur.label || 'An item').slice(0, 30)}" is too large to sync (Sheet cell limit). It stays on this device.`); } }
         clean.push(SEALED_TYPES.has(cur.type) ? stripLocal(sealed[row.id]) : stripLocal(cur));
       });
       if (clean.length) await DB.putMany(clean.map(c => ({ ...c, _dirty: 0 })));
@@ -1036,7 +1036,7 @@ setInterval(() => { if (document.visibilityState === 'visible') Sync.soon(10); }
 /* ==========================================================================
    IMAGES
    With a Drive folder set: full-size file in your Drive, bytes proxied back
-   through the script and cached on this iPhone (IndexedDB) so each picture is
+   through the script and cached on this device (IndexedDB) so each picture is
    downloaded once. Without Drive: shrunk to fit one Sheet cell.
    ======================================================================== */
 const IMG_MAX_CHARS = 45000, IMG_PER_NOTE = 10, DRIVE_MAXDIM = 2400, DRIVE_Q = 0.88;
@@ -2462,7 +2462,7 @@ function renderDocsBase() {
     return swipeHtml(`<div class="row" style="border-left:4px solid ${DOC_COLORS[d.docType] || '#77818E'}">
       ${d.expiry ? countHtml(days, 'expired') : '<div class="count past" aria-label="no expiry">∞<small>no expiry</small></div>'}
       <div class="row-main"><div class="row-title">${esc(d.title)}${showWho ? ` <span class="muted" style="font-weight:400">· ${esc(docOwners(d).join(' & '))}</span>` : ''}</div>
-        <div class="row-sub"><span>${esc(d.docType)}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span><button type="button" class="d-copy" data-dcopy="${d.id}" aria-label="Copy number of ${esc(d.title)}">⧉ Copy</button>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}${docOffline(d) ? '<span class="off-ok" aria-label="files kept on this iPhone">📱✓</span>' : ''}</div></div>
+        <div class="row-sub"><span>${esc(d.docType)}</span>${docFileBadge(d)}${docNumShown(d) ? `<span class="mono">${esc(docNumShown(d))}</span><button type="button" class="d-copy" data-dcopy="${d.id}" aria-label="Copy number of ${esc(d.title)}">⧉ Copy</button>` : ''}${d.expiry ? `<span class="${days < 0 ? 'warn' : ''}">${days < 0 ? 'expired' : 'expires'} ${fmtDate(d.expiry, true)}</span>` : ''}${d.notes ? '<span>📝</span>' : ''}${docOffline(d) ? '<span class="off-ok" aria-label="files kept on this device">📱✓</span>' : ''}</div></div>
       ${docSel ? `<span class="sel-box${docSel.has(d.id) ? ' on' : ''}" aria-label="${docSel.has(d.id) ? 'selected' : 'not selected'}">${docSel.has(d.id) ? '✓' : ''}</span>` : '<span class="chev">›</span>'}</div>`, '', 'Delete 🗑', `data-doc="${d.id}"`);
   }).join('') || (!docs.length ? '<div class="empty"><b>No documents</b>Aadhaar, PAN, marksheets, ITRs, policies — tap ＋ Add document. Attach a photo or PDF, scan it, or keep just the details. Each person gets a folder, with categories inside.</div>' : '');
   $('docList').classList.toggle('hidden', !$('docList').innerHTML);
@@ -7682,7 +7682,7 @@ function showDecoy() {
 let legacyOffer = false;
 function offerLegacy() {
   if (!legacyOffer) return; legacyOffer = false;
-  setTimeout(() => { if (confirm('Found your data from the previous Register on this iPhone. Bring it into the new version?')) importLegacyLocal(); else { try { localStorage.setItem('r2_legacyDone', '1'); } catch (e) {} } }, 500);
+  setTimeout(() => { if (confirm('Found your data from the previous Register on this device. Bring it into the new version?')) importLegacyLocal(); else { try { localStorage.setItem('r2_legacyDone', '1'); } catch (e) {} } }, 500);
 }
 function hideDecoy() {
   if ($('alPin')) $('alPin').classList.add('hidden');
@@ -7744,7 +7744,7 @@ function openVault(mode) {
   if (window.GHOST) { ghostCrash(true); return; }
   vaultMode = mode || (finConfigured() ? 'unlock' : 'setup');
   if (vaultMode === 'setup' && Sync.on() && !Sync.lastOk) {
-    toast('Syncing first, so this iPhone picks up your existing code…'); Sync.run().then(ok => { if (ok) openVault(); }); return;
+    toast('Syncing first, so this device picks up your existing code…'); Sync.run().then(ok => { if (ok) openVault(); }); return;
   }
   $('vaCode').value = ''; $('vaCode2').value = ''; $('vaErr').textContent = '';
   const setup = vaultMode === 'setup', change = vaultMode === 'change';
@@ -7947,7 +7947,7 @@ function openSettings() {
   { const c = recordSplit(); $('setCount').textContent = `${c.live.toLocaleString('en-IN')} items · ${c.trash} in trash · ${c.sys + c.enc} other`; }
   const dirty = Object.values(records).filter(r => r._dirty && !SEALED_TYPES.has(r.type)).length + Object.values(sealed).filter(s => s._dirty).length;
   const big = Object.values(records).filter(r => r._tooBig && !r.deleted && !SEALED_TYPES.has(r.type)).length + Object.values(sealed).filter(s => s._tooBig && !s.deleted).length;
-  $('setSyncInfo').textContent = Sync.on() ? `Last synced ${Sync.lastOk ? timeAgo(Sync.lastOk) : 'never'}${dirty ? ` · ${dirty} change${dirty > 1 ? 's' : ''} waiting to upload` : big ? ` · ${big} item${big > 1 ? 's are' : ' is'} too large for the Sheet and only on this iPhone (shorten or split ${big > 1 ? 'them' : 'it'})` : ' · everything uploaded'}` : 'Not connected — everything stays on this iPhone.';
+  $('setSyncInfo').textContent = Sync.on() ? `Last synced ${Sync.lastOk ? timeAgo(Sync.lastOk) : 'never'}${dirty ? ` · ${dirty} change${dirty > 1 ? 's' : ''} waiting to upload` : big ? ` · ${big} item${big > 1 ? 's are' : ' is'} too large for the Sheet and only on this device (shorten or split ${big > 1 ? 'them' : 'it'})` : ' · everything uploaded'}` : 'Not connected — everything stays on this device.';
   $('setSyncMsg').textContent = ''; $('setDriveMsg').textContent = ''; $('setDataMsg').textContent = '';
   const hasOld = !!localStorage.getItem('reg_recs');
   $('setLegacyLocal').classList.toggle('hidden', !hasOld);
@@ -7994,7 +7994,7 @@ $('setConnect').addEventListener('click', async () => {
   } catch (e) { msg.className = 'msg err'; msg.textContent = 'Could not connect: ' + e.message; RLOG.error('connect', e.message); }
 });
 $('setDisconnect').addEventListener('click', () => {
-  if (!confirm('Disconnect sync? Everything stays on this iPhone.')) return;
+  if (!confirm('Disconnect sync? Everything stays on this device.')) return;
   setPref('cloudUrl', ''); setPref('cloudToken', ''); $('setUrl').value = ''; $('setToken').value = '';
   Sync.status('', 'Local only'); $('setSyncMsg').textContent = 'Disconnected.';
 });
@@ -8170,7 +8170,7 @@ async function decryptLegacy(key, payloads) {
   return { out, bad };
 }
 async function importLegacyLocal() {
-  const raw = localStorage.getItem('reg_recs'); if (!raw) { toast('No data from the old app on this iPhone.'); return 0; }
+  const raw = localStorage.getItem('reg_recs'); if (!raw) { toast('No data from the old app on this device.'); return 0; }
   let meta = {}; try { meta = JSON.parse(localStorage.getItem('reg_meta') || '{}'); } catch (e) {}
   const key = await legacyKeyFrom(meta); if (!key) return 0;
   let packed; try { packed = JSON.parse(raw); } catch (e) { toast('Old data is unreadable.'); return 0; }
@@ -8824,10 +8824,10 @@ function renderDocs() {
   const crumb = fbox.querySelector('.doc-crumb'); if (!crumb) return;
   let items = [];   // v2.27: one ⋯ menu instead of a row of buttons
   if (docPath.who && !docPath.grp) {
-    items = [['new', '＋ Document here'], ['gnew', '＋ New category'], ['ren', '✎ Rename person'], ['mv', '⇢ Move all…'], ...(FAM_PEOPLE.includes(docPath.who) ? [['chk', '✅ Checklist']] : []), ['em', '🆘 Emergency sheet'], ['zip', '⤓ Download all (zip)'], ['off', '📱 Keep on this iPhone']];
+    items = [['new', '＋ Document here'], ['gnew', '＋ New category'], ['ren', '✎ Rename person'], ['mv', '⇢ Move all…'], ...(FAM_PEOPLE.includes(docPath.who) ? [['chk', '✅ Checklist']] : []), ['em', '🆘 Emergency sheet'], ['zip', '⤓ Download all (zip)'], ['off', '📱 Keep on this device']];
     if (!all('doc').some(d => docOwners(d).includes(docPath.who))) fbox.insertAdjacentHTML('beforeend', '<div class="empty">No documents for this person yet.</div>');
   } else if (docPath.grp) {
-    items = [['gnew2', '＋ Document here'], ['gren', '✎ Rename category'], ['gmv', '⇢ Move these…'], ['off', '📱 Keep on this iPhone'], ['gdel', '🗑 Delete category', 'danger']];
+    items = [['gnew2', '＋ Document here'], ['gren', '✎ Rename category'], ['gmv', '⇢ Move these…'], ['off', '📱 Keep on this device'], ['gdel', '🗑 Delete category', 'danger']];
   }
   if (!items.length) return;
   const more = document.createElement('button'); more.className = 'crumb-more'; more.setAttribute('aria-label', 'Actions'); more.setAttribute('aria-haspopup', 'menu'); more.textContent = '⋯';
@@ -8866,7 +8866,7 @@ function popMenu(anchor, items) {
 }
 $('docMoreBtn').addEventListener('click', () => popMenu($('docMoreBtn'), [
   { l: '🗂 People & categories', fn: openDocFolders }, { l: '✅ Family checklist', fn: () => openFamily() },
-  { l: '📱 Keep on this iPhone…', fn: () => keepOffline(all('doc'), 'all documents') }]));
+  { l: '📱 Keep on this device…', fn: () => keepOffline(all('doc'), 'all documents') }]));
 function renderSelBar() {
   renderSelBarBase();
   if (!docSel) return;
@@ -9634,6 +9634,7 @@ async function openDataHealth() {
   else {
     const age = Sync.lastOk ? Date.now() - Sync.lastOk : Infinity;
     add(age > 3 * 86400000 ? 'warn' : 'ok', 'Last sync', `${Sync.lastOk ? timeAgo(Sync.lastOk) : 'never'}${dirty ? ` · ${dirty} change${dirty > 1 ? 's' : ''} waiting to upload` : ' · everything uploaded'}.`, { label: 'Sync now', fn: async () => { await Sync.run(true); openDataHealth(); } });
+    add('info', 'Compare with the Sheet', 'Downloads everything again and lists anything the Sheet has that this device is not showing (and the reverse). Nothing is deleted.', { label: 'Check', fn: () => { Sheets.close('shHealth', true); sheetCompare(); } });   // v2.33
     if (Sync.incomplete) add('warn', 'Long items still arriving', `${Sync.incomplete} long item${Sync.incomplete > 1 ? 's' : ''} from another device did not arrive complete. They will on a later sync.`);
   }
   const lastDl = +(lsGet('r2_lastBackup') || 0), drv = AutoBackup.list().slice(-1)[0];
@@ -9664,7 +9665,7 @@ async function openDataHealth() {
   if (sc.total) add(sc.todo ? 'info' : 'ok', 'Searchable files', `${sc.done} of ${sc.total} PDFs can be searched by their words${sc.none ? ` (${sc.none} are photos without text)` : ''}${sc.locked ? `; ${sc.locked} locked PDF${sc.locked > 1 ? 's are' : ' is'} not indexed` : ''}.`, sc.todo ? { label: 'Index ' + sc.todo, fn: () => { Sheets.close('shHealth', true); indexAllScans(); } } : null);
   { const c = recordSplit(), by = Object.entries(c.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${n} ${RECORD_WORDS[t] || t}`).join(', ');
     add('info', 'This device', `Register v${APP_VERSION}. Your items: ${c.live.toLocaleString('en-IN')}${by ? ' (' + by + ')' : ''}. In Recently deleted: ${c.trash}. App and system records (pictures, settings, sync pieces${finUnlocked() ? ', private entries' : ''}): ${(c.sys + c.enc).toLocaleString('en-IN')}.`); }
-  try { healthExtra(add); } catch (e) { RLOG.warn('health extra', e.message); }   // v2.24: devices, changed on two devices, files on this iPhone
+  try { healthExtra(add); } catch (e) { RLOG.warn('health extra', e.message); }   // v2.24: devices, changed on two devices, files on this device
   const warn = rows.filter(r => r.state === 'warn').length;
   $('hlBody').innerHTML = `<div class="sc-sum">${warn ? `${warn} thing${warn > 1 ? 's' : ''} to look at` : 'All good'}</div><div class="group">${rows.map((c, i) => `<div class="hl-row"><span class="sc-ic ${c.state}" aria-hidden="true">${c.state === 'ok' ? '✓' : c.state === 'warn' ? '!' : 'i'}</span><div class="row-main"><div class="row-title">${esc(c.t)}</div><div class="row-sub">${esc(c.d)}</div></div>${c.act ? `<button class="btn small ghost" data-hla="${i}">${esc(c.act.label)}</button>` : ''}</div>`).join('')}</div>
     <p class="hint">Looks at this device and its last sync. Nothing is sent anywhere.</p>`;
@@ -9749,6 +9750,7 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
+  { t: '<b>Data health</b>: <b>Compare with the Sheet</b> downloads everything again and lists anything the Sheet has that this device is not showing, and why (Copy report to send it). A device line you no longer use has <b>Forget</b>. Wording says “this device” instead of “this iPhone” on computers too.' },
   { t: '<b>A device that fell behind catches up first</b>: if this device has not synced for 30 minutes, opening a task, note, date, document or entry first gets the latest from your other devices. If it has not synced for 6 hours (offline, or a network that blocks Google), a banner at the top says so, with Sync now.' },
   { t: '<b>“Changed on two devices” is easier to read</b>: when each version was changed, steps as a ticked list, dates as dates, Open / Done instead of code.' },
   { t: '<b>More room to write on iPhone</b>: while the keyboard is up in a note, the title, folder and ‹ › bar step aside, the toolbar becomes one row that stays at the top (swipe it sideways for more buttons), and the note fills the screen. Tapping a toolbar button no longer closes the keyboard.' },
@@ -9763,7 +9765,7 @@ const WHATS_NEW = [
   { t: '<b>Search</b> opens with the keyboard ready on iPhone.' },
   { t: '<b>Fixed</b>: editing a task (or anything else) quickly while it was syncing made Register say it was “changed on two devices” when it was not. Any such entries already in the list are your own edits — tap Keep “In use”.' },
   { t: '<b>Locked documents open without opening Money</b>: the code typed for a 🔒 document unlocks documents only — Money, PNote and Plan stay hidden — and they lock again when you close the document (or after 3 minutes).' },
-  { t: '<b>Documents</b>: a tidier top — ＋ Add, the year, and ⋯ More (People & categories, Family checklist, Keep on this iPhone). A person’s or category’s actions are under one ⋯ button.' },
+  { t: '<b>Documents</b>: a tidier top — ＋ Add, the year, and ⋯ More (People & categories, Family checklist, Keep on this device). A person’s or category’s actions are under one ⋯ button.' },
   { t: '<b>Next / previous</b>: swipe left or right (or use ‹ ›) to go through the list you opened from — documents (also the “needs attention” list), notes, tasks and Money entries. The one you leave is saved first.' },
   { t: 'Tap a <b>month name</b> (Ledger, Budgets, Bills, a month in Plan) to jump with the month wheel.' },
   { t: '<b>▦ Tables in PNote</b>: add a table to a private note — e.g. card numbers, expiry dates, document numbers. 🔒 columns show dots until tapped (tap again quickly to copy). Expiry dates go to Dates. <b>Card & account details</b> moved from Documents into PNote → “Cards & accounts”.', priv: true },
@@ -10689,7 +10691,7 @@ async function renderOfficeInto(box, f, blob) {
 
 
 /* ==========================================================================
-   v2.24 — "Keep on this iPhone": download document files once, open instantly
+   v2.24 — "Keep on this device": download document files once, open instantly
    A file opened once is already kept; this fetches the rest in one go.
    Locked files are kept still locked (encrypted) — they open after unlocking.
    ======================================================================== */
@@ -10703,11 +10705,11 @@ async function keepOffline(docs, label) {
   if (window.GHOST) { ghostCrash(true); return; }
   docs = (docs || []).filter(Boolean);
   const fs = docs.flatMap(d => docFilesOf(d.id)).filter(f => f.fileId && !fileOnDevice(f));
-  if (!fs.length) { toast(docs.some(d => docFilesOf(d.id).length) ? 'Already on this iPhone ✓' : 'No files there to keep.'); return; }
+  if (!fs.length) { toast(docs.some(d => docFilesOf(d.id).length) ? 'Already on this device ✓' : 'No files there to keep.'); return; }
   if (!Sync.on()) { toast('Connect sync first — the files come from your Drive folder.'); return; }
   try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
   const total = fs.reduce((t, f) => t + (+f.bytes || 0), 0);
-  jobOpen(`Keeping ${label || 'documents'} on this iPhone`);
+  jobOpen(`Keeping ${label || 'documents'} on this device`);
   let i = 0, ok = 0; const bad = [];
   for (const f of fs) {
     if (Job.stop) break;
@@ -10728,22 +10730,22 @@ async function offSize() {
 }
 async function dropOffline() {
   const L = offFiles().filter(fileOnDevice);
-  if (!L.length) { toast('Nothing kept on this iPhone.'); return; }
-  if (!confirm(`Remove the ${L.length} downloaded file${L.length > 1 ? 's' : ''} from this iPhone?\n\nThey stay safe in your Drive folder and download again when you open them.`)) return;
+  if (!L.length) { toast('Nothing kept on this device.'); return; }
+  if (!confirm(`Remove the ${L.length} downloaded file${L.length > 1 ? 's' : ''} from this device?\n\nThey stay safe in your Drive folder and download again when you open them.`)) return;
   for (const f of L) { try { await DB.imgDel(f.fileId); } catch (e) {} Off.keys.delete(f.fileId); const v = docPlain.get(f.id); if (v) { URL.revokeObjectURL(v.url); docPlain.delete(f.id); } }
-  toast('Removed from this iPhone. Your files are still in Drive.'); scheduleRender(); if (Sheets.isOpen('shPlan')) openOffline();
+  toast('Removed from this device. Your files are still in Drive.'); scheduleRender(); if (Sheets.isOpen('shPlan')) openOffline();
 }
 async function openOffline() {
   await offRefresh();
   const L = offFiles(), have = L.filter(fileOnDevice), miss = L.filter(f => !fileOnDevice(f)), need = miss.reduce((t, f) => t + (+f.bytes || 0), 0);
   let est = null; try { if (navigator.storage && navigator.storage.estimate) est = await navigator.storage.estimate(); } catch (e) {}
-  planSheet('Files on this iPhone', `<p class="hint" style="margin:0 4px 10px">A document opens instantly when its file is kept here; otherwise it is fetched from your Drive folder first. Locked files stay locked here too.</p>
+  planSheet('Files on this device', `<p class="hint" style="margin:0 4px 10px">A document opens instantly when its file is kept here; otherwise it is fetched from your Drive folder first. Locked files stay locked here too.</p>
     <div class="group"><div class="set-row"><span>Kept here</span><span class="v">${have.length} of ${L.length} files</span></div>
     <div class="set-row"><span>Space used</span><span class="v" id="offSz">counting…</span></div>
     ${miss.length ? `<div class="set-row"><span>Still to download</span><span class="v">${miss.length} · ${fmtBytes(need)}</span></div>` : ''}
     ${est && est.quota ? `<div class="set-row"><span>Free for the app</span><span class="v">${fmtBytes(Math.max(0, est.quota - (est.usage || 0)))}</span></div>` : ''}</div>
-    <div class="btn-row" style="flex-wrap:wrap">${miss.length ? '<button class="btn brass" type="button" id="offAll">📱 Keep all on this iPhone</button>' : '<span class="hint">✓ Every file is on this iPhone.</span>'}${have.length ? '<button class="btn ghost" type="button" id="offDrop" style="color:var(--seal)">Remove downloaded copies</button>' : ''}</div>
-    <p class="hint">Tip: for one person or category, open it in Documents and tap “📱 Keep on this iPhone”, or press and hold folders / documents and choose ⤓ Keep. Big downloads are best on Wi-Fi.</p>`, () => true, 'Done');
+    <div class="btn-row" style="flex-wrap:wrap">${miss.length ? '<button class="btn brass" type="button" id="offAll">📱 Keep all on this device</button>' : '<span class="hint">✓ Every file is on this device.</span>'}${have.length ? '<button class="btn ghost" type="button" id="offDrop" style="color:var(--seal)">Remove downloaded copies</button>' : ''}</div>
+    <p class="hint">Tip: for one person or category, open it in Documents and tap “📱 Keep on this device”, or press and hold folders / documents and choose ⤓ Keep. Big downloads are best on Wi-Fi.</p>`, () => true, 'Done');
   if ($('offAll')) $('offAll').addEventListener('click', () => { Sheets.close('shPlan', true); keepOffline(all('doc'), 'all documents'); });
   if ($('offDrop')) $('offDrop').addEventListener('click', dropOffline);
   offSize().then(r => { if ($('offSz')) $('offSz').textContent = fmtBytes(r.bytes); });
@@ -10902,14 +10904,14 @@ function healthExtra(add) {
   if (devs.length) {
     const old = devs.filter(d => d.ver && d.ver !== APP_VERSION && Date.now() - (d.lastSync || 0) < 60 * 86400000);
     devs.forEach(d => { const isOld = old.includes(d);
-      add(isOld ? 'warn' : 'ok', `${d.id === me ? 'This device' : 'Device'}: ${d.name || 'Device'}`, `Register v${d.ver || '?'} · synced ${timeAgo(d.lastSync || 0)} · ${(+d.items || 0).toLocaleString('en-IN')} items${isOld ? ' · older version — open Register on it with internet and reload to update' : ''}.`, d.id === me ? { label: 'Rename', fn: renameDevice } : null); });
+      add(isOld ? 'warn' : 'ok', `${d.id === me ? 'This device' : 'Device'}: ${d.name || 'Device'}`, `Register v${d.ver || '?'} · synced ${timeAgo(d.lastSync || 0)} · ${(+d.items || 0).toLocaleString('en-IN')} items${isOld ? ' · older version — open Register on it with internet and reload to update' : ''}.`, d.id === me ? { label: 'Rename', fn: renameDevice } : { label: 'Forget', fn: () => forgetDevice(d.id) }); });   // v2.33
   }
   function renameDevice() {
         const r = records[me]; if (!r) { toast('Sync once first.'); return; }
         planSheet('Name this device', `<div class="field"><label>Name</label><input id="dvName" value="${esc(r.name || '')}" maxlength="30" placeholder="e.g. Rahul's iPhone, Office laptop"></div>`, () => { const v = $('dvName').value.trim(); if (!v) return false; r.name = v.slice(0, 30); put(r, { render: false }); toast('Saved.'); Sheets.close('shHealth', true); return true; }, 'Save');
   }
   if (Conf.list && Conf.list.length) add('warn', 'Changed on two devices', `${Conf.list.length} item${Conf.list.length > 1 ? 's' : ''} to choose a version for.`, { label: 'Review', fn: () => { Sheets.close('shHealth', true); openConflicts(); } });
-  const fl = offFiles(); if (fl.length) { const n = fl.filter(fileOnDevice).length; add('info', 'Files on this iPhone', `${n} of ${fl.length} document files open without downloading.`, { label: 'Manage', fn: () => { Sheets.close('shHealth', true); openOffline(); } }); }
+  const fl = offFiles(); if (fl.length) { const n = fl.filter(fileOnDevice).length; add('info', 'Files on this device', `${n} of ${fl.length} document files open without downloading.`, { label: 'Manage', fn: () => { Sheets.close('shHealth', true); openOffline(); } }); }
 }
 setTimeout(() => confLoad(), 1500);
 /* ==========================================================================
@@ -11521,3 +11523,84 @@ async function catchUp() {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) syncBanner(); });
 setInterval(syncBanner, 60000);
 setTimeout(syncBanner, 3000);
+
+/* v2.33: remove a leftover device line (an old browser, a reset install). Nothing else is touched;
+   if that device syncs again, its line simply comes back. */
+function forgetDevice(id) {
+  const r = records[id]; if (!r || r.type !== 'device') return;
+  const keep = { ...r };
+  put({ ...r, deleted: true }, { render: false });
+  toast(`“${r.name || 'Device'}” removed from the list. If it syncs again it comes back.`, 'Undo', () => { put({ ...keep, deleted: false }, { render: false }); if (Sheets.isOpen('shHealth')) openDataHealth(); }, 7000);
+  if (Sheets.isOpen('shHealth')) openDataHealth();
+}
+
+/* ==========================================================================
+   v2.33 — COMPARE WITH THE SHEET: a full re-download, with a report of what
+   differs and why. Private (Money) rows are only counted, never listed.
+   ======================================================================== */
+async function sheetCompare() {
+  if (!Sync.on()) { toast('Sync is not set up.'); return; }
+  if (!navigator.onLine) { toast('Offline — connect to the internet first.'); return; }
+  planSheet('Compare with the Sheet', '<p class="hint">Uploading what is waiting, then downloading everything from the Sheet…</p>', () => true, 'Done');
+  const W = s => { if ($('pshBody')) $('pshBody').innerHTML = s + '<div class="msg" id="pshMsg"></div>'; };
+  try {
+    await Sync.run(true);                                          // our own changes first, so nothing local is lost
+    while (Sync.busy) await new Promise(r => setTimeout(r, 200));
+    Sync.busy = true;
+    let d;
+    try { d = await Sync.call('pull', { since: 0 }); } finally { Sync.busy = false; }
+    const rows = d.records || [], sheet = new Map(), why = [];
+    let priv = 0, bad = 0;
+    for (const row of rows) {
+      let rec; try { rec = JSON.parse(row.payload); } catch (e) { bad++; continue; }
+      if (!rec || !rec.id) { bad++; continue; }
+      if (SEALED_TYPES.has(rec.type)) { priv++; continue; }
+      if (rec._chunks || rec.purged || !RECORD_WORDS[rec.type]) continue;
+      sheet.set(rec.id, { rec, sheetAt: +row.updatedAt || 0 });
+    }
+    // what this device thinks before the merge
+    const pre = new Map(); sheet.forEach((x, id) => { const l = records[id]; pre.set(id, l ? { del: !!l.deleted, at: l.updatedAt || 0, dirty: !!l._dirty } : null); });
+    const n = await mergeRemote(rows);
+    await DB.set('cursor', d.serverTime || nowMs());
+    scheduleRender();
+    // after: anything live on the Sheet but not live here?
+    const missing = [];
+    sheet.forEach((x, id) => {
+      if (x.rec.deleted) return;
+      const l = records[id];
+      if (l && !l.deleted) return;
+      const p = pre.get(id);
+      const reason = !l ? (cleanRec({ ...x.rec }) ? 'not saved on this device' : 'refused as malformed')
+        : p && p.del && p.at >= (x.rec.updatedAt || 0) ? `deleted here ${p.at > (x.rec.updatedAt || 0) ? 'later than' : 'at the same time as'} the Sheet's copy${p.dirty ? ' (not uploaded yet)' : ''}`
+        : 'deleted here';
+      missing.push({ id, type: x.rec.type, title: String(x.rec.title || x.rec.label || x.rec.name || x.rec.text || '(untitled)').split('\n')[0].slice(0, 60), reason, rec: x.rec });
+    });
+    // here but not on the Sheet
+    const notUp = Object.values(records).filter(r => RECORD_WORDS[r.type] && !r.deleted && !sheet.has(r.id) && !SEALED_TYPES.has(r.type));
+    const byType = {}; sheet.forEach(x => { if (!x.rec.deleted) byType[x.rec.type] = (byType[x.rec.type] || 0) + 1; });
+    const here = recordSplit();
+    const word = t => RECORD_WORDS[t] || t;
+    const lines = [
+      `Register v${APP_VERSION} · ${new Date().toLocaleString('en-IN')}`,
+      `Sheet rows: ${rows.length} (private, not listed: ${priv}${bad ? ', unreadable: ' + bad : ''}) · updated now: ${n}`,
+      `Live on the Sheet: ${Object.entries(byType).map(([t, k]) => k + ' ' + word(t)).join(', ')}`,
+      `Live on this device: ${here.live} (${Object.entries(here.byType).map(([t, k]) => k + ' ' + word(t)).join(', ')})`,
+      `On the Sheet but not shown here: ${missing.length}`, ...missing.map(m => `  • ${word(m.type).replace(/s$/, '')}: ${m.title} — ${m.reason}`),
+      `Here but not on the Sheet: ${notUp.length}`, ...notUp.slice(0, 30).map(r => `  • ${word(r.type).replace(/s$/, '')}: ${String(r.title || r.label || r.name || '(untitled)').slice(0, 60)}${r._dirty ? ' — waiting to upload' : r._tooBig ? ' — too big for the Sheet' : ''}`)
+    ];
+    const report = lines.join('\n');
+    RLOG.info('sheet compare', missing.length, 'missing,', notUp.length, 'not uploaded');
+    W(`<p class="hint" style="margin:0 4px 10px">${missing.length || notUp.length ? 'Differences found — details below.' : '✓ This device and the Sheet match.'}</p>
+      <pre class="cmp-rep">${esc(report)}</pre>
+      <div class="btn-row">${missing.some(m => /deleted here/.test(m.reason)) ? '<button class="btn brass small" type="button" id="cmpBring">Bring back the Sheet’s copies</button>' : ''}<button class="btn ghost small" type="button" id="cmpCopy">Copy report</button></div>`);
+    $('cmpCopy').addEventListener('click', async () => { try { await navigator.clipboard.writeText(report); toast('Report copied — paste it to Claude.'); } catch (e) { toast('Could not copy — take a screenshot instead.'); } });
+    if ($('cmpBring')) $('cmpBring').addEventListener('click', () => {
+      let k = 0;
+      missing.filter(m => /deleted here/.test(m.reason)).forEach(m => { const r = { ...m.rec }; delete r._dirty; delete r._base; put(r); k++; });   // a fresh time, so every device takes it
+      toast(`${k} item${k > 1 ? 's' : ''} brought back.`); Sheets.close('shPlan', true); scheduleRender();
+    });
+  } catch (e) {
+    RLOG.error('sheet compare', e);
+    W(`<p class="msg err">Could not compare: ${esc(e.message || String(e))}</p>`);
+  }
+}
