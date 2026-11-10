@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.33.1';
+const APP_VERSION = '2.36.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -42,6 +42,20 @@ const $ = id => document.getElementById(id);
 const $$ = (sel, root) => [...(root || document).querySelectorAll(sel)];
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const nowMs = () => Date.now();
+/* v2.36: ONE CLOCK. "Newest wins" compares updatedAt stamps made by different devices, so a phone whose clock is wrong
+   used to win (clock ahead) or lose (clock behind) unfairly. Every answer from the Apps Script carries Google's time;
+   this device remembers how far its own clock is from it and stamps changes in Google's time. Differences under
+   5 seconds are treated as none (they are network delay, not a wrong clock). Only stamps use this — reminders,
+   dates and "x minutes ago" keep using the device's own clock. */
+let clockOff = 0; try { clockOff = +localStorage.getItem('r2_clockOff') || 0; if (!isFinite(clockOff)) clockOff = 0; } catch (e) { clockOff = 0; }
+const stampMs = () => Date.now() + clockOff;
+function clockLearn(serverTime, t0, t1) {
+  if (!(serverTime > 1e12) || !(t1 >= t0) || t1 - t0 > 8000) return;          // a slow answer says little about the clock
+  const raw = Math.round(serverTime - (t0 + t1) / 2), off = Math.abs(raw) < 5000 ? 0 : raw;
+  if (off === clockOff || (off !== 0 && clockOff !== 0 && Math.abs(off - clockOff) < 2000)) return;
+  RLOG.info('clock: this device is', Math.round(off / 1000), 's', off >= 0 ? 'behind' : 'ahead of', 'the server (was', Math.round(clockOff / 1000), 's)');
+  clockOff = off; try { localStorage.setItem('r2_clockOff', String(off)); } catch (e) {}
+}
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -195,10 +209,11 @@ async function shareOrDownload(text, name, mime) {
   const blob = new Blob([text], { type: mime || 'text/plain' });
   try {
     const file = new File([blob], name, { type: mime || 'text/plain' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
-  } catch (e) { if (e && e.name === 'AbortError') return; RLOG.warn('share failed', e); }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return true; }
+  } catch (e) { if (e && e.name === 'AbortError') return false; RLOG.warn('share failed', e); }
   finally { shareBusy = false; }
   dl(blob, name);
+  return true;
 }
 
 /* ---------- bottom sheets ---------- */
@@ -556,7 +571,7 @@ async function unlockFinance(code) {
   }
   storeVer++;
   if (Fin.key !== key) { for (const id in records) if (SEALED_TYPES.has(records[id].type)) delete records[id]; return false; }
-  reseal.forEach(r => { r.updatedAt = Math.max(r.updatedAt, nowMs()); put(r, { render: false, keepTime: true }); });
+  reseal.forEach(r => { r.updatedAt = Math.max(r.updatedAt, stampMs()); put(r, { render: false, keepTime: true }); });
   if (Fin.lockedOut.length) RLOG.warn('private records under another code:', Fin.lockedOut.length);
   if (Fin.tampered.length) RLOG.warn('private records failed the integrity check:', Fin.tampered.length);
   RLOG.info('private section unlocked; records', Object.keys(sealed).length);
@@ -686,7 +701,7 @@ function put(rec, opt) {
   opt = opt || {};
   { const prev = records[rec.id]; if (prev && !prev._dirty && prev.updatedAt) rec._base = prev.updatedAt; else if (prev && prev._base) rec._base = prev._base; }   // v2.24: the Sheet's version this edit started from
   if (opt.bump) rec.updatedAt = (rec.updatedAt || 0) + 1;                       // re-seal: keeps its place in time
-  else if (!opt.keepTime) rec.updatedAt = Math.max(nowMs(), (rec.updatedAt || 0) + 1);   // another device's clock may be ahead
+  else if (!opt.keepTime) rec.updatedAt = Math.max(stampMs(), (rec.updatedAt || 0) + 1);   // v2.36: Google's time, not this device's; still never goes backwards
   storeVer++;
   rec._dirty = 1;
   if (rec.deleted === undefined) rec.deleted = false;
@@ -744,7 +759,7 @@ const Sync = {
     if (window.GHOST) throw new Error('Network error');
     if (!scriptUrlOk(prefs.cloudUrl)) throw new Error('The sync address is not a Google Apps Script address');
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), timeoutMs || 45000);
+    const t = setTimeout(() => ctl.abort(), timeoutMs || 45000), t0 = Date.now();
     try {
       const res = await fetch(prefs.cloudUrl, {
         method: 'POST', signal: ctl.signal, redirect: 'follow',
@@ -759,6 +774,8 @@ const Sync = {
         err.transient = st === 0 || st >= 500 || st === 429 || /error|busy|try again|too many|unavailable/i.test(ttl) || st === 200;
         throw err;
       }
+      if (d && d.serverTime && !payload) clockLearn(+d.serverTime, t0, Date.now());   // v2.36: only light calls (ping) — a big pull or push takes too long to time
+      else if (d && d.serverTime && Date.now() - t0 < 4000) clockLearn(+d.serverTime, t0, Date.now());
       if (d.error) throw new Error(d.error);
       return d;
     } finally { clearTimeout(t); }
@@ -3206,30 +3223,19 @@ function renderLedFlags() {
     if (new Date().getDate() <= 10 && lsGet('r2_close_' + prev) !== '1' && all('fin').some(e => (e.date || '').slice(0, 7) === prev))
       out.push(`<button class="led-flag close" data-lf="close"><span>📒 <b>${esc(monthLong(prev))} — month summary</b><small>Spending, budgets, top categories and open udhaar</small></span><i>Open ›</i></button>`);
   }
+  { const n = invUnlinked().length; if (n) out.push(`<button class="led-flag" data-lf="inv"><span>💹 <b>${n} investment entr${n === 1 ? 'y is' : 'ies are'} not linked to a fund</b><small>The money left your bank but is in no fund in Accounts</small></span><i>Link ›</i></button>`); }   // v2.35
+  { const F = all('fin').filter(e => (e.date || '').slice(0, 7) === finMonth);                                      // v2.34: the summary of the month shown, always
+    if (F.length) { const M = monthFigures(F), W = monthWalk(planCfg(), finMonth);
+      out.push(`<button class="led-flag close" data-lf="sum"><span>📒 <b>${esc(monthLong(finMonth))} — where the money went</b><small>Spent ${rsShort(M.out)} · received ${rsShort(M.inc)}${W && W.ended && !W.nChecked ? ' · balances not checked yet' : ''}</small></span><i>Open ›</i></button>`); } }
   box.innerHTML = out.join('');
   $$('[data-lf]', box).forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.lf;
+    if (k === 'sum') { monthClose(finMonth); return; }
+    if (k === 'inv') { invLinkSheet(); return; }
     if (k === 'pend') planMonthSheet(cur);
     else if (k === 'udh') { setPref('moneySeg', 'udhaar'); renderMoney(); }
     else if (k === 'close') { const prev = monthAdd(cur, -1); lsSet('r2_close_' + prev, '1'); monthClose(prev); renderLedFlags(); }
   }));
-}
-function monthClose(ym) {
-  const F = all('fin').filter(e => (e.date || '').slice(0, 7) === ym), M = monthFigures(F), bud = budgets(), byC = {};
-  F.filter(e => e.kind === 'expense' && e.category !== 'Investment').forEach(e => { const k = e.category || 'Other'; byC[k] = (byC[k] || 0) + (+e.amount || 0); });
-  const cats = Object.entries(byC).sort((a, b) => b[1] - a[1]);
-  const over = Object.entries(bud).filter(([k, b]) => (byC[k] || 0) > b).map(([k, b]) => `${esc(k)} ${rsShort(byC[k])} of ${rsShort(b)}`);
-  const budTot = Object.values(bud).reduce((s, x) => s + x, 0), U = udhaarSplit(), pend = ledgerPending(ym);
-  const prevM = monthFigures(all('fin').filter(e => (e.date || '').slice(0, 7) === monthAdd(ym, -1)));
-  const line = (k, v, cls) => `<div class="pl-row"><span class="r-name">${k}</span><b class="mono ${cls || ''}">${v}</b></div>`;
-  planSheet(monthLong(ym) + ' — summary', `<div class="group pl-group">
-      ${line('Received', rs(M.inc), 'pos')}${line('Spent', rs(M.out), 'neg')}${M.inv ? line('Into investments', rs(M.inv)) : ''}${line('Net', (M.net < 0 ? '−' : '') + rs(Math.abs(M.net)), M.net < 0 ? 'neg' : 'pos')}
-      ${prevM.out ? line('Spent vs the month before', (M.out >= prevM.out ? '+' : '−') + rs(Math.abs(M.out - prevM.out))) : ''}
-      ${budTot ? line('Budgets', `${rs(Object.keys(bud).reduce((s, k) => s + (byC[k] || 0), 0))} of ${rs(budTot)}`) : ''}</div>
-    ${over.length ? `<p class="hint" style="color:var(--seal)">Over budget: ${over.join(' · ')}</p>` : ''}
-    ${cats.length ? `<h4 class="plan-sub">Where it went</h4><div class="group pl-group">${cats.slice(0, 6).map(([k, v]) => line(esc(k), rs(v) + ` <small class="muted">${M.out ? Math.round(v / M.out * 100) : 0}%</small>`)).join('')}</div>` : ''}
-    <h4 class="plan-sub">Still open</h4><div class="group pl-group">${line('Owed to you', rs(U.owed), 'pos')}${line('You owe', rs(U.owe), 'neg')}${pend.length ? line('Regular items never recorded', String(pend.length)) : ''}</div>
-    <p class="hint">${F.length} Ledger entr${F.length === 1 ? 'y' : 'ies'} in ${esc(monthLong(ym))}. Investments are not counted as spending.</p>`, () => true, 'Done');
 }
 /* v2.19 (B4): typing in the search box redraws only the list, a moment after you stop typing */
 function renderLedgerList() {
@@ -3237,6 +3243,8 @@ function renderLedgerList() {
   const FQ = finFilterState(), filtering = FQ.active;
   $('finFilterDot').classList.toggle('hidden', !(filtering || FQ.allMonths));
   const shown = (FQ.allMonths ? entries.slice() : month).filter(FQ.match);
+  if (!FQ.cat && (!FQ.kind || FQ.kind === 'udhaar')) entries.forEach(e => { if (!isUdh(e) || !FQ.match(e)) return;   // v2.35: money paid back is a row of its own, on its own date
+    (e.pays || []).forEach((p, i) => { if (+p.amt && p.date && (FQ.allMonths || p.date.slice(0, 7) === finMonth)) shown.push({ _pay: 1, id: e.id + '|p' + i, of: e, p, date: p.date, kind: 'payback', createdAt: (e.createdAt || 0) + i + 1 }); }); });
   const LIMIT = 300, cut = shown.length > LIMIT;
   const byDay = {};
   shown.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt).slice(0, LIMIT).forEach(e => (byDay[e.date] = byDay[e.date] || []).push(e));
@@ -3246,9 +3254,10 @@ function renderLedgerList() {
   $('finFSum').classList.toggle('hidden', !$('finFSum').textContent);
   const dayHead = d => { const L = byDay[d], sp = sumOf(L, 'expense'), rc = sumOf(L, 'income');
     return `<div class="day-head"><span>${FQ.allMonths ? fmtDate(d, true) : relDay(d)}</span><span class="day-tot">${sp ? `<b class="neg">−${fmtMoney(sp)}</b>` : ''}${rc ? `<b class="pos">+${fmtMoney(rc)}</b>` : ''}</span></div>`; };
-  $('finList').innerHTML = days.length ? days.map(d => `${dayHead(d)}<div class="group fin-day">${byDay[d].map(e => finRow(e, false)).join('')}</div>`).join('')
+  $('finList').innerHTML = days.length ? days.map(d => `${dayHead(d)}<div class="group fin-day">${byDay[d].map(e => e._pay ? payRow(e) : finRow(e, false)).join('')}</div>`).join('')
     : filtering ? '<div class="empty"><b>No matches</b>Try a shorter word, or tick “Search all months”.</div>' : '<div class="empty"><b>Nothing this month</b>Tap + to record spending, income or udhaar.</div>';
   wireFinRows($('finList')); selPaint();
+  $$('[data-finpay]', $('finList')).forEach(w => onTap(w, () => openUdhLedger(w.dataset.finpay)));
 }
 /* the filter lives in its own controls; locking Money clears it */
 function finFilterState() {
@@ -3344,10 +3353,11 @@ function renderUdhPerson(g) {
         ${list.length > 1 ? `<button class="linkbtn" data-settleall="1">Settle all with ${esc(p)}</button>` : ''}
         ${done.length ? `<div class="udh-sh" style="margin:10px 0 2px">Settled</div>${done.map(e => line(e, true)).join('')}` : ''}</div>
       <p class="hint" style="margin:8px 0 0 46px">Tap an entry for its ledger.</p>
-      <div class="btn-row" style="margin:8px 0 0 46px"><button class="btn ghost small" id="udFull">📒 Full ledger</button><button class="btn ghost small" id="udShare">⇪ Share statement</button>${typeof accts === 'function' && accts().length && planCfg() ? '<button class="btn ghost small" id="udStmt">📒 Month by month</button>' : ''}</div></div>`;
+      <div class="btn-row" style="margin:8px 0 0 46px">${list.length ? '<button class="btn small" id="udPay">＋ Payment</button>' : ''}<button class="btn ghost small" id="udFull">📒 Full ledger</button><button class="btn ghost small" id="udShare">⇪ Share statement</button>${typeof accts === 'function' && accts().length && planCfg() ? '<button class="btn ghost small" id="udStmt">📒 Month by month</button>' : ''}</div></div>`;
   $('udBack').addEventListener('click', () => { Udh.person = null; renderUdhaar(); });
   $('udShare').addEventListener('click', () => shareUdhStatement(g));
   $('udFull').addEventListener('click', () => openUdhPersonLedger(g.k));   // v2.26.1
+  if ($('udPay')) $('udPay').addEventListener('click', () => udhPersonPaySheet(g));   // v2.35
   if ($('udStmt')) $('udStmt').addEventListener('click', () => openStatement('udh', { person: g.k }));   // v2.26
   $$('[data-settle]', $('udList')).forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); openSettle(b.dataset.settle); }));
   $$('[data-fe]', $('udList')).forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); openFin(b.dataset.fe); }));
@@ -3356,17 +3366,20 @@ function renderUdhPerson(g) {
   if (sa) sa.addEventListener('click', () => udhSettleAll(p, list));
 }
 function udhSettleAll(p, list) {
-  const settleAll = acct => {
-    const snap = list.map(e => ({ id: e.id, paid: e.paidAmount || 0, pays: (e.pays || []).slice(), settled: !!e.settled })), today = todayISO();
-    list.forEach(e => { const rest = outstanding(e); if (rest > 0 && acct) e.pays = (e.pays || []).concat([{ date: today, amt: +rest.toFixed(2), acct }]); e.paidAmount = e.amount; e.settled = true; put(e, { render: false }); });
+  const settleAll = (acct, when) => {
+    const snap = list.map(e => ({ id: e.id, paid: e.paidAmount || 0, pays: (e.pays || []).slice(), settled: !!e.settled })), today = when || todayISO();
+    list.forEach(e => { const rest = outstanding(e); if (rest > 0) e.pays = (e.pays || []).concat([acct ? { date: today, amt: +rest.toFixed(2), acct } : { date: today, amt: +rest.toFixed(2) }]); e.paidAmount = e.amount; e.settled = true; put(e, { render: false }); });
     scheduleRender();
     toast(`Settled everything with ${p}.`, 'Undo', () => snap.forEach(s => { const e = records[s.id]; e.paidAmount = s.paid; e.pays = s.pays; e.settled = s.settled; put(e); }));
   };
   if (typeof accts === 'function' && accts().length && typeof planSheet === 'function') {
     const net = list.reduce((s, e) => s + udhSign(e) * outstanding(e), 0);
     planSheet('Settle all with ' + p, `<p class="hint">${net >= 0 ? `${esc(p)} pays you ${fmtMoney(net)}` : `You pay ${esc(p)} ${fmtMoney(-net)}`} for ${list.length} entries.</p>
-      <div class="field"><label>${net >= 0 ? 'Received into' : 'Paid from'}</label><select id="saAcct">${acctOptions(lastAcct('udhaar') || defAcct(planCfg()), a => isLiquid(a.kind) || a.kind === 'card')}</select></div>`,
-      () => { rememberAcct('udhaar', $('saAcct').value); settleAll($('saAcct').value); return true; }, 'Settle all');
+      <div class="field"><label>${net >= 0 ? 'Received into' : 'Paid from'}</label><select id="saAcct">${acctOptions(lastAcct('udhaar') || defAcct(planCfg()), a => isLiquid(a.kind) || a.kind === 'card')}</select></div>
+      <div class="field"><label>Date</label><input type="date" id="saDate" value="${todayISO()}" max="${todayISO()}"></div>`,
+      () => { const w = $('saDate').value || todayISO(), last = list.reduce((m, e) => (e.date || '') > m ? e.date : m, '');
+        if (!payDateOk(w, last)) { planMsg(w > todayISO() ? 'The date cannot be in the future.' : 'The date cannot be before the latest entry (' + fmtDate(last, true) + ').', true); return false; }
+        rememberAcct('udhaar', $('saAcct').value); settleAll($('saAcct').value, w); return true; }, 'Settle all');
   } else { if (!confirm(`Mark all ${list.length} entries with ${p} as settled?`)) return; settleAll(null); }
 }
 /* One entry's ledger: the udhaar amount, each settlement, and what is left after each. */
@@ -3377,8 +3390,8 @@ function udhLedgerRows(e) {
   const pays = (e.pays || []).filter(p => +p.amt).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const back = e.kind === 'lent' ? 'Received back' : 'Paid back';
   const diff = +((e.paidAmount || 0) - pays.reduce((s, p) => s + (+p.amt || 0), 0)).toFixed(2);
-  if (diff > 0.005) rows.push({ date: '', what: back + ' (date not recorded)', udh: 0, set: diff });   // usually paid before payments were recorded with a date
-  pays.forEach(p => rows.push({ date: p.date || '', what: back + (p.acct && acctById(p.acct) ? ' · ' + acctName(p.acct) : '') + (p.planRef ? ' (instalment)' : ''), udh: 0, set: +p.amt }));
+  if (diff > 0.005) rows.push({ date: '', what: back + ' (date not recorded)', udh: 0, set: diff, pi: -1 });   // usually paid before payments were recorded with a date
+  pays.forEach(p => rows.push({ pi: (e.pays || []).indexOf(p), date: p.date || '', what: back + (p.acct && acctById(p.acct) ? ' · ' + acctName(p.acct) : '') + (p.planRef ? ' (instalment)' : ''), udh: 0, set: +p.amt }));
   if (diff < -0.005) rows.push({ date: '', what: 'Correction (amount edited)', udh: 0, set: diff });
   let left = 0; rows.forEach(r => { left += r.udh - r.set; r.left = left; });
   return rows;
@@ -3416,8 +3429,9 @@ function renderUdhLedger(id) {
       <div class="stat"><div class="n pos">${rsShort(ts)}</div><div class="l">Settled</div></div>
       <div class="stat"><div class="n ${rem > 0.005 ? (e.kind === 'lent' ? 'pos' : 'neg') : ''}">${rsShort(rem)}</div><div class="l">Remaining</div></div></div>
     <div class="tw"><table class="pt udh-led"><thead><tr><th>Date</th><th>Particulars</th><th>Udhaar</th><th>Settled</th><th>Remaining</th></tr></thead><tbody>
-      ${rows.map(r => `<tr><td>${r.date ? fmtDate(r.date) : '—'}</td><td>${esc(r.what)}</td><td>${r.udh ? rs(r.udh) : '–'}</td><td>${r.set ? rs(r.set) : '–'}</td><td>${rs(r.left)}</td></tr>`).join('')}
+      ${rows.map(r => `<tr><td>${r.date ? fmtDate(r.date) : '—'}${r.pi != null ? ` <button class="linkbtn" data-ulpay="${r.pi}" style="display:inline;padding:0" aria-label="${r.date ? 'Change the date' : 'Set the date'}">${r.date ? '✎' : 'Set date'}</button>` : ''}</td><td>${esc(r.what)}</td><td>${r.udh ? rs(r.udh) : '–'}</td><td>${r.set ? rs(r.set) : '–'}</td><td>${rs(r.left)}</td></tr>`).join('')}
       <tr class="tot"><td></td><td><b>Total</b></td><td><b>${rs(tu)}</b></td><td><b>${rs(ts)}</b></td><td><b>${rs(Math.max(0, tu - ts))}</b></td></tr></tbody></table></div>
+    <div id="ulPayEd"></div>
     ${carried}
     <p class="hint">${e.settled ? 'Fully settled.' : e.kind === 'lent' ? `${esc(e.who || 'They')} still owes you ${esc(fmtMoney(rem))}.` : `You still owe ${esc(e.who || 'them')} ${esc(fmtMoney(rem))}.`} To record a payment, use Settle on the person's screen.</p>
     <button class="btn ghost small" data-ulperson="${esc(udhKey(e.who))}">📒 Full ledger with ${esc(e.who || 'them')}</button>`;
@@ -3427,6 +3441,7 @@ function udhLedWire() {
   $$('[data-ulopen]', $('ulBody')).forEach(b => b.addEventListener('click', () => openUdhLedger(b.dataset.ulopen)));
   $$('[data-ulperson]', $('ulBody')).forEach(b => b.addEventListener('click', () => openUdhPersonLedger(b.dataset.ulperson)));
   $$('[data-ulentry]', $('ulBody')).forEach(b => b.addEventListener('click', () => openUdhLedger(b.dataset.ulentry)));
+  $$('[data-ulpay]', $('ulBody')).forEach(b => b.addEventListener('click', () => udhPayDateEdit(UdhLed.id, +b.dataset.ulpay)));   // v2.35
 }
 /* v2.26.1: everything with one person by date, one running balance (+ they owe you, − you owe). A payment that went over
    what was owed shows as one payment, split into the part that settled and the extra. */
@@ -3500,10 +3515,13 @@ function openSettle(id) {
   $('stTitle').textContent = e.kind === 'lent' ? `${e.who || 'They'} paid back` : `You paid ${e.who || ''}`.trim();
   $('stSub').textContent = `${e.desc || ''} · outstanding ${fmtMoney(outstanding(e))}`;
   $('stAmt').value = outstanding(e);
+  if ($('stDate')) { $('stDate').value = todayISO(); $('stDate').max = todayISO(); $('stDate').min = e.date || ''; }   // v2.35
   Sheets.open('shSettle');
 }
 $('stOk').addEventListener('click', () => {
   const e = records[settleId]; if (!e) return;
+  const when = $('stDate') && $('stDate').value ? $('stDate').value : todayISO();   // v2.35: the day the money actually moved
+  if (!payDateOk(when, e.date)) { toast(when > todayISO() ? 'The date cannot be in the future.' : 'The date cannot be before the udhaar itself (' + fmtDate(e.date, true) + ').'); return; }
   const rem = outstanding(e); let amt = calcAmount($('stAmt').value);
   if (isNaN(amt) || amt <= 0) amt = rem;
   const over = amt > rem + 0.005 ? +(amt - rem).toFixed(2) : 0;
@@ -3513,11 +3531,11 @@ $('stOk').addEventListener('click', () => {
   e.paidAmount = +(((e.paidAmount || 0) + amt).toFixed(2));
   if (e.paidAmount >= e.amount - 0.005) { e.paidAmount = e.amount; e.settled = true; }
   const prevPays = (e.pays || []).slice();
-  if (stAcct) e.pays = prevPays.concat([{ date: todayISO(), amt, acct: stAcct }]);
+  e.pays = prevPays.concat([stAcct ? { date: when, amt, acct: stAcct } : { date: when, amt }]);   // v2.35: always dated, with or without an account
   put(e); Sheets.close('shSettle');
   let extraId = null;
   if (over) extraId = put({ id: uid('f'), type: 'fin', origin: e.id, desc: 'Extra when settling' + (e.desc ? ': ' + e.desc : ''), amount: over, kind: e.kind === 'lent' ? 'borrowed' : 'lent',
-    category: '', date: todayISO(), who: e.who || '', acct: stAcct || undefined, recurring: false, paidAmount: 0, settled: false, deleted: false }).id;
+    category: '', date: when, who: e.who || '', acct: stAcct || undefined, recurring: false, paidAmount: 0, settled: false, deleted: false }).id;
   const undo = () => { e.paidAmount = prev.paid; e.settled = prev.settled; e.pays = prevPays; put(e); if (extraId) softDelete(extraId); };
   if (over) toast(`Settled. ${fmtMoney(over)} extra recorded as ${e.kind === 'lent' ? 'you owe ' : 'owed to you by '}${e.who || 'them'}.`, 'Undo', undo, 7000);
   else toast(e.settled ? 'Settled in full.' : `${fmtMoney(amt)} recorded — ${fmtMoney(outstanding(e))} still open.`, 'Undo', undo);
@@ -3758,7 +3776,8 @@ function ledgerFlows(c) {
     else if (isPaidBy(e)) {                                                    // v2.20: no account at purchase; pay-backs leave the account they came from
       (e.pays || []).forEach(p => push(p.date, p.acct || null, -(+p.amt || 0), 'udh', e));
     }
-    else if (e.kind === 'expense') push(d, acct, -a, 'exp', e);
+    else if (e.kind === 'expense') { push(d, acct, -a, 'exp', e);
+      if (e.category === 'Investment' && e.invTo && acct && acctById(acct)) { const t = acctById(e.invTo); if (t && isInvest(t.kind)) push(d, t.id, a, 'inv', e); } }   // v2.35: the fund it went into
     else if (e.kind === 'transfer') { push(d, e.acct, -a, 'out', e); push(d, e.to, a, 'in', e); }
     else if (e.kind === 'lent' || e.kind === 'borrowed') {
       const s = e.kind === 'lent' ? -1 : 1;
@@ -3939,6 +3958,8 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
   const rows = [], udhLeft = new Map(); let udhBack = 0, udhGive = 0;
   const gives = recurs().filter(r => r.kind === 'udhgive' && (r.who || '').trim()), cardPlans = cardBillPlans(c);   // v2.26
   const giveDone = udhGiveMatches(gives, toMonth);                         // v2.26.1: planned gives already covered by real udhaar
+  const paidByYm = {}, pastUdh = {};                                       // v2.34
+  all('fin').forEach(e => { if (isPaidBy(e) && e.category !== 'Investment') { const m = finDate(e).slice(0, 7); if (m >= c.startMonth) paidByYm[m] = (paidByYm[m] || 0) + (+e.amount || 0); } });
   for (let ym = c.startMonth, i = 0; ym <= toMonth && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) {
     let inc = 0, exp = 0, invIn = 0, interest = 0, growth = 0, pending = 0, planned = false;
     const items = planItems(c, ym), fl = byYm[ym] || [], bal0 = { ...bal };
@@ -3954,6 +3975,7 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
       else if (f.cat === 'in' && isInvest(a.kind)) invIn += f.amt;
       else if (f.cat === 'out' && isInvest(a.kind)) invIn += f.amt;          // negative: money taken out
     });
+    exp += paidByYm[ym] || 0;                                               // v2.34: paid by someone for you is your spending (as in the Ledger); no account moves until you pay them back
     // planned movements not yet ticked
     const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
     const ledgerSpend = fl.filter(f => f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id) || f.e.category === 'Investment'))).reduce((s, f) => s - f.amt, 0);
@@ -4031,7 +4053,9 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
     });
     exp += interest;
     const pm = pmGet(ym);
-    const U = udh - udhBack + udhGive;                                      // v2.26: udhaar you plan to give is still your money, now owed to you
+    let udhBase = udh;                                                      // v2.34: a month that is over uses the udhaar open on its last day
+    if (ym < cur) { if (pastUdh[ym] == null) { const a = udhaarAsOf(monthEnd(ym)); pastUdh[ym] = a.owed - a.owe; } udhBase = pastUdh[ym]; }
+    const U = udhBase - udhBack + udhGive;                                  // v2.26: udhaar you plan to give is still your money, now owed to you
     rows.push({ ym, inc, exp, interest, invIn, growth, net: inc - exp, accts: { ...bal }, assets, liabs, cardDue, loanBal, liquid, invest, udh: U, udhBack, udhGive,
       worth: assets - cardDue + U, hand: liquid + cardPos - cardDue, afterLoans: assets - cardDue + U - loanBal,
       pending, planned, closed: !!(pm && pm.closed), neg, ended: ym < cur, cur: ym === cur });
@@ -4333,6 +4357,7 @@ function stmtFlowLine(f) {
   if (f.cat === 'exp') return { ...base, label: e.planRef && desc ? desc : e.category === 'Investment' ? 'Investment' + (desc ? ' · ' + desc : '') : e.category ? 'Spending: ' + e.category : 'Spending: other' };
   if (f.cat === 'out') { const T = acctById(e.to); return { ...base, label: e.planRef && desc ? stmtXferLabel(desc, T, '→') : 'To ' + (T ? T.name : '—'), peer: e.to || null }; }
   if (f.cat === 'in') { const F = acctById(e.acct); return { ...base, label: e.planRef && desc ? stmtXferLabel(desc, F, '←') : 'From ' + (F ? F.name : '—'), peer: e.acct || null }; }
+  if (f.cat === 'inv') { const F = acctById(e.acct); return { ...base, label: 'Investment' + (desc ? ' · ' + desc : '') + (F ? ' ← ' + F.name : ''), peer: e.acct || null }; }   // v2.35
   if (f.cat === 'udh') { const who = String(e.who || '').trim() || '?';   // v2.26.1: one name per stream, same as the plan's
     return { ...base, label: e.kind === 'lent' ? (f.amt < 0 ? `Udhaar to ${who}` : `${who} (udhaar back)`) : (f.amt > 0 ? `Borrowed from ${who}` : `Paid back to ${who}`), grp: 'udh' }; }
   return { ...base, label: desc || 'Other' };
@@ -4889,7 +4914,7 @@ function planMonthSheet(ym) {
   const cur = isoMonth(new Date()), items = planItems(c, ym), pm = pmGet(ym) || pmNew(ym);
   const canTick = ym <= cur;
   const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
-  const flows = ledgerFlows(c).filter(f => f.ym === ym && f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id))));
+  const flows = ledgerFlows(c).filter(f => f.ym === ym && f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id) || f.e.category === 'Investment')));   // v2.34: same rule as the engine
   const spent = flows.reduce((s, f) => s - f.amt, 0);
   const route = it => it.kind === 'udhback' ? 'from ' + esc(it.who) + ' into ' + esc(acctName(it.to)) + ' · udhaar' : it.kind === 'income' ? 'into ' + esc(acctName(it.to)) : it.kind === 'expense' ? 'from ' + esc(acctName(it.from)) : esc(acctName(it.from)) + ' → ' + esc(acctName(it.to));
   const itemRow = it => `<div class="pl-row src" data-it="${esc(it.key)}"><span class="r-name">${esc(it.label)}<small class="dq-sub">${route(it)}${it.changed ? ' · changed this month' : ''}${it.matched ? ' · found in Ledger' : ''}</small></span>
@@ -4913,7 +4938,9 @@ function planMonthSheet(ym) {
     ${grp('Day-to-day spending (estimate)', items.filter(i => i.budget))}
     <button class="linkbtn" id="pmAdd">＋ Add a one-off for this month</button><div id="pmAddBox"></div>
     ${now ? `<h4 class="plan-sub">Balance check (optional) · end of ${monthLong(ym)}</h4><div class="group pl-group">${chk}</div>
-      <p class="hint" style="margin:4px 4px 0">Only if you want the app to match your bank exactly. Type the balance your bank showed on ${fmtDate(monthEnd(ym), true)}. If it differs from "app says", tap Fix and the difference is recorded as unrecorded spending or income. Leave blank to skip.</p>
+      <p class="hint" style="margin:4px 4px 0">Type what each account showed on ${fmtDate(monthEnd(ym), true)} (bank, cash in hand, card dues), then tap the button. All accounts are compared together, so cash you withdrew or a card bill you paid is not counted as spending. Leave an account blank to skip it.</p>
+      <button class="btn" id="pmAll" style="margin:8px 0 0;width:100%">Work out ${monthLong(ym)}</button><div id="mcBox"></div>
+      <p class="hint" style="margin:6px 4px 0">“Fix” on a row does one account at a time and asks what the difference was.</p>
       <div class="group" style="margin-top:10px"><label class="switch-row"><span>Check-up done<small>Removes ${monthLong(ym)} from the "needs a check-up" count.</small></span><input type="checkbox" class="sw" id="pmClosed"${pm.closed ? ' checked' : ''}></label></div>` : ''}`;
   planSheet(ym < cur ? 'Monthly check-up' : 'Month', html, (quiet) => planMonthSave(ym, quiet));
   const root = $('pshBody');
@@ -4946,6 +4973,7 @@ function planMonthSheet(ym) {
     if (Math.abs(diff) < 0.5) { planMsg(`${a.name} already matches.`); return; }
     fixWhat(c, ym, a, diff, b.closest('.pl-row'));
   }));
+  if ($('pmAll')) $('pmAll').addEventListener('click', () => { try { monthCloseAll(c, ym); } catch (e) { RLOG.error('month close', e); planMsg(e.message, true); } });   // v2.34
   const go = d => { if (planMonthSave(ym, true) !== false) planMonthSheet(monthAdd(ym, d)); };
   $('pmPrev').addEventListener('click', () => { if (ym > c.startMonth) go(-1); else planMsg('This is the first month of the plan.', true); });
   $('pmNext').addEventListener('click', () => go(1));
@@ -5059,7 +5087,7 @@ function renderPlan() {
         <td class="${y.last.liquid < 0 ? 'neg' : ''}">${rsShort(y.last.liquid)}</td><td>${rsShort(y.last.invest)}</td><td><b>${rsShort(y.last.worth)}</b></td><td>${y.last.loanBal ? rsShort(y.last.loanBal) : '–'}</td><td>${y.ended ? y.closed + '/' + y.ended : '–'}</td></tr>`).join('')}</tbody></table></div></div>
     <div class="plan-sec"><h3 class="plan-h">Months · ${Y.label}</h3><div class="tw"><table class="pt pt-click"><thead><tr><th>Month</th><th>Income</th><th>Spending</th><th>Saved</th><th>Into invest.</th><th>Money you have</th><th>Status</th></tr></thead><tbody>${
       yrows.map(r => `<tr data-ym="${r.ym}" class="${r.cur ? 'hl' : ''}" tabindex="0"><td>${monthShort(r.ym)}</td><td>${r.inc ? rs(r.inc) : '–'}</td><td>${r.exp ? rs(r.exp) : '–'}</td><td class="${r.net < 0 ? 'neg' : 'pos'}">${rs(r.net)}</td><td>${r.invIn ? rs(r.invIn) : '–'}</td><td>${rs(r.worth)}</td><td>${status(r)}</td></tr>`).join('')}</tbody></table></div>
-      <p class="hint">Tap a past month for its check-up, or any month to change amounts or add a one-off. "Money you have" = bank + cash + investments + udhaar net − card dues (udhaar at today's figure). Loans are shown separately.</p></div>
+      <p class="hint">Tap a past month for its check-up, or any month to change amounts or add a one-off. "Money you have" = bank + cash + investments + udhaar net − card dues (udhaar as it stood at the end of each past month). Loans are shown separately.</p></div>
     <div class="plan-sec"><h3 class="plan-h">Goals</h3>${goals.length ? goals.map(g => {
       const own = goalMode(g) === 'own', nowB = own ? balancesOn(c, todayISO()).accts : null;   // v2.27
       const nowV = own ? goalValue(g, null, nowB) : nowRow.worth, paid = own ? goalPaidTo(g) : 0;
@@ -6921,7 +6949,7 @@ function inboxDoneBase(i, keepImgs) {
 async function inboxTo(id, to) {
   const i = records[id]; if (!i) return;
   const text = i.text || '', first = text.split('\n')[0].trim(), all_ = (i.imgs || []).filter(b => records[b] && !records[b].deleted);
-  const pdfs = all_.filter(b => isPdfBlob(records[b])), imgs = to === 'doc' ? all_ : all_.filter(b => !pdfs.includes(b));
+  const pdfs = all_.filter(b => isFileBlob(records[b])), imgs = to === 'doc' ? all_ : all_.filter(b => !pdfs.includes(b));
   if (to === 'del') { softDelete(id); setTimeout(() => trashInboxFiles(id), 7500); toast('Deleted — in Recently deleted for 30 days.', 'Undo', () => { restore(id); openInbox(); }); openInbox(); renderInboxCard(); return; }
   Sheets.close('shInbox', true);
   if (to === 'note') {
@@ -6940,7 +6968,7 @@ async function inboxTo(id, to) {
     showTab('docs'); openDoc(d.id);
     if (imgs.length) {
       const files = [], okIds = [];
-      for (const b of imgs) { try { const src = await imgSrc(records[b]); const blob = await (await fetch(src)).blob(); files.push(new File([blob], (records[b] && records[b].name) || (isPdfBlob(records[b]) ? 'file.pdf' : 'photo.jpg'), { type: isPdfBlob(records[b]) ? 'application/pdf' : blob.type || 'image/jpeg' })); okIds.push(b); } catch (e) { RLOG.warn('inbox photo', e.message); } }
+      for (const b of imgs) { try { const src = await imgSrc(records[b]); const blob = await (await fetch(src)).blob(); files.push(new File([blob], (records[b] && records[b].name) || (isPdfBlob(records[b]) ? 'file.pdf' : 'photo.jpg'), { type: isPdfBlob(records[b]) ? 'application/pdf' : (isFileBlob(records[b]) && DOC_EXT_MIME[extOf(records[b].name)]) || blob.type || 'image/jpeg' })); okIds.push(b); } catch (e) { RLOG.warn('inbox photo', e.message); } }
       const before = docFilesOf(d.id).length;
       if (files.length) await addDocFiles(d.id, files);
       const attached = files.length > 0 && docFilesOf(d.id).length - before >= files.length;
@@ -7181,13 +7209,13 @@ function openShareIn() {
       <div class="field"><label>Web App URL</label><div style="display:flex;gap:8px"><input id="siUrl" readonly value="${esc(url)}" style="flex:1;min-width:0"><button class="btn small ghost" id="siCopyUrl">Copy</button></div></div>
       <div class="field"><label>Token</label><div style="display:flex;gap:8px"><input id="siTok" readonly type="password" value="${esc(prefs.cloudToken || '')}" style="flex:1;min-width:0"><button class="btn small ghost" id="siCopyTok">Copy</button></div></div>
     </div>
-    <div class="group-title">Make the Shortcut (once, about 10 minutes) — photos, PDFs, text and links</div>
+    <div class="group-title">Make the Shortcut (once, about 10 minutes) — photos, PDFs, Word / Excel files, text and links</div>
     <ol class="share-steps">
       <li>Shortcuts app → <b>＋</b> → name it <code>Save to Register</code>. Tap <b>ⓘ</b> → <b>Show in Share Sheet</b> → Share Sheet Types: <b>Images, PDFs, Files, Text, URLs</b>.</li>
       <li><b>Ask for Text with Prompt</b> → <code>A line about it (optional)</code> (leave Default Answer empty). Its answer is the variable <b>Provided Input</b>.</li>
       <li><b>Repeat with Each</b> item in <b>Shortcut Input</b>.</li>
       <li>&nbsp;&nbsp;<b>Get Details of Files</b> → Detail <b>File Extension</b> of <b>Repeat Item</b>.</li>
-      <li>&nbsp;&nbsp;<b>If</b> <i>File Extension</i> <b>is</b> <code>pdf</code>:
+      <li>&nbsp;&nbsp;<b>If</b> <i>File Extension</i> <b>is</b> <code>pdf</code> — for Word, Excel and text files too, tap <b>Add Condition</b>, choose <b>Any</b>, and add <code>docx</code>, <code>doc</code>, <code>xlsx</code>, <code>xls</code>, <code>csv</code>, <code>txt</code> (needs Apps Script v27):
         <ul><li><b>Base64 Encode</b> <i>Repeat Item</i> (Line Breaks: <b>None</b>) → <b>Get Name</b> of <i>Repeat Item</i></li>
           <li><b>Get Contents of URL</b> (box A)</li></ul></li>
       <li>&nbsp;&nbsp;<b>Otherwise</b> → <b>Get Images from Input</b> (<i>Repeat Item</i>) → <b>If</b> <i>Images</i> <b>has any value</b>:
@@ -7199,7 +7227,7 @@ function openShareIn() {
     <div class="group-title">The three “Get Contents of URL” boxes</div>
     <p class="hint" style="margin:0 4px 6px">Each: the URL above · Method <b>POST</b> · Request Body <b>JSON</b> · every field of type <b>Text</b>. Pick variables from the bar above the keyboard.</p>
     <ul class="share-steps">
-      <li><b>A · PDF:</b> <code>token</code> = the token above · <code>action</code> = <code>inboxAdd</code> · <code>text</code> = <i>Provided Input</i> · <code>data</code> = <i>Base64 Encoded</i> · <code>mime</code> = <code>application/pdf</code> · <code>name</code> = <i>Name</i></li>
+      <li><b>A · PDF or file:</b> <code>token</code> = the token above · <code>action</code> = <code>inboxAdd</code> · <code>text</code> = <i>Provided Input</i> · <code>data</code> = <i>Base64 Encoded</i> · <code>mime</code> = <code>application/pdf</code> · <code>name</code> = <i>Name</i> · <code>ext</code> = <i>File Extension</i> (this tells the script what kind of file it is)</li>
       <li><b>B · photo:</b> <code>token</code> · <code>action</code> = <code>inboxAdd</code> · <code>text</code> = <i>Provided Input</i> · <code>data</code> = <i>Base64 Encoded</i> · <code>mime</code> = <code>image/jpeg</code></li>
       <li><b>C · text or link:</b> <code>token</code> · <code>action</code> = <code>inboxAdd</code> · <code>text</code> = <i>Provided Input</i>, a new line, <i>Text</i></li>
     </ul>
@@ -7253,16 +7281,25 @@ function finRoute(e) {
   return e.acct && acctById(e.acct) ? `<span class="fin-route">${e.kind === 'expense' || e.kind === 'lent' ? 'from' : 'into'} ${esc(acctName(e.acct))}</span>` : '';
 }
 
-/* monthly backup reminder (per device) */
+/* v2.36: monthly reminder to keep a copy OUTSIDE Google. The weekly Drive backup lives in the same Google account as the
+   Sheet, so it does not count here (before, it silenced this reminder). Any device saving a copy counts for all devices. */
+const OUT_BK_HELP = 'On iPhone choose “Save to Files” → iCloud Drive or On My iPhone. On a computer it lands in Downloads — move it somewhere that is not Google Drive.';
+function lastOutBackup() {
+  const legacy = AutoBackup.list().length ? 0 : +(lsGet('r2_lastBackup') || 0);                 // before v2.36 one stamp covered both kinds
+  return Math.max(0, +(lsGet('r2_lastOutBackup') || 0), legacy, ...all('device').map(d => +d.outBk || 0));
+}
+function noteOutBackup() {
+  const t = Date.now(); lsSet('r2_lastOutBackup', String(t)); lsSet('r2_lastBackup', String(t));
+  try { const id = 'dev-' + deviceId(), r = records[id]; if (r && !r.deleted && Sync.on()) { r.outBk = t; put(r, { render: false }); } } catch (e) { RLOG.warn('backup note', e.message); }
+}
 function backupNudge() {
   try {
-    const last = +localStorage.getItem('r2_lastBackup') || 0, shown = +localStorage.getItem('r2_backupNudge') || 0, now = Date.now();
+    const last = lastOutBackup(), shown = +localStorage.getItem('r2_backupNudge') || 0, now = Date.now();
     if (now - last < 30 * 86400000 || now - shown < 3 * 86400000) return;
     localStorage.setItem('r2_backupNudge', String(now));
-    toast(last ? 'It has been over a month since your last backup.' : 'You have not downloaded a backup on this device yet.', 'Back up', () => $('setBackup').click(), 8000, { once: 'backup' });
+    toast(last ? 'Over a month since a backup was saved outside Google.' : 'No backup has been saved outside Google yet.', 'Save one', () => $(Fin.key ? 'setBackupEnc' : 'setBackup').click(), 9000, { once: 'backup' });
   } catch (e) {}
 }
-$('setBackup').addEventListener('click', () => { try { localStorage.setItem('r2_lastBackup', String(Date.now())); } catch (e) {} });
 $('setEraseCode').addEventListener('click', openEraseSetup);
 $('setErase').addEventListener('click', openErase);
 
@@ -7286,8 +7323,9 @@ function openFin(id) {
   $('feCat').innerHTML = ['', ...FIN_CATS].map(c => `<option value="${c}" ${c === (e.category || '') ? 'selected' : ''}>${c || '— none —'}</option>`).join('');
   $('fePaid').value = e.paidAmount || 0; $('feSettled').value = e.settled ? 'yes' : 'no'; $('feRecur').checked = !!e.recurring;
   $('feGoal').innerHTML = goalOptions(e.goal || ''); $('feGoalWrap').classList.toggle('hidden', !all('goal').length || uiKind(e) !== 'expense');   // v2.27
-  const sync = k => { $('feWhoWrap').classList.toggle('hidden', !isUdhaar(k)); $('fePaidWrap').classList.toggle('hidden', !isUdhaar(k)); $('feGoalWrap').classList.toggle('hidden', !all('goal').length || k !== 'expense'); acctPick('fe', k, k === e.kind ? e.acct : null, e.to); };
+  const sync = k => { $('feWhoWrap').classList.toggle('hidden', !isUdhaar(k)); $('fePaidWrap').classList.toggle('hidden', !isUdhaar(k)); $('feGoalWrap').classList.toggle('hidden', !all('goal').length || k !== 'expense'); acctPick('fe', k, k === e.kind ? e.acct : null, e.to); if ($('feInvWrap')) invPickDraw(); };
   chipGroup($('feKind'), KINDS, uiKind(e), sync); sync(uiKind(e));
+  invPickDraw(e.invTo || '');   // v2.35
   Sheets.open('shFin');
 }
 $('feSave').addEventListener('click', () => {
@@ -7302,6 +7340,7 @@ $('feSave').addEventListener('click', () => {
   if (isPaidBy(e) && !e.who) { toast('Who paid for it? Add the name.'); $('feWho').focus(); return; }
   e.date = $('feDate').value || e.date; e.category = $('feCat').value; e.recurring = $('feRecur').checked;
   { const gl = e.kind === 'expense' && !e.paidBy ? $('feGoal').value : ''; if (gl && records[gl]) e.goal = gl; else delete e.goal; }   // v2.27
+  if (e.kind === 'expense' && !e.paidBy && e.category === 'Investment' && $('feInvTo') && $('feInvTo').value) e.invTo = $('feInvTo').value; else delete e.invTo;   // v2.35
   const oldPaid = +e.paidAmount || 0;
   e.paidAmount = Math.max(0, Math.min(calcAmount($('fePaid').value) || 0, e.amount)); e.settled = $('feSettled').value === 'yes';
   if (e.settled) e.paidAmount = e.amount;
@@ -7309,7 +7348,7 @@ $('feSave').addEventListener('click', () => {
     let d = e.paidAmount - oldPaid; const pays = (e.pays || []).slice();
     if (d > 0) pays.push({ date: todayISO(), amt: +d.toFixed(2), acct: $('feAcctWrap').classList.contains('hidden') ? (pays.length ? pays[pays.length - 1].acct : null) : $('feAcct').value });
     else { d = -d; while (d > 0.005 && pays.length) { const q = pays[pays.length - 1]; if (+q.amt <= d + 0.005) { d -= +q.amt; pays.pop(); } else { q.amt = +((+q.amt - d).toFixed(2)); d = 0; } } }
-    e.pays = pays.filter((q, i) => q.acct || i < (e.pays || []).length);   // a new part-payment needs an account; older records stay
+    pays.forEach(q => { if (!q.acct) delete q.acct; }); e.pays = pays;   // v2.35: a part-payment keeps its date even with no account
   }
   if (!$('feAcctWrap').classList.contains('hidden')) { e.acct = $('feAcct').value; if (e.kind === 'transfer') { if ($('feTo').value === e.acct) { toast('Pick two different accounts.'); return; } e.to = $('feTo').value; e.category = ''; } else delete e.to; }
   put(e); Sheets.close('shFin'); toast('Saved.');
@@ -8026,8 +8065,9 @@ function backupRows() {
   for (const id in sealed) out.push(stripLocal(sealed[id]));
   return out;
 }
-$('setBackup').addEventListener('click', () => {
-  shareOrDownload(JSON.stringify(backupRows(), null, 1), 'register-backup-' + todayISO() + '.json', 'application/json');
+$('setBackup').addEventListener('click', async () => {
+  if (await shareOrDownload(JSON.stringify(backupRows(), null, 1), 'register-backup-' + todayISO() + '.json', 'application/json') === false) return;   // v2.36: cancelled
+  noteOutBackup();
   $('setDataMsg').className = 'msg ok'; $('setDataMsg').textContent = finUnlocked() ? 'Backup created. Money entries inside it stay encrypted.' : 'Backup created.';
 });
 $('setRestore').addEventListener('click', () => $('restoreFile').click());
@@ -8895,6 +8935,7 @@ function openDoc(id) {
 
 /* ---------- 5. PDFs in the Inbox ---------- */
 const isPdfBlob = b => !!(b && (/pdf/i.test(b.mime || '') || /\.pdf$/i.test(b.name || '')));
+const isFileBlob = b => isPdfBlob(b) || (!!b && ['xls', 'csv', 'word', 'txt'].includes(fileKind(b)));   // v2.35: a shared Word / Excel / text file
 function capShow() { $('capImgs').innerHTML = CAP.files.map((f, i) => /pdf/i.test(f.type) || /\.pdf$/i.test(f.name || '') ? `<span class="cap-pdf">📄 ${esc(f.name || 'file.pdf')}</span>` : `<img src="${URL.createObjectURL(f)}" alt="photo ${i + 1}">`).join(''); }
 const fileToDataUrl = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error || new Error('could not read the file')); r.readAsDataURL(f); });
 async function storePdfs(files) {
@@ -8912,9 +8953,11 @@ async function storePdfs(files) {
   if (bad.length) toast('Not saved: ' + bad.join('; '), null, null, 7000);
   return ids;
 }
-function ibThumb(b) { const r = records[b]; return isPdfBlob(r) ? `<button class="ib-pdf" data-ibpdf="${b}">📄 ${esc(r.name || 'PDF')}</button>` : `<img data-blob="${b}" alt="photo">`; }
+function ibThumb(b) { const r = records[b]; return isFileBlob(r) ? `<button class="ib-pdf" data-ibpdf="${b}">📄 ${esc(r.name || 'PDF')}</button>` : `<img data-blob="${b}" alt="photo">`; }
 async function openBlobPdf(id) {
-  try { const src = await imgSrc(records[id]); const blob = await (await fetch(src)).blob(); const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' })); window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
+  try { const r = records[id], src = await imgSrc(r), blob = await (await fetch(src)).blob();
+    if (!isPdfBlob(r)) { dl(new Blob([blob], { type: DOC_EXT_MIME[extOf(r.name)] || blob.type }), r.name || 'file'); return; }   // v2.35: Word / Excel / text — saved to open in its own app
+    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' })); window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 120000); }
   catch (e) { toast('Could not open the PDF: ' + e.message); }
 }
 function inboxDone(i, keepImgs, keep) {
@@ -9186,9 +9229,11 @@ $('setBackupEnc').addEventListener('click', async () => {
   m.className = 'msg'; m.textContent = 'Encrypting…';
   try {
     const rows = backupRows(), body = await AutoBackup.pack(rows);
-    await shareOrDownload(body, 'register-backup-' + todayISO() + '.rgbk', 'application/octet-stream');
-    try { localStorage.setItem('r2_lastBackup', String(Date.now())); } catch (e) {}
-    m.className = 'msg ok'; m.textContent = `Encrypted backup of ${rows.length} items created. Everything in it is locked with your private code — keep that code safe, the file cannot be opened without it.`;
+    const saved = await shareOrDownload(body, 'register-backup-' + todayISO() + '.rgbk', 'application/octet-stream');
+    if (saved === false) { m.className = 'msg'; m.textContent = 'Backup not saved (cancelled).'; return; }   // v2.36
+    noteOutBackup();
+    m.className = 'msg ok'; m.textContent = `Encrypted backup of ${rows.length} items created. Everything in it is locked with your private code — keep that code safe, the file cannot be opened without it. ${OUT_BK_HELP} Document photos and PDFs are not inside it; they stay in your Drive folder.`;
+    toast('Backup made. ' + OUT_BK_HELP, null, null, 9000);
   } catch (e) { m.className = 'msg err'; m.textContent = 'Could not make the backup: ' + (e.message || e); }
 });
 
@@ -9260,8 +9305,8 @@ function securityChecks() {
   const ids = all('doc').filter(d => d.docType === 'Identity' && !d.lockFiles && (d.number || docFilesOf(d.id).length));
   if (ids.length) add('warn', `${ids.length} ID document${ids.length > 1 ? 's' : ''} not locked`, 'Numbers (Aadhaar, PAN…) are in your Sheet as plain text and the files in Drive are not encrypted. Open each one and switch on “Lock files”: ' + ids.slice(0, 4).map(d => d.title).join(', ') + (ids.length > 4 ? '…' : '') + '.', { label: 'Open first', fn: () => { Sheets.close('shSecCheck', true); Sheets.close('shSettings', true); showTab('docs'); openDoc(ids[0].id); } });
   else if (all('doc').some(d => d.docType === 'Identity')) add('ok', 'ID documents', 'All locked.');
-  const last = +(lsGet('r2_lastBackup') || 0), days = last ? Math.floor((Date.now() - last) / 86400000) : null;
-  if (days == null || days > 30) add('warn', days == null ? 'No backup made on this device' : `Last backup ${days} days ago`, 'A backup file is your way back if the phone is lost.', unlocked ? { label: 'Encrypted backup', fn: () => $('setBackupEnc').click() } : { label: 'Download backup', fn: () => $('setBackup').click() });
+  const last = lastOutBackup(), days = last ? Math.floor((Date.now() - last) / 86400000) : null;   // v2.36: a copy outside Google
+  if (days == null || days > 30) add('warn', days == null ? 'No backup saved outside Google' : `Last backup ${days} days ago`, 'A backup file is your way back if the phone is lost.', unlocked ? { label: 'Encrypted backup', fn: () => $('setBackupEnc').click() } : { label: 'Download backup', fn: () => $('setBackup').click() });
   else add('ok', 'Backup', days === 0 ? 'Made today.' : `Made ${days} day${days > 1 ? 's' : ''} ago.`);
   if (driveOn()) { if (prefs.autoBackup) add('ok', 'Weekly Drive backup', 'On.'); else add('warn', 'Weekly Drive backup is off', 'It keeps encrypted copies in your Drive folder. Turn it on in Settings → Data' + (unlocked ? ' (needs Money unlocked)' : '') + '.'); }
   if (AppLock.on()) add('ok', 'Face ID to open', 'On. It is a screen lock: it stops someone opening the app. What is stored on the phone is protected by the iPhone passcode, not by this lock.'); else add('warn', 'Face ID to open is off', 'Anyone who opens the app past the decoy screen sees your tasks, notes and documents.', { label: 'Turn on', fn: () => { Sheets.close('shSecCheck', true); $('setAppLock').click(); } });
@@ -9637,10 +9682,10 @@ async function openDataHealth() {
     add('info', 'Compare with the Sheet', 'Downloads everything again and lists anything the Sheet has that this device is not showing (and the reverse). Nothing is deleted.', { label: 'Check', fn: () => { Sheets.close('shHealth', true); sheetCompare(); } });   // v2.33
     if (Sync.incomplete) add('warn', 'Long items still arriving', `${Sync.incomplete} long item${Sync.incomplete > 1 ? 's' : ''} from another device did not arrive complete. They will on a later sync.`);
   }
-  const lastDl = +(lsGet('r2_lastBackup') || 0), drv = AutoBackup.list().slice(-1)[0];
+  const lastDl = lastOutBackup(), drv = AutoBackup.list().slice(-1)[0];                                            // v2.36: the copy outside Google is what is watched
   const bkDays = lastDl ? Math.floor((Date.now() - lastDl) / 86400000) : null;
-  add(bkDays == null || bkDays > 30 ? 'warn' : 'ok', 'Last backup', `${lastDl ? (bkDays === 0 ? 'today' : bkDays + ' day' + (bkDays > 1 ? 's' : '') + ' ago') : 'never on this device'}${drv ? ` · Drive copy ${fmtDate(drv.date, true)} (${drv.count} items)` : prefs.autoBackup ? '' : ' · weekly Drive backup is off'}.`,
-    { label: Fin.key ? 'Encrypted backup' : 'Backup', fn: () => $(Fin.key ? 'setBackupEnc' : 'setBackup').click() });
+  add(bkDays == null || bkDays > 35 ? 'warn' : 'ok', 'Backup outside Google', `${lastDl ? (bkDays === 0 ? 'Saved today' : 'Saved ' + bkDays + ' day' + (bkDays > 1 ? 's' : '') + ' ago') : 'Never saved'}. The Sheet, the Drive folder and the weekly Drive backup are all in one Google account; this file is the copy that survives losing it.${drv ? ` Drive copy: ${fmtDate(drv.date, true)} (${drv.count} items).` : prefs.autoBackup ? '' : ' Weekly Drive backup is off.'}`,
+    { label: 'Save a copy', fn: () => $(Fin.key ? 'setBackupEnc' : 'setBackup').click() });
   const big = [...Object.values(records).filter(r => r._tooBig && !r.deleted && !SEALED_TYPES.has(r.type)), ...Object.values(sealed).filter(s => s._tooBig && !s.deleted)];
   const chunked = Object.values(records).filter(r => r._chunked && !r.deleted).length + Object.values(sealed).filter(s => s._chunked && !s.deleted).length;
   if (big.length) add('warn', `${big.length} item${big.length > 1 ? 's' : ''} not in the Sheet`, 'Too large even when split. They are only on this device: ' + big.slice(0, 5).map(r => (records[r.id] && (records[r.id].title || records[r.id].label || records[r.id].desc)) || r.type).join(', ') + (big.length > 5 ? '…' : '') + '. Shorten or split them.');
@@ -9750,6 +9795,15 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
+  { t: '<b>One clock for sync</b>: when the same item is changed on two devices, the newer change wins. That used to trust each device’s own clock; now every change is stamped in Google’s time, so a phone or PC with a wrong clock can no longer win or lose unfairly. Data health tells you if this device’s clock is off.' },
+  { t: '<b>Backup outside Google</b>: the monthly reminder and Data health now watch for a backup file saved outside your Google account (iCloud Drive, On My iPhone, the PC). The weekly Drive backup no longer silences the reminder, and a copy saved on one device counts on all.' },
+  { t: '<b>Udhaar payments have their own date</b>: Settle and Settle all now ask for the date the money moved. On a person’s screen, <b>＋ Payment</b> records one amount against the oldest open entries first. In an entry’s ledger, tap ✎ or “Set date” on a payment to correct or add its date.', priv: true },
+  { t: '<b>The Ledger shows udhaar coming back</b>: each payment is its own row (↩) on the day it happened, with the account. It is not counted as income or spending.', priv: true },
+  { t: '<b>Investment spending → fund</b>: an entry in the “Investment” category can name the fund it went into, so it reaches that fund in Accounts. The Ledger lists older ones to link.', priv: true },
+  { t: '<b>Share into Register</b> takes Word, Excel and text files too (needs Apps Script v27 and one more condition in the Shortcut — Settings → Share into Register).' },
+  { t: '<b>A month in one look</b>: the Ledger now always shows “📒 … — where the money went” for the month on screen: what you spent (entered by you, and not entered), what you received, and how bank + cash − card dues went from the start of the month to the end.', priv: true },
+  { t: '<b>Monthly check-up → “Work out the month”</b>: type what each account showed on the last day and tap once. All accounts are compared together, so cash you withdrew or a card bill you paid is recorded as a transfer, not as spending and income. Only the net is recorded as spending not entered.', priv: true },
+  { t: '<b>Fixed</b>: Plan’s “Spending” now includes what someone else paid for you (as the Ledger already did); a past month’s “Money you have” uses the udhaar open at the end of that month, not today’s; the check-up’s “spent” next to an estimate no longer counts investments.', priv: true },
   { t: '<b>Data health</b>: <b>Compare with the Sheet</b> downloads everything again and lists anything the Sheet has that this device is not showing, and why (Copy report to send it). A device line you no longer use has <b>Forget</b>. Wording says “this device” instead of “this iPhone” on computers too.' },
   { t: '<b>A device that fell behind catches up first</b>: if this device has not synced for 30 minutes, opening a task, note, date, document or entry first gets the latest from your other devices. If it has not synced for 6 hours (offline, or a network that blocks Google), a banner at the top says so, with Sync now.' },
   { t: '<b>“Changed on two devices” is easier to read</b>: when each version was changed, steps as a ticked list, dates as dates, Open / Done instead of code.' },
@@ -10900,6 +10954,8 @@ function deviceSeen() {
   put({ ...(r || { id, type: 'device', name: deviceGuess() }), ver: APP_VERSION, lastSync: now, items: c.live, trash: c.trash, deleted: false }, { render: false });
 }
 function healthExtra(add) {
+  if (Math.abs(clockOff) >= 60000) { const m = Math.round(Math.abs(clockOff) / 60000);   // v2.36
+    add('info', 'This device’s clock', `It is about ${m >= 120 ? Math.round(m / 60) + ' hours' : m + ' minute' + (m > 1 ? 's' : '')} ${clockOff > 0 ? 'behind' : 'ahead'}. Register corrects for this when deciding which change is newer, so nothing is lost — but set the date and time to automatic on this device.`); }
   const me = 'dev-' + deviceId(), devs = all('device').sort((a, b) => (b.lastSync || 0) - (a.lastSync || 0));
   if (devs.length) {
     const old = devs.filter(d => d.ver && d.ver !== APP_VERSION && Date.now() - (d.lastSync || 0) < 60 * 86400000);
@@ -11603,4 +11659,249 @@ async function sheetCompare() {
     RLOG.error('sheet compare', e);
     W(`<p class="msg err">Could not compare: ${esc(e.message || String(e))}</p>`);
   }
+}
+
+/* ==========================================================================
+   v2.34 — A MONTH IN ONE LOOK
+   One definition of "spent" (the Ledger's): spending entries, without the
+   Investment category, including what someone else paid for you.
+   monthWalk()      start of month → end of month for bank + cash − card dues
+   monthClose()     the summary sheet: spent, how the money moved, categories
+   monthCloseAll()  closing balances of all accounts compared together: opposite
+                    differences are moves between your own accounts; only the
+                    net is unrecorded spending (or income)
+   ======================================================================== */
+const handAcct = a => !!a && (isLiquid(a.kind) || a.kind === 'card');
+const r2 = n => Math.round(n * 100) / 100;
+function monthWalk(c, ym) {
+  const cur = isoMonth(new Date());
+  if (!c || !ym || ym < c.startMonth || ym > cur || !accts(true).length) return null;
+  let rows; try { rows = planCompute(c, ym, 'actual'); } catch (e) { RLOG.warn('walk', e.message); return null; }
+  const row = rows[rows.length - 1]; if (!row || row.ym !== ym) return null;
+  const prev = rows.length > 1 ? rows[rows.length - 2].accts : null, list = accts(true).filter(handAcct);
+  const W = { ym, open: 0, close: 0, inc: 0, spent: 0, invest: 0, loans: 0, udh: 0, other: 0, ended: ym < cur, accts: list, closeBy: {}, interest: row.interest || 0 };
+  list.forEach(a => { W.open += prev ? (prev[a.id] || 0) : (isLiab(a.kind) ? -(+a.open || 0) : (+a.open || 0)); W.closeBy[a.id] = row.accts[a.id] || 0; W.close += row.accts[a.id] || 0; });
+  ledgerFlows(c).forEach(f => {
+    if (f.ym !== ym || !handAcct(acctById(f.acct))) return;
+    if (f.cat === 'inc') W.inc += f.amt;
+    else if (f.cat === 'exp') { if (f.e && f.e.category === 'Investment') W.invest += f.amt; else W.spent -= f.amt; }
+    else if (f.cat === 'udh') W.udh += f.amt;
+    else { const o = acctById(f.cat === 'out' ? f.e.to : f.e.acct);
+      if (handAcct(o)) return;                                               // between bank, cash and card: both sides are here, they cancel
+      if (o && isInvest(o.kind)) W.invest += f.amt; else if (o && o.kind === 'loan') W.loans += f.amt; else W.other += f.amt; }
+  });
+  W.gap = r2(W.close - (W.open + W.inc - W.spent + W.invest + W.loans + W.udh + W.other));
+  const F = all('fin').filter(e => (e.date || '').slice(0, 7) === ym);
+  W.unrec = F.filter(e => e.kind === 'expense' && e.category === 'Adjustment' && !isPaidBy(e)).reduce((t, e) => t + (+e.amount || 0), 0);
+  W.unrecInc = F.filter(e => e.kind === 'income' && e.category === 'Adjustment').reduce((t, e) => t + (+e.amount || 0), 0);
+  W.paidBy = F.filter(e => isPaidBy(e) && e.category !== 'Investment').reduce((t, e) => t + (+e.amount || 0), 0);
+  const pm = pmGet(ym), ck = (pm && pm.checked) || {};
+  W.closed = !!(pm && pm.closed);
+  W.nChecked = list.filter(a => !a.archived && !isBlank(ck[a.id])).length;
+  W.nOff = list.filter(a => !a.archived && !isBlank(ck[a.id]) && Math.abs((isLiab(a.kind) ? -(+ck[a.id]) : +ck[a.id]) - (row.accts[a.id] || 0)) >= 0.5).length;
+  W.nAccts = list.filter(a => !a.archived).length;
+  return W;
+}
+function monthClose(ym) {
+  const c = planCfg(), cur = isoMonth(new Date());
+  const F = all('fin').filter(e => (e.date || '').slice(0, 7) === ym), M = monthFigures(F), bud = budgets(), byC = {};
+  F.filter(e => e.kind === 'expense' && e.category !== 'Investment').forEach(e => { const k = e.category === 'Adjustment' ? 'Not entered (balance check)' : e.category || 'Other'; byC[k] = (byC[k] || 0) + (+e.amount || 0); });
+  const cats = Object.entries(byC).sort((a, b) => b[1] - a[1]);
+  const over = Object.entries(bud).filter(([k, b]) => (byC[k] || 0) > b).map(([k, b]) => `${esc(k)} ${rsShort(byC[k])} of ${rsShort(b)}`);
+  const budTot = Object.values(bud).reduce((s, x) => s + x, 0), pend = ledgerPending(ym);
+  const U = ym < cur ? udhaarAsOf(monthEnd(ym)) : udhaarSplit();
+  const prevM = monthFigures(all('fin').filter(e => (e.date || '').slice(0, 7) === monthAdd(ym, -1)));
+  const W = monthWalk(c, ym);
+  const line = (k, v, cls, sub) => `<div class="pl-row"><span class="r-name">${k}${sub ? `<small class="dq-sub">${sub}</small>` : ''}</span><b class="mono ${cls || ''}">${v}</b></div>`;
+  const sg = (n, plusWord, minusWord) => Math.abs(n) < 0.5 ? '' : line(n > 0 ? plusWord : minusWord, (n > 0 ? '+' : '−') + rs(Math.abs(n)), n > 0 ? 'pos' : 'neg');
+  const unrec = W ? W.unrec : F.filter(e => e.kind === 'expense' && e.category === 'Adjustment').reduce((t, e) => t + (+e.amount || 0), 0);
+  let status = '', walk = '';
+  if (W) {
+    const end = fmtDate(monthEnd(ym), true);
+    status = !W.ended ? `<p class="hint">${esc(monthLong(ym))} is still running: this is what is in the Ledger so far. The balances can be checked with your bank after ${end}.</p>`
+      : !W.nChecked ? `<button class="plan-banner" id="mcGo"><b>Balances not checked with your bank yet.</b> “Spent” only counts what you entered. Type your closing balances to find what was not entered ›</button>`
+      : W.nOff ? `<button class="plan-banner" id="mcGo"><b>${W.nOff} account${W.nOff > 1 ? 's do' : ' does'} not match what you typed.</b> Open the check-up to finish ›</button>`
+      : `<p class="hint pos">✓ ${W.nChecked} of ${W.nAccts} account${W.nAccts > 1 ? 's' : ''} matched with your closing balances${W.nChecked < W.nAccts ? ' (the others were left blank)' : ''}.</p>`;
+    walk = `<h4 class="plan-sub">How your money moved · bank + cash − card dues</h4><div class="group pl-group">
+      ${line('Start of ' + monthShort(ym), rs(W.open))}
+      ${W.inc >= 0.5 ? line('Received', '+' + rs(W.inc), 'pos') : ''}
+      ${W.spent >= 0.5 ? line('Spent from your accounts', '−' + rs(W.spent), 'neg') : ''}
+      ${sg(W.invest, 'Taken out of investments', 'Put into investments')}
+      ${sg(W.loans, 'Loan money received', 'Paid towards loans')}
+      ${sg(W.udh, 'Udhaar: came in (net)', 'Udhaar: went out (net)')}
+      ${sg(W.other + W.gap, 'Other moves in', 'Other moves out')}
+      ${line(W.ended ? 'End of ' + monthShort(ym) : 'Now', rs(W.close), '', W.ended ? 'what the app says you had on ' + end : '')}</div>`;
+  }
+  const mine = M.out - unrec - (W ? W.paidBy : 0);
+  planSheet(monthLong(ym) + ' — summary', `${status}<div class="group pl-group">
+      ${line('<b>Spent</b>', rs(M.out), 'neg')}
+      ${unrec >= 0.5 || (W && W.paidBy >= 0.5) ? line('&nbsp;&nbsp;entered by you', rs(mine)) : ''}
+      ${unrec >= 0.5 ? line('&nbsp;&nbsp;not entered', rs(unrec), '', 'found by the balance check') : ''}
+      ${W && W.paidBy >= 0.5 ? line('&nbsp;&nbsp;paid by someone for you', rs(W.paidBy), '', 'your spending; your accounts move when you pay them back') : ''}
+      ${line('Received', rs(M.inc), 'pos')}${M.inv ? line(M.inv < 0 ? 'Taken out of investments' : 'Into investments', rs(Math.abs(M.inv))) : ''}${line(M.net < 0 ? 'Spent more than received' : 'Left over (received − spent)', rs(Math.abs(M.net)), M.net < 0 ? 'neg' : 'pos')}
+      ${prevM.out ? line('Spent vs the month before', (M.out >= prevM.out ? '+' : '−') + rs(Math.abs(M.out - prevM.out))) : ''}
+      ${W && W.interest >= 1 ? line('Loan interest inside your EMIs', rs(W.interest), '', 'not in “Spent”; Plan counts it') : ''}
+      ${budTot ? line('Budgets', `${rs(Object.keys(bud).reduce((s, k) => s + (byC[k] || 0), 0))} of ${rs(budTot)}`) : ''}</div>
+    ${over.length ? `<p class="hint" style="color:var(--seal)">Over budget: ${over.join(' · ')}</p>` : ''}
+    ${walk}
+    ${cats.length ? `<h4 class="plan-sub">Where it went</h4><div class="group pl-group">${cats.slice(0, 8).map(([k, v]) => line(esc(k), rs(v) + ` <small class="muted">${M.out ? Math.round(v / M.out * 100) : 0}%</small>`)).join('')}</div>` : ''}
+    <h4 class="plan-sub">Udhaar open${ym < cur ? ' at the end of ' + monthShort(ym) : ''}</h4><div class="group pl-group">${line('Owed to you', rs(U.owed), 'pos')}${line('You owe', rs(U.owe), 'neg')}${pend.length ? line('Regular items never recorded', String(pend.length)) : ''}</div>
+    <p class="hint">${F.length} Ledger entr${F.length === 1 ? 'y' : 'ies'} in ${esc(monthLong(ym))}. Investments and moves between your own accounts are not spending.</p>`, () => true, 'Done');
+  if ($('mcGo')) $('mcGo').addEventListener('click', () => planMonthSheet(ym));
+}
+/* Differences between what you typed and what the app says, turned into the fewest entries. */
+function closePlan(D, pair) {
+  const neg = D.filter(x => x.d < 0).map(x => ({ a: x.a, left: -x.d })).sort((x, y) => y.left - x.left);
+  const pos = D.filter(x => x.d > 0).map(x => ({ a: x.a, left: x.d })).sort((x, y) => y.left - x.left);
+  const moves = [];
+  if (pair) neg.forEach(n => pos.forEach(p => { const t = r2(Math.min(n.left, p.left)); if (t >= 0.005) { moves.push({ from: n.a, to: p.a, amt: t }); n.left = r2(n.left - t); p.left = r2(p.left - t); } }));
+  return { moves, spend: neg.filter(n => n.left >= 0.005).map(n => ({ a: n.a, amt: r2(n.left) })), income: pos.filter(p => p.left >= 0.005).map(p => ({ a: p.a, amt: r2(p.left) })) };
+}
+function monthCloseAll(c, ym) {
+  if (planMonthSave(ym, true) === false) return;
+  const box = $('mcBox'); if (!box) return;
+  const pm = pmGet(ym) || pmNew(ym), ck = pm.checked || {}, row = planCompute(c, ym, 'actual').slice(-1)[0];
+  const typed = accts().filter(a => handAcct(a) && !isBlank(ck[a.id]));
+  if (!typed.length) { planMsg('Type what at least one account showed on ' + fmtDate(monthEnd(ym), true) + ' first.', true); return; }
+  const D = typed.map(a => ({ a, d: r2((isLiab(a.kind) ? -(+ck[a.id]) : +ck[a.id]) - (row.accts[a.id] || 0)) })).filter(x => Math.abs(x.d) >= 0.5);
+  const blank = accts().filter(a => handAcct(a) && isBlank(ck[a.id])).map(a => a.name);
+  const done = () => { const p = pmGet(ym) || pmNew(ym); if (!p.closed) { p.closed = true; put(p, { render: false }); } };
+  if (!D.length) { done(); toast(`${monthLong(ym)}: everything you typed matches. Nothing was left out.`); monthClose(ym); scheduleRender(); return; }
+  const draw = () => {
+    const pair = !$('mcPair') || $('mcPair').checked, P = closePlan(D, pair);
+    const sp = P.spend.reduce((t, x) => t + x.amt, 0), inc = P.income.reduce((t, x) => t + x.amt, 0);
+    const li = (t, v, cls) => `<div class="pl-row"><span class="r-name">${t}</span><b class="mono ${cls || ''}">${v}</b></div>`;
+    box.innerHTML = `<div class="fix-box" id="mcPlan"><b>${esc(monthLong(ym))}: what your balances say</b>
+      ${D.map(x => li(esc(x.a.name), `${x.d < 0 ? '−' : '+'}${rs(Math.abs(x.d))}`, x.d < 0 ? 'neg' : 'pos')).join('')}
+      <b style="margin-top:6px">What will be recorded on ${fmtDate(monthEnd(ym), true)}</b>
+      ${P.moves.map(m => li(`Moved ${esc(m.from.name)} → ${esc(m.to.name)}<small class="dq-sub">a transfer — not spending</small>`, rs(m.amt))).join('')}
+      ${P.spend.map(x => li(`Spending not entered · ${esc(x.a.name)}`, '−' + rs(x.amt), 'neg')).join('')}
+      ${P.income.map(x => li(`Income not entered · ${esc(x.a.name)}`, '+' + rs(x.amt), 'pos')).join('')}
+      ${D.some(x => x.d < 0) && D.some(x => x.d > 0) ? `<label class="switch-row"><span>Short in one account, over in another = money moved between them<small>e.g. cash withdrawn from the bank, a card bill paid. Switch off if they are unrelated.</small></span><input type="checkbox" class="sw" id="mcPair"${pair ? ' checked' : ''}></label>` : ''}
+      <div class="hint">${sp >= 0.5 ? `Spending not entered: <b>${rs(sp)}</b>. ` : ''}${inc >= 0.5 ? `Income not entered: <b>${rs(inc)}</b>. ` : ''}${blank.length ? `Not checked (left blank): ${esc(blank.join(', '))}. ` : ''}You can open any of these entries in the Ledger later and give it a category.</div>
+      <div class="btn-row" style="margin-top:8px"><button class="btn small" id="mcOk">Record</button><button class="btn small ghost" id="mcNo">Cancel</button></div></div>`;
+    if ($('mcPair')) $('mcPair').addEventListener('change', draw);
+    $('mcNo').addEventListener('click', () => { box.innerHTML = ''; });
+    $('mcOk').addEventListener('click', () => {
+      const date = monthEnd(ym), base = { type: 'fin', who: '', recurring: false, paidAmount: 0, settled: false, deleted: false, date }, ids = [];
+      const add = r => { const id = uid('f'); ids.push(id); put({ ...base, ...r, id }, { render: false }); };
+      P.moves.forEach(m => add({ desc: 'Transfer (balance check)', amount: m.amt, kind: 'transfer', category: '', acct: m.from.id, to: m.to.id }));
+      P.spend.forEach(x => add({ desc: 'Unrecorded spending (balance check)', amount: x.amt, kind: 'expense', category: 'Adjustment', acct: x.a.id }));
+      P.income.forEach(x => add({ desc: 'Unrecorded income (balance check)', amount: x.amt, kind: 'income', category: 'Adjustment', acct: x.a.id }));
+      const was = !!(pmGet(ym) || {}).closed; done();
+      RLOG.info('month close', ym, 'moves', P.moves.length, 'spend', P.spend.length, 'income', P.income.length);
+      toast(`${monthLong(ym)}: ${ids.length} entr${ids.length === 1 ? 'y' : 'ies'} recorded.`, 'Undo', () => { ids.forEach(id => softDelete(id, { render: false })); const p = pmGet(ym); if (p && !was) { p.closed = false; put(p, { render: false }); } scheduleRender(); }, 9000);
+      monthClose(ym); scheduleRender();
+    });
+    box.scrollIntoView({ block: 'nearest' });
+  };
+  draw();
+}
+
+/* ==========================================================================
+   v2.35 — UDHAAR AS A PROPER LEDGER, INVESTMENTS THAT REACH THEIR FUND
+   • every payment carries the date the money moved (Settle asks for it; older
+     payments can have their date set from the entry's ledger)
+   • the Ledger shows each payment as its own row on that date
+   • ＋ Payment on a person: one amount against the oldest open entries first
+   • "Investment" spending can name the fund it went into (invTo; '-' = none)
+   ======================================================================== */
+const payDateOk = (v, min) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && v <= todayISO() && (!min || v >= min);
+function payRow(x) {
+  const e = x.of, p = x.p, inn = e.kind === 'lent', who = String(e.who || '').trim() || 'someone', left = outstanding(e);
+  return `<div class="row fin-row" data-finpay="${e.id}" role="button" tabindex="0">
+    <div class="row-main"><div class="row-title">↩ ${inn ? esc(who) + ' paid back' : 'Paid back to ' + esc(who)}${e.desc ? ` <span class="muted">· ${esc(e.desc)}</span>` : ''}</div>
+      <div class="row-sub"><span class="pill">udhaar back</span>${p.acct && acctById(p.acct) ? `<span>${inn ? 'into' : 'from'} ${esc(acctName(p.acct))}</span>` : ''}<span>${e.settled || left < 0.005 ? 'settled' : fmtMoney(left) + ' still open'}</span></div></div>
+    <div class="row-end"><span class="amt ${inn ? 'pos' : 'neg'}">${inn ? '+' : '−'}${fmtMoney(p.amt)}</span></div></div>`;
+}
+/* Set or correct the date of one payment on an entry (pi = its place in e.pays; -1 = the part with no date yet). */
+function udhPayDateEdit(id, pi) {
+  const e = records[id], box = $('ulPayEd'); if (!e || !box) return;
+  const pays = e.pays || [], p = pi >= 0 ? pays[pi] : null;
+  const undated = +((e.paidAmount || 0) - pays.reduce((t, q) => t + (+q.amt || 0), 0)).toFixed(2);
+  if (pi >= 0 ? !p : undated <= 0.005) return;
+  const has = typeof hasAccts === 'function' && hasAccts(), cur = p ? p.acct || '' : (isPaidBy(e) ? '' : e.acct || '');
+  box.innerHTML = `<div class="fix-box"><b>${p ? 'Payment of ' + esc(fmtMoney(p.amt)) : esc(fmtMoney(undated)) + ' with no date'}</b>
+    <div class="field"><label>Date the money moved</label><input type="date" id="upDate" value="${p && p.date ? p.date : ''}" max="${todayISO()}" min="${e.date || ''}"></div>
+    ${has ? `<div class="field"><label>${e.kind === 'lent' ? 'Received into' : 'Paid from'}</label><select id="upAcct"><option value="">Account not known</option>${acctOptions(cur, a => !isInvest(a.kind) && a.kind !== 'loan')}</select></div>
+    <div class="hint">Changing the date or account moves this money in your account balances. If that month's balances were already matched with your bank, check that month again.</div>` : ''}
+    <div class="btn-row"><button class="btn small" id="upOk">Save</button><button class="btn small ghost" id="upNo">Cancel</button></div></div>`;
+  if (has && !cur) $('upAcct').value = '';
+  $('upNo').addEventListener('click', () => { box.innerHTML = ''; });
+  $('upOk').addEventListener('click', () => {
+    const d = $('upDate').value, a = has ? $('upAcct').value : (p ? p.acct || '' : '');
+    if (!payDateOk(d, e.date)) { toast(!d ? 'Pick the date.' : d > todayISO() ? 'The date cannot be in the future.' : 'The date cannot be before the udhaar itself.'); return; }
+    const list = pays.map(q => ({ ...q }));
+    if (p) { list[pi].date = d; if (a) list[pi].acct = a; else delete list[pi].acct; }
+    else list.push(a ? { date: d, amt: undated, acct: a } : { date: d, amt: undated });
+    e.pays = list; put(e); toast('Date saved.');
+    if (Sheets.isOpen('shUdhLed') && UdhLed.id === id) renderUdhLedger(id);   // opened from the Ledger, the Udhaar pane is not there to redraw it
+  });
+  box.scrollIntoView({ block: 'nearest' });
+}
+/* One payment with a person: goes against the oldest open entries first (entries dated after the payment are left alone). */
+function udhPersonPay(g, kind, amt, date, acct) {
+  const list = g.open.filter(e => udhKindIs(e, kind) && outstanding(e) > 0 && (e.date || '') <= date).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
+  const owed = list.reduce((t, e) => t + outstanding(e), 0);
+  if (amt > owed + 0.005) throw new Error(`Only ${rs(owed)} is open ${kind === 'lent' ? 'from' : 'with'} ${g.name} up to ${fmtDate(date, true)}. For anything extra, use Settle on an entry.`);
+  const snap = list.map(e => ({ id: e.id, paid: e.paidAmount || 0, pays: (e.pays || []).slice(), settled: !!e.settled }));
+  let left = amt;
+  list.forEach(e => {
+    if (left <= 0.005) return;
+    const take = +Math.min(left, outstanding(e)).toFixed(2);
+    e.pays = (e.pays || []).concat([acct ? { date, amt: take, acct } : { date, amt: take }]);
+    e.paidAmount = +(((e.paidAmount || 0) + take).toFixed(2));
+    if (e.paidAmount >= (+e.amount || 0) - 0.005) { e.paidAmount = e.amount; e.settled = true; }
+    left = +(left - take).toFixed(2); put(e, { render: false });
+  });
+  return snap;
+}
+function udhPersonPaySheet(g) {
+  const tot = k => g.open.filter(e => udhKindIs(e, k)).reduce((t, e) => t + outstanding(e), 0), L = tot('lent'), B = tot('borrowed');
+  if (L < 0.005 && B < 0.005) { toast('Nothing is open with ' + g.name + '.'); return; }
+  const has = typeof hasAccts === 'function' && hasAccts() && planCfg(), both = L >= 0.005 && B >= 0.005, k0 = L >= B ? 'lent' : 'borrowed';
+  planSheet('Payment · ' + g.name, `<div class="group pl-group">
+      ${both ? `<div class="pl-row"><span class="r-name">Who paid</span><select id="ppKind"><option value="lent"${k0 === 'lent' ? ' selected' : ''}>${esc(g.name)} paid me (owes ${rs(L)})</option><option value="borrowed"${k0 === 'borrowed' ? ' selected' : ''}>I paid ${esc(g.name)} (I owe ${rs(B)})</option></select></div>`
+        : `<div class="pl-row"><span class="r-name">${k0 === 'lent' ? `${esc(g.name)} pays you` : `You pay ${esc(g.name)}`}<small class="dq-sub">${rs(k0 === 'lent' ? L : B)} open</small></span></div>`}
+      <div class="pl-row src"><span class="r-name">Amount</span>${amtIn('ppAmt', '')}</div>
+      <div class="pl-row"><span class="r-name">Date the money moved</span><input type="date" id="ppDate" value="${todayISO()}" max="${todayISO()}"></div>
+      ${has ? `<div class="pl-row"><span class="r-name" id="ppAcctLbl">${k0 === 'lent' ? 'Received into' : 'Paid from'}</span><select id="ppAcct">${acctOptions(lastAcct('udhaar') || defAcct(planCfg()), a => !isInvest(a.kind) && a.kind !== 'loan')}</select></div>` : ''}</div>
+    <p class="hint">A part-payment is fine. It goes against the oldest open entries first, and shows in the Ledger and in ${esc(g.name)}'s ledger on this date.</p>`,
+    () => {
+      try {
+        const kind = both ? $('ppKind').value : k0, amt = readAmt('ppAmt', 'Amount', true), date = $('ppDate').value || todayISO(), acct = has ? $('ppAcct').value : null;
+        if (!(amt > 0)) throw new Error('Enter the amount.');
+        if (!payDateOk(date)) throw new Error('The date cannot be in the future.');
+        const snap = udhPersonPay(g, kind, Math.round(amt * 100) / 100, date, acct);
+        if (acct) rememberAcct('udhaar', acct);
+        toast(`${rs(amt)} recorded with ${g.name}.`, 'Undo', () => snap.forEach(x => { const e = records[x.id]; if (!e) return; e.paidAmount = x.paid; e.pays = x.pays; e.settled = x.settled; put(e); }), 8000);
+        return true;
+      } catch (err) { planMsg(err.message, true); return false; }
+    }, 'Record');
+  if (both && has) $('ppKind').addEventListener('change', () => { $('ppAcctLbl').textContent = $('ppKind').value === 'lent' ? 'Received into' : 'Paid from'; });
+}
+/* "Investment" spending → which fund */
+const invFunds = () => accts().filter(a => isInvest(a.kind));
+function invPickDraw(sel) {
+  let w = $('feInvWrap');
+  if (!w) {
+    const c = $('feCat') && $('feCat').closest('.field'); if (!c) return;
+    w = document.createElement('div'); w.className = 'field'; w.id = 'feInvWrap'; w.innerHTML = '<label>Goes into (fund)</label><select id="feInvTo"></select>';
+    (c.parentNode.classList.contains('grid2') ? c.parentNode : c).insertAdjacentElement('afterend', w);
+    $('feCat').addEventListener('change', () => invPickDraw());
+  }
+  const on = chipValue($('feKind')) === 'expense' && $('feCat').value === 'Investment' && invFunds().length > 0;
+  w.classList.toggle('hidden', !on);
+  if (sel !== undefined || !$('feInvTo').options.length) $('feInvTo').innerHTML = `<option value="-">— not in any fund —</option>` + invFunds().map(a => `<option value="${a.id}"${a.id === sel ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
+  if (!on) $('feInvTo').value = '';
+  else if (!$('feInvTo').value) $('feInvTo').value = '-';
+}
+const invUnlinked = () => { const c = planCfg(); return !c || !invFunds().length ? [] : all('fin').filter(e => e.kind === 'expense' && !e.paidBy && e.category === 'Investment' && !e.invTo && (e.date || '').slice(0, 7) >= c.startMonth).sort((a, b) => (b.date || '').localeCompare(a.date || '')); };
+function invLinkSheet() {
+  const L = invUnlinked().slice(0, 80), F = invFunds();
+  const guess = e => { const m = F.filter(a => a.sip && Math.abs((+a.sip.amt || 0) - (+e.amount || 0)) < 1); return m.length === 1 ? m[0].id : F.length === 1 ? F[0].id : ''; };
+  planSheet('Investment entries → fund', `<p class="hint" style="margin:0 4px 8px">These were entered as spending in the “Investment” category, so the money left your bank but did not reach any fund in Accounts. Pick the fund for each. Past fund balances will go up from that date (a statement value you typed for a month still wins).</p>
+    <div class="group pl-group">${L.map(e => { const g = guess(e); return `<div class="pl-row" data-inv="${e.id}"><span class="r-name">${esc(e.desc || 'Investment')}<small class="dq-sub">${fmtDate(e.date, true)} · ${rs(e.amount)}${e.acct && acctById(e.acct) ? ' · from ' + esc(acctName(e.acct)) : ''}</small></span>
+      <select><option value="">Decide later</option>${F.map(a => `<option value="${a.id}"${a.id === g ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="-">Not in any fund</option></select></div>`; }).join('')}</div>`,
+    () => { let n = 0; $$('[data-inv]', $('pshBody')).forEach(r => { const v = r.querySelector('select').value, e = records[r.dataset.inv]; if (v && e) { e.invTo = v; put(e, { render: false }); n++; } }); if (n) toast(`${n} entr${n === 1 ? 'y' : 'ies'} updated.`); return true; }, 'Save');
 }

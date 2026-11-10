@@ -1,0 +1,13 @@
+{
+  "name": "register",
+  "private": true,
+  "description": "Register — build and tests. The app itself needs none of this to run.",
+  "scripts": {
+    "build": "node tools/build.js",
+    "check": "node tools/build.js --check",
+    "test": "node tools/build.js --check && node tests/money.test.js && node tests/apps-script.test.js && node tests/ui.test.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}
