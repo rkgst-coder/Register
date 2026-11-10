@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.33.1">
+<meta name="app-version" content="2.36.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -1839,6 +1839,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
       <input class="big-amt" id="stAmt" inputmode="decimal">
       <p class="hint" style="text-align:center" id="stHint">Leave the full amount to settle it, type a smaller part-payment, or a larger amount if more changed hands.</p>
       <div class="field hidden" id="stAcctWrap" style="margin-top:10px"><label id="stAcctLbl">Account</label><select id="stAcct"></select></div>
+      <div class="field" style="margin-top:10px"><label for="stDate">Date the money moved</label><input type="date" id="stDate"></div>
       <button class="btn block" id="stOk" style="margin-top:12px">Record payment</button>
     </div>
   </div>
@@ -2083,6 +2084,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.33.1"></script>
+<script src="app.js?v=2.36.0"></script>
 </body>
 </html>
