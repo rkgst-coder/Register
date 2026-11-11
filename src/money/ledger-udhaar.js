@@ -231,24 +231,30 @@ function renderUdhaar() {
   $('udSettledFold').classList.toggle('hidden', !!cur);
   if (cur) renderUdhPerson(cur); else renderUdhPeople(G);
   const done = ud.filter(e => e.settled).sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 60);
-  $('udSettled').innerHTML = done.length ? done.map(e => finRow(e)).join('') : '<div class="empty">None yet.</div>';
+  const doneP = G.filter(g => !g.open.length).sort((a, b) => b.newest.localeCompare(a.newest));                 // v2.37: everyone fully settled
+  $('udSettled').innerHTML = !done.length && !doneP.length ? '<div class="empty">None yet.</div>'
+    : (doneP.length ? `<div class="udh-sh">People · all settled</div>${doneP.map(udhPeopleRow).join('')}` : '')
+    + (done.length ? `<div class="udh-sh">Settled entries</div>${done.map(e => finRow(e)).join('')}` : '');
+  if ($('udSettledN')) $('udSettledN').textContent = doneP.length ? `${doneP.length} ${doneP.length === 1 ? 'person' : 'people'}` : '';
   wireFinRows($('udSettled'));
+  $$('[data-udp]', $('udSettled')).forEach(b => b.addEventListener('click', () => { Udh.person = b.dataset.udp; $('udSettledFold').open = false; renderUdhaar(); window.scrollTo(0, 0); }));
   if (Sheets.isOpen('shUdhLed')) { if (UdhLed.person) renderUdhPersonLedger(UdhLed.person); else if (UdhLed.id) renderUdhLedger(UdhLed.id); }
 }
 function renderUdhPeople(G) {
   const act = G.filter(g => g.open.length).sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal) || a.name.localeCompare(b.name));
-  const done = G.filter(g => !g.open.length).sort((a, b) => b.newest.localeCompare(a.newest));
-  const row = g => {
+  const row = udhPeopleRow;
+  $('udList').innerHTML = act.length ? act.map(row).join('') : '<div class="empty"><b>No open udhaar</b>Nobody owes anything right now.</div>';   // v2.37: settled people are in the “Settled udhaar” fold
+  $$('[data-udp]', $('udList')).forEach(b => b.addEventListener('click', () => { Udh.person = b.dataset.udp; renderUdhaar(); window.scrollTo(0, 0); }));
+}
+function udhPeopleRow(g) {
+  {
     const n = g.open.length, settled = !n;
     const sub = settled ? `settled · ${g.done.length} entr${g.done.length === 1 ? 'y' : 'ies'}`
       : `${g.bal > 0.005 ? 'owes you' : g.bal < -0.005 ? 'you owe' : 'evens out'} · ${n} open entr${n === 1 ? 'y' : 'ies'}`;
     return `<button class="row udh-p${settled ? ' udh-done' : ''}" data-udp="${esc(g.k)}"><div class="avatar" aria-hidden="true">${esc(g.name.slice(0, 1).toUpperCase())}</div>
       <div class="row-main"><div class="row-title">${esc(g.name)}</div><div class="row-sub"><span>${sub}</span></div></div>
       <span class="amt ${settled || Math.abs(g.bal) < 0.005 ? '' : g.bal > 0 ? 'pos' : 'neg'}">${settled ? '₹0' : fmtMoney(g.bal)}</span><span class="chev" aria-hidden="true">›</span></button>`;
-  };
-  $('udList').innerHTML = (act.length ? act.map(row).join('') : '<div class="empty"><b>No open udhaar</b>Nobody owes anything right now.</div>')
-    + (done.length ? `<div class="udh-sh">Settled</div>${done.map(row).join('')}` : '');
-  $$('[data-udp]', $('udList')).forEach(b => b.addEventListener('click', () => { Udh.person = b.dataset.udp; renderUdhaar(); window.scrollTo(0, 0); }));
+  }
 }
 function renderUdhPerson(g) {
   const p = g.name, list = g.open.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')), bal = g.bal;
@@ -363,13 +369,14 @@ function udhPersonRows(k) {
   const merged = new Set();
   ents.forEach(e => {
     const s = udhSign(e), amt = +e.amount || 0, who = String(e.who || '').trim();
-    const o = udhOriginOf(e);
+    const o = udhOriginOf(e); let joined = false;
     if (o && udhKey(o.who) === k) {                                          // extra: joined to the payment it came from
       const p = (o.pays || []).filter(p => p.date === e.date);
-      if (p.length) { merged.add(e.id); const part = p.reduce((t, x) => t + (+x.amt || 0), 0);
-        ev.push({ date: e.date, ord: 2, ca: e.createdAt || 0, v: s * amt, what: `${o.kind === 'lent' ? 'Received back' : 'Paid back'} ${fmtMoney(part + amt)} (${fmtMoney(part)} settled · ${fmtMoney(amt)} extra${s > 0 ? ' — now owed to you' : ' — now you owe'})`, id: e.id, extra: part }); return; }
+      if (p.length) { merged.add(e.id); joined = true; const part = p.reduce((t, x) => t + (+x.amt || 0), 0);
+        ev.push({ date: e.date, ord: 2, ca: e.createdAt || 0, v: s * amt, what: `${o.kind === 'lent' ? 'Received back' : 'Paid back'} ${fmtMoney(part + amt)} (${fmtMoney(part)} settled · ${fmtMoney(amt)} extra${s > 0 ? ' — now owed to you' : ' — now you owe'})`, id: e.id, extra: part }); }
     }
-    ev.push({ date: e.date || '', ord: 0, ca: e.createdAt || 0, v: s * amt, what: (e.kind === 'lent' ? 'Given' : isPaidBy(e) ? `${who} paid for you` : 'Borrowed') + (e.desc && !udhIsExtra(e) ? ' — ' + e.desc : udhIsExtra(e) ? ' — extra when settling' : ''), id: e.id });
+    // v2.37: the extra entry's own repayments are still listed below (before, they were dropped, so the ledger disagreed with the person's total)
+    if (!joined) ev.push({ date: e.date || '', ord: 0, ca: e.createdAt || 0, v: s * amt, what: (e.kind === 'lent' ? 'Given' : isPaidBy(e) ? `${who} paid for you` : 'Borrowed') + (e.desc && !udhIsExtra(e) ? ' — ' + e.desc : udhIsExtra(e) ? ' — extra when settling' : ''), id: e.id });
     const pays = (e.pays || []).filter(p => +p.amt), back = e.kind === 'lent' ? 'Received back' : 'Paid back';
     pays.forEach(p => ev.push({ date: p.date || e.date || '', ord: 1, ca: e.createdAt || 0, v: -s * (+p.amt || 0), what: back + (p.planRef ? ' (instalment)' : ''), id: e.id, pay: p, of: e }));
     const rest = +((e.paidAmount || 0) - pays.reduce((t, p) => t + (+p.amt || 0), 0)).toFixed(2);

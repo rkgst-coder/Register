@@ -253,6 +253,11 @@ function acctSheet(id) {
           rec.billPlan = { mode: bm, from: bm === 'off' ? null : $('asBillFrom').value || null, amt: bamt || null }; }
       } else { delete rec.stmtDay; delete rec.dueDay; delete rec.billPlan; }
       if (kind === 'fd') { const m = $('asMat').value; rec.matures = ISO_DATE_RX.test(m) ? m : null; rec.remind = $('asRemind').checked; } else delete rec.matures;
+      if ((kind === 'bank' || kind === 'salary') && $('asIRate')) {           // v2.37: savings interest
+        const r = readAmt('asIRate', 'Interest rate') || 0, amt = readAmt('asIAmt', 'Interest each time') || 0, every = +($('asIEvery').querySelector('.on') || {}).dataset.ie || 1;
+        if (r > 15) throw new Error('Interest above 15% a year on a bank account looks like a typo.');
+        if (r || amt) rec.int = { rate: r || 0, amt: amt || 0, every: every === 3 ? 3 : 1, from: rec.int && rec.int.from ? rec.int.from : isoMonth(new Date()) }; else delete rec.int;
+      } else delete rec.int;
       if (kind !== 'card' && kind !== 'fd') delete rec.remind;
       put(rec, { render: false }); syncAcctDates(rec, true);
       toast((kind === 'card' && rec.remind && (rec.stmtDay || rec.dueDay)) || (kind === 'fd' && rec.remind && rec.matures) ? 'Account saved — the dates are in Dates too.' : 'Account saved.'); return true;
@@ -280,6 +285,11 @@ function acctSheet(id) {
         <div class="grid2"><div class="field"><label>Loan amount ₹ (optional)</label>${amtIn('asAmt', a.amount || '')}</div><div class="field"><label>Interest % (optional)</label>${amtIn('asRate', a.rate || '', 'worked out if blank')}</div></div>
         <div class="group pl-group" id="asLoanInfo"></div>
         <p class="hint">With EMI and dates filled, the amount owed follows the loan schedule; the opening figure above is only used if they are blank.</p>`;
+    } else if (k === 'bank' || k === 'salary') { const I = a.int || {};   // v2.37
+      h = `<h4 class="plan-sub">Interest <small>an estimate in the plan, until it is in the Ledger</small></h4>
+        <div class="grid2"><div class="field"><label>Interest % a year</label>${amtIn('asIRate', I.rate || '', 'e.g. 2.7')}</div><div class="field"><label>or ₹ each time (fixed)</label>${amtIn('asIAmt', I.amt || '', 'optional')}</div></div>
+        <div class="seg" id="asIEvery" style="margin:0 0 8px">${[[1, 'Credited every month'], [3, 'Every 3 months (Mar, Jun, Sep, Dec)']].map(([v, l]) => `<button type="button" data-ie="${v}" class="${(I.every || 1) === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <p class="hint">From this month on the plan adds the interest as income into this account: the fixed ₹ if you give one, otherwise the balance at the start of the month × rate. It shows in the monthly check-up as “Interest · ${esc(a.name || 'this account')}” — tick it with the real amount from your passbook. Interest you enter in the Ledger yourself (category Interest) counts too.</p>`;
     } else if (k === 'card') h = `<p class="hint">Spending on the card adds to what you owe. Paying the bill is a Transfer from your bank to this card (add it under Recurring or in the Ledger).</p>
       <h4 class="plan-sub">Statement and due date</h4>
       <div class="grid2"><div class="field"><label>Statement day</label><input id="asStmt" inputmode="numeric" placeholder="1–31" value="${esc(String(a.stmtDay || ''))}"></div><div class="field"><label>Payment due day</label><input id="asDue" inputmode="numeric" placeholder="1–31" value="${esc(String(a.dueDay || ''))}"></div></div>
@@ -294,6 +304,7 @@ function acctSheet(id) {
     if ($('asBillMode')) { const bs = () => { const v = $('asBillMode').querySelector('.on').dataset.bm; $('asBillFromW').classList.toggle('hidden', v === 'off'); $('asBillAmtW').classList.toggle('hidden', v !== 'fixed'); };
       $$('#asBillMode button').forEach(b => b.addEventListener('click', () => { $$('#asBillMode button').forEach(x => x.classList.toggle('on', x === b)); bs(); })); bs(); }   // v2.26
     if (isInvest(k)) wireMonthRows('asVals');
+    if ($('asIEvery')) $$('#asIEvery button').forEach(b => b.addEventListener('click', () => $$('#asIEvery button').forEach(x => x.classList.toggle('on', x === b))));   // v2.37
     if (k === 'loan') {
       const info = () => {
         const d = { emi: num($('asEmi').value), amount: num($('asAmt').value), rate: num($('asRate').value), start: $('asStart').value, end: $('asEnd').value };
@@ -333,7 +344,7 @@ function recurSheet(id, preset) {
     <div class="field" id="rcWhoW"><label>Who is paying back</label><select id="rcWho">${(() => { const ps = udhPersons(); if (r.who && !ps.some(x => x[0] === r.who)) ps.unshift([r.who, 0]); return ps.length ? ps.map(([n, a]) => `<option value="${esc(n)}"${n === r.who ? ' selected' : ''}>${esc(n)} · owes ${rs(a)}</option>`).join('') : '<option value="">Nobody owes you in Udhaar</option>'; })()}</select>
       <p class="hint" style="margin:4px 0 0">Each instalment you tick in the check-up is recorded as money paid back in Udhaar: the account goes up and what they owe goes down. It is not counted as income. In the plan, instalments continue as long as they owe — including udhaar you plan to give them (Udhaar give).</p></div>
     <div class="field" id="rcGiveW"><label>Udhaar to (person)</label><input id="rcGiveWho" list="peopleDl" value="${esc(r.kind === 'udhgive' ? r.who || '' : '')}" placeholder="e.g. X" autocomplete="off">
-      <p class="hint" style="margin:4px 0 0"><b>An estimate for the plan only.</b> In the months set here the plan takes the amount out of the account and adds it to what this person owes, so their Udhaar back instalments can carry on. Nothing is written to the Ledger: when you really give the money, add it in Udhaar as usual — in the current month that replaces the estimate.</p></div>
+      <p class="hint" style="margin:4px 0 0"><b>An estimate for the plan only.</b> In the months set here the plan takes the amount out of the account and adds it to what this person owes, so their Udhaar back instalments can carry on. Nothing is written to the Ledger: when you really give the money, add it in Udhaar as usual — it is taken off this estimate, rupee for rupee (from the month you made this item until 2 months after the planned month).</p></div>
     <div class="grid2"><div class="field"><label>Amount ₹</label>${amtIn('rcAmt', r.amt)}</div><div class="field"><label>How often</label><select id="rcEvery">${(() => { const once = !!(id && r.start && r.end === r.start); return [[1, 'Every month'], [2, 'Every 2 months'], [3, 'Every 3 months'], [6, 'Every 6 months'], [12, 'Every year']].map(([v, l]) => `<option value="${v}"${!once && +r.every === v ? ' selected' : ''}>${l}</option>`).join('') + `<option value="once"${once ? ' selected' : ''}>Once (one month only)</option>`; })()}</select></div></div>
     <div class="grid2"><div class="field" id="rcFromW"><label>From account</label><select id="rcFrom">${acctOptions(r.from)}</select></div><div class="field" id="rcToW"><label>Into account</label><select id="rcTo">${acctOptions(r.to)}</select></div></div>
     <div class="grid2"><div class="field"><label id="rcStartLbl">First month</label>${monthIn('rcStart', r.start)}</div><div class="field" id="rcEndW"><label>Last month (optional)</label>${monthIn('rcEnd', r.end)}</div></div>
@@ -554,7 +565,7 @@ function writeTick(c, ym, it, amt) {
   const same = it.fixedId && records[it.fixedId];                     // auto-record uses one id per month on every device
   if (same && !same.deleted) return same.id;
   const rec = { id: it.fixedId || uid('f'), type: 'fin', who: '', recurring: false, paidAmount: 0, settled: false, deleted: false };
-  Object.assign(rec, { desc: it.label, amount: amt, kind: it.kind, category: it.kind === 'income' ? (/salary/i.test(it.label) ? 'Salary' : '') : (it.cat || ''),
+  Object.assign(rec, { desc: it.label, amount: amt, kind: it.kind, category: it.kind === 'income' ? (it.cat || (/salary/i.test(it.label) ? 'Salary' : '')) : (it.cat || ''),
     acct: it.kind === 'income' ? it.to : it.from, to: it.kind === 'transfer' ? it.to : undefined, date: it.date || (ym === cur ? todayISO() : monthEnd(ym)), planRef: ym + '|' + it.key });
   put(rec, { render: false });
   return rec.id;
@@ -564,16 +575,18 @@ function planMonthSheet(ym) {
   if (!accts().length) { toast('Add your accounts first (Money → Accounts).'); return; }
   if (ym < c.startMonth) ym = c.startMonth;
   const cur = isoMonth(new Date()), items = planItems(c, ym), pm = pmGet(ym) || pmNew(ym);
+  if (items.some(it => it.rate && !it.changed && !it.done)) { const E = intEstimates(c, ym); items.forEach(it => { if (it.rate && !it.changed && !it.done) it.a = E[it.to] || 0; }); }   // v2.37
   const canTick = ym <= cur;
   const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
-  const flows = ledgerFlows(c).filter(f => f.ym === ym && f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id) || f.e.category === 'Investment')));   // v2.34: same rule as the engine
-  const spent = flows.reduce((s, f) => s - f.amt, 0);
+  const monthFl = ledgerFlows(c).filter(f => f.ym === ym);
+  const spent = monthFl.filter(f => budgetSpendable(f, matchedIds)).reduce((s, f) => s - f.amt, 0);   // v2.34: same rule as the engine
+  const bUse = budgetUse(items, monthFl, matchedIds);                                                    // v2.37: per estimate, not the total on every row
   const route = it => it.kind === 'udhback' ? 'from ' + esc(it.who) + ' into ' + esc(acctName(it.to)) + ' · udhaar' : it.kind === 'income' ? 'into ' + esc(acctName(it.to)) : it.kind === 'expense' ? 'from ' + esc(acctName(it.from)) : esc(acctName(it.from)) + ' → ' + esc(acctName(it.to));
   const itemRow = it => `<div class="pl-row src" data-it="${esc(it.key)}"><span class="r-name">${esc(it.label)}<small class="dq-sub">${route(it)}${it.changed ? ' · changed this month' : ''}${it.matched ? ' · found in Ledger' : ''}</small></span>
       ${amtIn('mi_' + it.key.replace(/[^\w]/g, '_'), it.a)}
-      ${it.budget ? `<span class="r-act">${rs(spent)} spent</span>` : `<label class="r-act"><input type="checkbox" data-done ${it.done ? 'checked' : ''}${canTick && !it.matched ? '' : ' disabled'}> Done</label>`}
+      ${it.budget ? `<span class="r-act" title="Day-to-day spending counted against this estimate">${rs(bUse[it.key] || 0)} of it used</span>` : `<label class="r-act"><input type="checkbox" data-done ${it.done ? 'checked' : ''}${canTick && !it.matched ? '' : ' disabled'}> Done</label>`}
       ${it.extra ? `<button class="icon-btn r-rm" data-xrm="${esc(it.key)}" aria-label="Remove" style="width:32px;height:32px;font-size:13px">✕</button>` : ''}</div>`;
-  const grp = (t, list) => list.length ? `<h4 class="plan-sub">${t}</h4><div class="group pl-group">${list.map(itemRow).join('')}</div>` : '';
+  const grp = (t, list) => list.length ? `<h4 class="plan-sub">${t}</h4>${list.some(i => i.budget) ? `<p class="hint" style="margin:0 4px 6px">Day-to-day spending in ${esc(monthLong(ym))}: <b>${rs(spent)}</b>. Each estimate counts what was spent from its own account first; spending from accounts without an estimate fills the rest.</p>` : ''}<div class="group pl-group">${list.map(itemRow).join('')}</div>` : '';
   const now = ym < cur ? planCompute(c, ym, 'actual').slice(-1)[0] : null;
   const chk = now ? accts().filter(a => !isInvest(a.kind) && a.kind !== 'loan').map(a => {
     const app = now.accts[a.id] || 0, stated = (pm.checked || {})[a.id];
@@ -583,7 +596,7 @@ function planMonthSheet(ym) {
     return `<div class="pl-row src" data-val="${a.id}"><span class="r-name">${esc(a.name)}<small class="dq-sub">value at month end</small></span>${amtIn('cv_' + a.id, v ? v.a : '', 'statement value')}</div>`;
   }).join('') : '';
   const html = `<div class="month-nav" style="margin-bottom:10px"><button id="pmPrev" aria-label="Previous month">‹</button><span class="mj"><b>${monthLong(ym)}</b><input type="month" class="mj-in" id="pmPick" value="${ym}" min="${c.startMonth}" aria-label="Pick a month"></span><button id="pmNext" aria-label="Next month">›</button></div>
-    <p class="hint" style="margin:0 4px 6px">${ym < cur ? 'Monthly check-up: tick what actually came in and went out, correcting amounts if they differed. Each tick is written into the Ledger.' : ym === cur ? 'This month: tick items as they happen. Unticked items still count in the plan. The balance check opens after the month ends.' : 'Future month: change amounts for this month only. Ticking opens when the month arrives.'}</p>
+    <p class="hint" style="margin:0 4px 6px">${ym < cur ? 'Monthly check-up: tick what actually came in and went out, correcting amounts if they differed. Each tick is written into the Ledger. Once the month is marked checked, anything left unticked is taken as not having happened.' : ym === cur ? 'This month: tick items as they happen. Unticked items still count in the plan. The balance check opens after the month ends.' : 'Future month: change amounts for this month only. Ticking opens when the month arrives.'}</p>
     ${grp('Income', items.filter(i => i.kind === 'income'))}
     ${grp('Udhaar coming back', items.filter(i => i.kind === 'udhback'))}
     ${grp('Payments, SIPs, EMIs and transfers', items.filter(i => i.kind !== 'income' && i.kind !== 'udhback' && !i.budget))}
@@ -638,6 +651,7 @@ function planMonthSave(ym, quiet) {
     const items = planItems(c, ym), base = {}; items.forEach(it => { base[it.key] = it; });
     p = pmGet(ym) ? { ...pmGet(ym), items: { ...(pmGet(ym).items || {}) }, extra: (pmGet(ym).extra || []).map(x => ({ ...x })), checked: { ...(pmGet(ym).checked || {}) } } : pmNew(ym);
     const orig = {}; recurs().forEach(r => { orig['r:' + r.id] = recurAmt(r, ym); }); accts().forEach(a => { if (a.sip) orig['sip:' + a.id] = +a.sip.amt || 0; if (a.kind === 'loan') orig['emi:' + a.id] = +a.emi || 0; });
+    { const E = accts().some(a => acctInt(a) && !acctInt(a).amt) ? intEstimates(c, ym) : {}; accts().forEach(a => { const I = acctInt(a); if (I) orig['int:' + a.id] = I.amt || E[a.id] || 0; }); }   // v2.37
     // 1) read and check every row; nothing is written yet
     const rows = [], udhWant = new Map();
     for (const row of $$('[data-it]', root)) {

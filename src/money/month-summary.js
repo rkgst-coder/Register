@@ -91,7 +91,7 @@ function closePlan(D, pair) {
   const neg = D.filter(x => x.d < 0).map(x => ({ a: x.a, left: -x.d })).sort((x, y) => y.left - x.left);
   const pos = D.filter(x => x.d > 0).map(x => ({ a: x.a, left: x.d })).sort((x, y) => y.left - x.left);
   const moves = [];
-  if (pair) neg.forEach(n => pos.forEach(p => { const t = r2(Math.min(n.left, p.left)); if (t >= 0.005) { moves.push({ from: n.a, to: p.a, amt: t }); n.left = r2(n.left - t); p.left = r2(p.left - t); } }));
+  if (pair) neg.forEach(n => pos.forEach(p => { if (!pairOk(n.a, p.a)) return; const t = r2(Math.min(n.left, p.left)); if (t >= 0.005) { moves.push({ from: n.a, to: p.a, amt: t }); n.left = r2(n.left - t); p.left = r2(p.left - t); } }));
   return { moves, spend: neg.filter(n => n.left >= 0.005).map(n => ({ a: n.a, amt: r2(n.left) })), income: pos.filter(p => p.left >= 0.005).map(p => ({ a: p.a, amt: r2(p.left) })) };
 }
 function monthCloseAll(c, ym) {
@@ -114,7 +114,7 @@ function monthCloseAll(c, ym) {
       ${P.moves.map(m => li(`Moved ${esc(m.from.name)} → ${esc(m.to.name)}<small class="dq-sub">a transfer — not spending</small>`, rs(m.amt))).join('')}
       ${P.spend.map(x => li(`Spending not entered · ${esc(x.a.name)}`, '−' + rs(x.amt), 'neg')).join('')}
       ${P.income.map(x => li(`Income not entered · ${esc(x.a.name)}`, '+' + rs(x.amt), 'pos')).join('')}
-      ${D.some(x => x.d < 0) && D.some(x => x.d > 0) ? `<label class="switch-row"><span>Short in one account, over in another = money moved between them<small>e.g. cash withdrawn from the bank, a card bill paid. Switch off if they are unrelated.</small></span><input type="checkbox" class="sw" id="mcPair"${pair ? ' checked' : ''}></label>` : ''}
+      ${D.some(n => n.d < 0 && D.some(p => p.d > 0 && pairOk(n.a, p.a))) ? `<label class="switch-row"><span>Short in one account, over in another = money moved between them<small>e.g. cash withdrawn from the bank, a card bill paid. Switch off if they are unrelated.</small></span><input type="checkbox" class="sw" id="mcPair"${pair ? ' checked' : ''}></label>` : ''}
       <div class="hint">${sp >= 0.5 ? `Spending not entered: <b>${rs(sp)}</b>. ` : ''}${inc >= 0.5 ? `Income not entered: <b>${rs(inc)}</b>. ` : ''}${blank.length ? `Not checked (left blank): ${esc(blank.join(', '))}. ` : ''}You can open any of these entries in the Ledger later and give it a category.</div>
       <div class="btn-row" style="margin-top:8px"><button class="btn small" id="mcOk">Record</button><button class="btn small ghost" id="mcNo">Cancel</button></div></div>`;
     if ($('mcPair')) $('mcPair').addEventListener('change', draw);

@@ -127,8 +127,9 @@ function holdersSheet(ym) {
     const tot = G.reduce((t, h) => t + val(h.accts), 0);
     html = `<div class="field"><label>Month</label>${monthIn('hdYm', Hold.ym)}</div>
       <p class="hint" style="margin:-6px 4px 10px">Balances at ${esc(when)}.</p>
-      <div class="group pl-group">${G.map(h => line(h.name, h.accts.map(acctName).join(' + '), val(h.accts))).join('') || '<p class="hint" style="margin:8px">No groups yet — tap Edit groups.</p>'}
-        ${G.length ? line('Total of these', '', tot, 'pos') : ''}</div>
+      ${G.map(h => `<h4 class="plan-sub">${esc(h.name)}</h4><div class="group pl-group">${h.accts.map(id => { const a = acctById(id); return line(a ? a.name : '?', a ? kindLabel(a.kind) : '', bal[id] || 0); }).join('') || '<p class="hint" style="margin:8px">No accounts in this group.</p>'}
+        ${h.accts.length > 1 ? `<div class="pl-row" style="border-top:1px solid var(--line)"><span class="r-name"><b>Total · ${esc(h.name)}</b></span><b class="mono ${val(h.accts) < 0 ? 'neg' : ''}">${rs(val(h.accts))}</b></div>` : ''}</div>`).join('') || '<div class="group pl-group"><p class="hint" style="margin:8px">No groups yet — tap Edit groups.</p></div>'}
+      ${G.length > 1 ? `<div class="group pl-group" style="margin-top:6px">${line('Total of all groups', '', tot, 'pos')}</div>` : ''}
       <h4 class="plan-sub">Udhaar (net) · people you chose</h4>
       <div class="group pl-group">${udhRows.length ? udhRows.map(([n, v]) => line(n, v > 0 ? 'owes you' : v < 0 ? 'you owe' : 'settled', v)).join('') + (udhRows.length > 1 ? line('Net', '', udhRows.reduce((t, x) => t + x[1], 0)) : '') : '<p class="hint" style="margin:8px">Nobody chosen — tap Edit groups.</p>'}</div>
       ${rest.length ? `<details class="fold"><summary>Not in any group (${rest.length})</summary><div class="group pl-group">${rest.map(a => line(a.name, kindLabel(a.kind), bal[a.id] || 0)).join('')}</div></details>` : ''}

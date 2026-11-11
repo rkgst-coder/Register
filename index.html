@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-IIxdzgzqJP/Dg1hXUvKESGp+Xb02h2MIleCb7e1JNgc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com data: blob:; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="app-version" content="2.36.0">
+<meta name="app-version" content="2.37.0">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Register</title>
 <meta name="description" content="Tasks, notes, dates and documents.">
@@ -1302,7 +1302,7 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
           <div class="stat"><div class="n" id="udNet">₹0</div><div class="l">Udhaar net</div></div>
         </div>
         <div class="group" id="udList"></div>
-        <details class="fold" id="udSettledFold"><summary>Settled udhaar</summary><div class="group" id="udSettled"></div></details>
+        <details class="fold" id="udSettledFold"><summary>Settled udhaar <small class="muted" id="udSettledN"></small></summary><div class="group" id="udSettled"></div></details>
       </div>
       <div id="paneAccts" class="hidden"><div id="acctBody"></div></div>
       <div id="panePlan" class="hidden"><div id="planBody"></div></div>
@@ -2084,6 +2084,6 @@ html[data-theme="dark"] .note-rich mark{background:#6b5a16}
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" class="hidden"></button><button id="toastMute" class="hidden">Don’t show again</button><button id="toastClose" class="hidden" aria-label="Close message">✕</button></div>
 <div id="printArea"></div>
 
-<script src="app.js?v=2.36.0"></script>
+<script src="app.js?v=2.37.0"></script>
 </body>
 </html>
