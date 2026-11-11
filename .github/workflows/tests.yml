@@ -14,8 +14,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # GitHub's machines already have Google Chrome; using it avoids downloading browser packages (which failed when Ubuntu's servers were down)
       - run: npm test
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
