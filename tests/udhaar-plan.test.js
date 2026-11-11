@@ -65,6 +65,34 @@ const res = JSON.parse(h.run(`(() => {
   rows = planCompute(c, '2027-04');
   ok('every 3 months: Dec and Mar only, fixed ₹300', rows.filter(r => r.ym > '2026-11').map(r => r.intEst.a_sbi || 0).join(',') === '300,0,0,300,0', rows.filter(r => r.ym > '2026-11').map(r => r.intEst.a_sbi || 0).join(','));
   delete records.a_sbi.int; storeVer++;
+
+  /* v2.37: each estimate shows its own use; pairing only between accounts money moves between (from the dummy-data screenshots) */
+  add({ id: 'a_papa', type: 'acct', kind: 'bank', name: 'Papa HDFC', open: 3000 });
+  add({ id: 'a_rkh', type: 'acct', kind: 'bank', name: 'RK HDFC', open: 600 });
+  add({ id: 'a_cc', type: 'acct', kind: 'card', name: 'RK CC', open: 0, billPlan: { mode: 'full', from: 'a_papa' } });
+  add({ id: 'rb_h', type: 'recur', kind: 'expense', budget: true, name: 'Household spending', amt: 200, every: 1, start: '2026-08', from: 'a_cash' });
+  add({ id: 'rb_b', type: 'recur', kind: 'expense', budget: true, name: 'Monthly Bills', amt: 100, every: 1, start: '2026-08', from: 'a_sbi' });
+  add({ id: 'rb_e', type: 'recur', kind: 'expense', budget: true, name: 'Electricity', amt: 30, every: 1, start: '2026-08', from: 'a_sbi' });
+  f({ kind: 'expense', amount: 100, date: '2026-11-05', acct: 'a_cash', desc: 'Veg', category: 'Household' });
+  f({ kind: 'expense', amount: 49, date: '2026-11-06', acct: 'a_sbi', desc: 'Shop', category: 'Household' });
+  f({ kind: 'expense', amount: 20, date: '2026-11-07', acct: 'a_papa', desc: 'Papa', category: 'Household' });
+  storeVer++;
+  { const items = planItems(c, '2026-11'), fl = ledgerFlows(c).filter(x => x.ym === '2026-11'), U = budgetUse(items, fl, new Set());
+    const u = k => U[items.find(i => i.budget && i.label.startsWith(k)).key];
+    ok('estimates: own account first, then the rest — 120 / 49 / 0', u('Household') === 120 && u('Monthly') === 49 && u('Electricity') === 0, [u('Household'), u('Monthly'), u('Electricity')].join(' / '));
+    ok('…not the total on every row', !(u('Household') === u('Monthly') && u('Monthly') === u('Electricity'))); }
+  const A_ = id => acctById(id);
+  let Q = closePlan([{ a: A_('a_papa'), d: 96.59 }, { a: A_('a_rkh'), d: 3 }, { a: A_('a_cc'), d: -9.26 }], true);
+  ok('card short + Papa over: NOT a transfer out of the card', !Q.moves.length && Q.spend.length === 1 && Q.spend[0].a.id === 'a_cc' && Q.income.length === 2, JSON.stringify({ m: Q.moves.length, s: Q.spend.map(x => x.amt), i: Q.income.map(x => x.amt) }));
+  Q = closePlan([{ a: A_('a_papa'), d: -50 }, { a: A_('a_cc'), d: 50 }], true);
+  ok('Papa short + card owed less: the card bill (paid from Papa) is a transfer', Q.moves.length === 1 && Q.moves[0].from.id === 'a_papa');
+  Q = closePlan([{ a: A_('a_papa'), d: -50 }, { a: A_('a_rkh'), d: 50 }], true);
+  ok('two banks with no transfer between them: not paired', !Q.moves.length);
+  f({ kind: 'transfer', amount: 10, date: '2026-10-02', acct: 'a_papa', to: 'a_rkh', desc: 'To RK' }); storeVer++;
+  Q = closePlan([{ a: A_('a_papa'), d: -50 }, { a: A_('a_rkh'), d: 50 }], true);
+  ok('…paired once there is a past transfer between them', Q.moves.length === 1);
+  Q = closePlan([{ a: A_('a_sbi'), d: -4700 }, { a: A_('a_cash'), d: 4000 }], true);
+  ok('bank short + cash over: still a withdrawal', Q.moves.length === 1 && Q.moves[0].amt === 4000 && Q.spend[0].amt === 700);
   return JSON.stringify(R);
 })()`));
 res.forEach(([n, v, d]) => T.ok(n, v, d));

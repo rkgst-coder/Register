@@ -115,3 +115,25 @@ const acctInt = a => a && (a.kind === 'bank' || a.kind === 'salary') && a.int &&
 function intEstimates(c, ym) {
   try { const r = planCompute(c, ym, 'plan').slice(-1)[0]; return (r && r.ym === ym && r.intEst) || {}; } catch (e) { RLOG.warn('interest estimate', e.message); return {}; }
 }
+
+/* v2.37: day-to-day estimates against real spending. Spending counts against the estimate on its own account first
+   (in order); spending from accounts that have no estimate fills whatever room is left. Returns { itemKey: amount used }. */
+const budgetSpendable = (f, matched) => f.cat === 'exp' && !(f.e && (f.e.planRef || (matched && matched.has(f.e.id)) || f.e.category === 'Investment'));
+function budgetUse(items, fl, matched) {
+  const B = items.filter(i => i.budget && +i.a > 0), own = new Set(B.map(i => i.from)), by = {}, use = {}; let pool = 0;
+  fl.forEach(f => { if (!budgetSpendable(f, matched)) return; const v = -f.amt; if (own.has(f.acct)) by[f.acct] = (by[f.acct] || 0) + v; else pool += v; });
+  B.forEach(i => { const u = Math.max(0, Math.min(by[i.from] || 0, +i.a)); by[i.from] = (by[i.from] || 0) - u; use[i.key] = u; });
+  B.forEach(i => { const t = Math.max(0, Math.min(pool, +i.a - use[i.key])); use[i.key] += t; pool -= t; });
+  return use;
+}
+/* v2.37: may a shortfall in `from` and an excess in `to` be one transfer? Only between accounts money really moves between:
+   bank → cash (withdrawal), the account a card's bill is paid from → that card, or a pair with a regular or past transfer.
+   Never out of a card. Before, any short account was paired with any over account (e.g. a card with Papa's bank). */
+function pairOk(from, to) {
+  if (!from || !to || from.id === to.id || from.kind === 'card' || from.kind === 'loan' || isInvest(from.kind) || isInvest(to.kind) || to.kind === 'loan') return false;
+  if (to.kind === 'cash' && from.kind !== 'cash') return true;
+  if (to.kind === 'card') { try { if (cardBillPlans(planCfg()).some(p => p.card.id === to.id && p.from.id === from.id)) return true; } catch (e) {} }
+  if (recurs().some(r => r.kind === 'transfer' && r.from === from.id && r.to === to.id)) return true;
+  const since = isoLocal(new Date(Date.now() - 365 * 86400000));
+  return all('fin').some(e => e.kind === 'transfer' && e.acct === from.id && e.to === to.id && (e.date || '') >= since && !/balance check/i.test(e.desc || ''));
+}

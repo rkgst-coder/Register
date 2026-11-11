@@ -322,8 +322,7 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
     exp += paidByYm[ym] || 0;                                               // v2.34: paid by someone for you is your spending (as in the Ledger); no account moves until you pay them back
     // planned movements not yet ticked
     const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
-    const ledgerSpend = fl.filter(f => f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id) || f.e.category === 'Investment'))).reduce((s, f) => s - f.amt, 0);
-    let spendLeft = Math.max(0, ledgerSpend);                                 // shared by all spending estimates, not taken off each one
+    const bUse = budgetUse(items, fl, matchedIds);                            // v2.37: each estimate takes its own account's spending first
     // v2.26: udhaar you plan to give (estimate) — from this month on; real udhaar given this month replaces it
     if (!actual && ym >= cur) gives.forEach(r => {
       if (!recurDue(r, ym) || giveDone.has(r.id + '|' + ym)) return;
@@ -341,7 +340,7 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
       if (it.done) return;
       if (!it.budget && closedPast) return;
       let amt = it.a;
-      if (it.budget) { if (ym < cur) return; const use = ym === cur ? Math.min(spendLeft, it.a) : 0; spendLeft -= use; amt = it.a - use; }
+      if (it.budget) { if (ym < cur) return; const use = ym === cur ? (bUse[it.key] || 0) : 0; amt = it.a - use; }
       if (!amt) return;
       if (!it.budget && ym < cur) pending++;
       planned = true;

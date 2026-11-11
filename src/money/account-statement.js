@@ -578,14 +578,15 @@ function planMonthSheet(ym) {
   if (items.some(it => it.rate && !it.changed && !it.done)) { const E = intEstimates(c, ym); items.forEach(it => { if (it.rate && !it.changed && !it.done) it.a = E[it.to] || 0; }); }   // v2.37
   const canTick = ym <= cur;
   const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
-  const flows = ledgerFlows(c).filter(f => f.ym === ym && f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id) || f.e.category === 'Investment')));   // v2.34: same rule as the engine
-  const spent = flows.reduce((s, f) => s - f.amt, 0);
+  const monthFl = ledgerFlows(c).filter(f => f.ym === ym);
+  const spent = monthFl.filter(f => budgetSpendable(f, matchedIds)).reduce((s, f) => s - f.amt, 0);   // v2.34: same rule as the engine
+  const bUse = budgetUse(items, monthFl, matchedIds);                                                    // v2.37: per estimate, not the total on every row
   const route = it => it.kind === 'udhback' ? 'from ' + esc(it.who) + ' into ' + esc(acctName(it.to)) + ' · udhaar' : it.kind === 'income' ? 'into ' + esc(acctName(it.to)) : it.kind === 'expense' ? 'from ' + esc(acctName(it.from)) : esc(acctName(it.from)) + ' → ' + esc(acctName(it.to));
   const itemRow = it => `<div class="pl-row src" data-it="${esc(it.key)}"><span class="r-name">${esc(it.label)}<small class="dq-sub">${route(it)}${it.changed ? ' · changed this month' : ''}${it.matched ? ' · found in Ledger' : ''}</small></span>
       ${amtIn('mi_' + it.key.replace(/[^\w]/g, '_'), it.a)}
-      ${it.budget ? `<span class="r-act">${rs(spent)} spent</span>` : `<label class="r-act"><input type="checkbox" data-done ${it.done ? 'checked' : ''}${canTick && !it.matched ? '' : ' disabled'}> Done</label>`}
+      ${it.budget ? `<span class="r-act" title="Day-to-day spending counted against this estimate">${rs(bUse[it.key] || 0)} of it used</span>` : `<label class="r-act"><input type="checkbox" data-done ${it.done ? 'checked' : ''}${canTick && !it.matched ? '' : ' disabled'}> Done</label>`}
       ${it.extra ? `<button class="icon-btn r-rm" data-xrm="${esc(it.key)}" aria-label="Remove" style="width:32px;height:32px;font-size:13px">✕</button>` : ''}</div>`;
-  const grp = (t, list) => list.length ? `<h4 class="plan-sub">${t}</h4><div class="group pl-group">${list.map(itemRow).join('')}</div>` : '';
+  const grp = (t, list) => list.length ? `<h4 class="plan-sub">${t}</h4>${list.some(i => i.budget) ? `<p class="hint" style="margin:0 4px 6px">Day-to-day spending in ${esc(monthLong(ym))}: <b>${rs(spent)}</b>. Each estimate counts what was spent from its own account first; spending from accounts without an estimate fills the rest.</p>` : ''}<div class="group pl-group">${list.map(itemRow).join('')}</div>` : '';
   const now = ym < cur ? planCompute(c, ym, 'actual').slice(-1)[0] : null;
   const chk = now ? accts().filter(a => !isInvest(a.kind) && a.kind !== 'loan').map(a => {
     const app = now.accts[a.id] || 0, stated = (pm.checked || {})[a.id];

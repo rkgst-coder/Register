@@ -3993,8 +3993,7 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
     exp += paidByYm[ym] || 0;                                               // v2.34: paid by someone for you is your spending (as in the Ledger); no account moves until you pay them back
     // planned movements not yet ticked
     const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
-    const ledgerSpend = fl.filter(f => f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id) || f.e.category === 'Investment'))).reduce((s, f) => s - f.amt, 0);
-    let spendLeft = Math.max(0, ledgerSpend);                                 // shared by all spending estimates, not taken off each one
+    const bUse = budgetUse(items, fl, matchedIds);                            // v2.37: each estimate takes its own account's spending first
     // v2.26: udhaar you plan to give (estimate) — from this month on; real udhaar given this month replaces it
     if (!actual && ym >= cur) gives.forEach(r => {
       if (!recurDue(r, ym) || giveDone.has(r.id + '|' + ym)) return;
@@ -4012,7 +4011,7 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
       if (it.done) return;
       if (!it.budget && closedPast) return;
       let amt = it.a;
-      if (it.budget) { if (ym < cur) return; const use = ym === cur ? Math.min(spendLeft, it.a) : 0; spendLeft -= use; amt = it.a - use; }
+      if (it.budget) { if (ym < cur) return; const use = ym === cur ? (bUse[it.key] || 0) : 0; amt = it.a - use; }
       if (!amt) return;
       if (!it.budget && ym < cur) pending++;
       planned = true;
@@ -4944,14 +4943,15 @@ function planMonthSheet(ym) {
   if (items.some(it => it.rate && !it.changed && !it.done)) { const E = intEstimates(c, ym); items.forEach(it => { if (it.rate && !it.changed && !it.done) it.a = E[it.to] || 0; }); }   // v2.37
   const canTick = ym <= cur;
   const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
-  const flows = ledgerFlows(c).filter(f => f.ym === ym && f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id) || f.e.category === 'Investment')));   // v2.34: same rule as the engine
-  const spent = flows.reduce((s, f) => s - f.amt, 0);
+  const monthFl = ledgerFlows(c).filter(f => f.ym === ym);
+  const spent = monthFl.filter(f => budgetSpendable(f, matchedIds)).reduce((s, f) => s - f.amt, 0);   // v2.34: same rule as the engine
+  const bUse = budgetUse(items, monthFl, matchedIds);                                                    // v2.37: per estimate, not the total on every row
   const route = it => it.kind === 'udhback' ? 'from ' + esc(it.who) + ' into ' + esc(acctName(it.to)) + ' · udhaar' : it.kind === 'income' ? 'into ' + esc(acctName(it.to)) : it.kind === 'expense' ? 'from ' + esc(acctName(it.from)) : esc(acctName(it.from)) + ' → ' + esc(acctName(it.to));
   const itemRow = it => `<div class="pl-row src" data-it="${esc(it.key)}"><span class="r-name">${esc(it.label)}<small class="dq-sub">${route(it)}${it.changed ? ' · changed this month' : ''}${it.matched ? ' · found in Ledger' : ''}</small></span>
       ${amtIn('mi_' + it.key.replace(/[^\w]/g, '_'), it.a)}
-      ${it.budget ? `<span class="r-act">${rs(spent)} spent</span>` : `<label class="r-act"><input type="checkbox" data-done ${it.done ? 'checked' : ''}${canTick && !it.matched ? '' : ' disabled'}> Done</label>`}
+      ${it.budget ? `<span class="r-act" title="Day-to-day spending counted against this estimate">${rs(bUse[it.key] || 0)} of it used</span>` : `<label class="r-act"><input type="checkbox" data-done ${it.done ? 'checked' : ''}${canTick && !it.matched ? '' : ' disabled'}> Done</label>`}
       ${it.extra ? `<button class="icon-btn r-rm" data-xrm="${esc(it.key)}" aria-label="Remove" style="width:32px;height:32px;font-size:13px">✕</button>` : ''}</div>`;
-  const grp = (t, list) => list.length ? `<h4 class="plan-sub">${t}</h4><div class="group pl-group">${list.map(itemRow).join('')}</div>` : '';
+  const grp = (t, list) => list.length ? `<h4 class="plan-sub">${t}</h4>${list.some(i => i.budget) ? `<p class="hint" style="margin:0 4px 6px">Day-to-day spending in ${esc(monthLong(ym))}: <b>${rs(spent)}</b>. Each estimate counts what was spent from its own account first; spending from accounts without an estimate fills the rest.</p>` : ''}<div class="group pl-group">${list.map(itemRow).join('')}</div>` : '';
   const now = ym < cur ? planCompute(c, ym, 'actual').slice(-1)[0] : null;
   const chk = now ? accts().filter(a => !isInvest(a.kind) && a.kind !== 'loan').map(a => {
     const app = now.accts[a.id] || 0, stated = (pm.checked || {})[a.id];
@@ -9832,6 +9832,8 @@ const WHATS_NEW = [
   { t: '<b>Fixed — a person’s ledger</b>: when part of a payment was “extra when settling” and that extra was later paid back, the ledger left the repayment out, so its total disagreed with the person’s screen. It is now listed.', priv: true },
   { t: '<b>Settled udhaar</b>: people with nothing open now sit in the “Settled udhaar” fold, not at the bottom of the people list.', priv: true },
   { t: '<b>Fixed — a month that is over</b>: once a month is marked checked, a planned item you did not tick (e.g. an ATM withdrawal) is taken as not having happened. Before, the Plan and the account statement still counted it. In a month not yet checked, it now says “planned · not ticked”.', priv: true },
+  { t: '<b>Fixed — monthly check-up</b>: each day-to-day estimate now shows how much of it was used, from its own account first. Before, every estimate showed the same total (e.g. “₹368 spent” three times).', priv: true },
+  { t: '<b>Work out the month</b> treats a short account and an over account as one transfer only when money really moves between them (bank → cash, a card’s bill account → the card, or a regular or past transfer). Before, it could pair a card with an unrelated account.', priv: true },
   { t: '<b>Bank interest</b>: a bank or salary account can have an interest rate (or a fixed ₹), credited every month or every 3 months. The plan adds it as income from this month on, and the monthly check-up lists it to tick with the real amount.', priv: true },
   { t: '<b>Fixed</b>: opening Register from the decoy screen could show a blank yellowish screen (the app was still blurred from being in the background).' },
   { t: '<b>One clock for sync</b>: when the same item is changed on two devices, the newer change wins. That used to trust each device’s own clock; now every change is stamped in Google’s time, so a phone or PC with a wrong clock can no longer win or lose unfairly. Data health tells you if this device’s clock is off.' },
@@ -11793,7 +11795,7 @@ function closePlan(D, pair) {
   const neg = D.filter(x => x.d < 0).map(x => ({ a: x.a, left: -x.d })).sort((x, y) => y.left - x.left);
   const pos = D.filter(x => x.d > 0).map(x => ({ a: x.a, left: x.d })).sort((x, y) => y.left - x.left);
   const moves = [];
-  if (pair) neg.forEach(n => pos.forEach(p => { const t = r2(Math.min(n.left, p.left)); if (t >= 0.005) { moves.push({ from: n.a, to: p.a, amt: t }); n.left = r2(n.left - t); p.left = r2(p.left - t); } }));
+  if (pair) neg.forEach(n => pos.forEach(p => { if (!pairOk(n.a, p.a)) return; const t = r2(Math.min(n.left, p.left)); if (t >= 0.005) { moves.push({ from: n.a, to: p.a, amt: t }); n.left = r2(n.left - t); p.left = r2(p.left - t); } }));
   return { moves, spend: neg.filter(n => n.left >= 0.005).map(n => ({ a: n.a, amt: r2(n.left) })), income: pos.filter(p => p.left >= 0.005).map(p => ({ a: p.a, amt: r2(p.left) })) };
 }
 function monthCloseAll(c, ym) {
@@ -11816,7 +11818,7 @@ function monthCloseAll(c, ym) {
       ${P.moves.map(m => li(`Moved ${esc(m.from.name)} → ${esc(m.to.name)}<small class="dq-sub">a transfer — not spending</small>`, rs(m.amt))).join('')}
       ${P.spend.map(x => li(`Spending not entered · ${esc(x.a.name)}`, '−' + rs(x.amt), 'neg')).join('')}
       ${P.income.map(x => li(`Income not entered · ${esc(x.a.name)}`, '+' + rs(x.amt), 'pos')).join('')}
-      ${D.some(x => x.d < 0) && D.some(x => x.d > 0) ? `<label class="switch-row"><span>Short in one account, over in another = money moved between them<small>e.g. cash withdrawn from the bank, a card bill paid. Switch off if they are unrelated.</small></span><input type="checkbox" class="sw" id="mcPair"${pair ? ' checked' : ''}></label>` : ''}
+      ${D.some(n => n.d < 0 && D.some(p => p.d > 0 && pairOk(n.a, p.a))) ? `<label class="switch-row"><span>Short in one account, over in another = money moved between them<small>e.g. cash withdrawn from the bank, a card bill paid. Switch off if they are unrelated.</small></span><input type="checkbox" class="sw" id="mcPair"${pair ? ' checked' : ''}></label>` : ''}
       <div class="hint">${sp >= 0.5 ? `Spending not entered: <b>${rs(sp)}</b>. ` : ''}${inc >= 0.5 ? `Income not entered: <b>${rs(inc)}</b>. ` : ''}${blank.length ? `Not checked (left blank): ${esc(blank.join(', '))}. ` : ''}You can open any of these entries in the Ledger later and give it a category.</div>
       <div class="btn-row" style="margin-top:8px"><button class="btn small" id="mcOk">Record</button><button class="btn small ghost" id="mcNo">Cancel</button></div></div>`;
     if ($('mcPair')) $('mcPair').addEventListener('change', draw);
@@ -11953,4 +11955,26 @@ const acctInt = a => a && (a.kind === 'bank' || a.kind === 'salary') && a.int &&
 /* the interest the plan expects in month ym, per account (what the engine works out from the balance at the start of the month) */
 function intEstimates(c, ym) {
   try { const r = planCompute(c, ym, 'plan').slice(-1)[0]; return (r && r.ym === ym && r.intEst) || {}; } catch (e) { RLOG.warn('interest estimate', e.message); return {}; }
+}
+
+/* v2.37: day-to-day estimates against real spending. Spending counts against the estimate on its own account first
+   (in order); spending from accounts that have no estimate fills whatever room is left. Returns { itemKey: amount used }. */
+const budgetSpendable = (f, matched) => f.cat === 'exp' && !(f.e && (f.e.planRef || (matched && matched.has(f.e.id)) || f.e.category === 'Investment'));
+function budgetUse(items, fl, matched) {
+  const B = items.filter(i => i.budget && +i.a > 0), own = new Set(B.map(i => i.from)), by = {}, use = {}; let pool = 0;
+  fl.forEach(f => { if (!budgetSpendable(f, matched)) return; const v = -f.amt; if (own.has(f.acct)) by[f.acct] = (by[f.acct] || 0) + v; else pool += v; });
+  B.forEach(i => { const u = Math.max(0, Math.min(by[i.from] || 0, +i.a)); by[i.from] = (by[i.from] || 0) - u; use[i.key] = u; });
+  B.forEach(i => { const t = Math.max(0, Math.min(pool, +i.a - use[i.key])); use[i.key] += t; pool -= t; });
+  return use;
+}
+/* v2.37: may a shortfall in `from` and an excess in `to` be one transfer? Only between accounts money really moves between:
+   bank → cash (withdrawal), the account a card's bill is paid from → that card, or a pair with a regular or past transfer.
+   Never out of a card. Before, any short account was paired with any over account (e.g. a card with Papa's bank). */
+function pairOk(from, to) {
+  if (!from || !to || from.id === to.id || from.kind === 'card' || from.kind === 'loan' || isInvest(from.kind) || isInvest(to.kind) || to.kind === 'loan') return false;
+  if (to.kind === 'cash' && from.kind !== 'cash') return true;
+  if (to.kind === 'card') { try { if (cardBillPlans(planCfg()).some(p => p.card.id === to.id && p.from.id === from.id)) return true; } catch (e) {} }
+  if (recurs().some(r => r.kind === 'transfer' && r.from === from.id && r.to === to.id)) return true;
+  const since = isoLocal(new Date(Date.now() - 365 * 86400000));
+  return all('fin').some(e => e.kind === 'transfer' && e.acct === from.id && e.to === to.id && (e.date || '') >= since && !/balance check/i.test(e.desc || ''));
 }
