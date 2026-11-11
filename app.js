@@ -5210,8 +5210,9 @@ function holdersSheet(ym) {
     const tot = G.reduce((t, h) => t + val(h.accts), 0);
     html = `<div class="field"><label>Month</label>${monthIn('hdYm', Hold.ym)}</div>
       <p class="hint" style="margin:-6px 4px 10px">Balances at ${esc(when)}.</p>
-      <div class="group pl-group">${G.map(h => line(h.name, h.accts.map(acctName).join(' + '), val(h.accts))).join('') || '<p class="hint" style="margin:8px">No groups yet — tap Edit groups.</p>'}
-        ${G.length ? line('Total of these', '', tot, 'pos') : ''}</div>
+      ${G.map(h => `<h4 class="plan-sub">${esc(h.name)}</h4><div class="group pl-group">${h.accts.map(id => { const a = acctById(id); return line(a ? a.name : '?', a ? kindLabel(a.kind) : '', bal[id] || 0); }).join('') || '<p class="hint" style="margin:8px">No accounts in this group.</p>'}
+        ${h.accts.length > 1 ? `<div class="pl-row" style="border-top:1px solid var(--line)"><span class="r-name"><b>Total · ${esc(h.name)}</b></span><b class="mono ${val(h.accts) < 0 ? 'neg' : ''}">${rs(val(h.accts))}</b></div>` : ''}</div>`).join('') || '<div class="group pl-group"><p class="hint" style="margin:8px">No groups yet — tap Edit groups.</p></div>'}
+      ${G.length > 1 ? `<div class="group pl-group" style="margin-top:6px">${line('Total of all groups', '', tot, 'pos')}</div>` : ''}
       <h4 class="plan-sub">Udhaar (net) · people you chose</h4>
       <div class="group pl-group">${udhRows.length ? udhRows.map(([n, v]) => line(n, v > 0 ? 'owes you' : v < 0 ? 'you owe' : 'settled', v)).join('') + (udhRows.length > 1 ? line('Net', '', udhRows.reduce((t, x) => t + x[1], 0)) : '') : '<p class="hint" style="margin:8px">Nobody chosen — tap Edit groups.</p>'}</div>
       ${rest.length ? `<details class="fold"><summary>Not in any group (${rest.length})</summary><div class="group pl-group">${rest.map(a => line(a.name, kindLabel(a.kind), bal[a.id] || 0)).join('')}</div></details>` : ''}
@@ -9844,6 +9845,7 @@ const WHATS_NEW = [
   { t: '<b>Fixed — monthly check-up</b>: each day-to-day estimate now shows how much of it was used, from its own account first. Before, every estimate showed the same total (e.g. “₹368 spent” three times).', priv: true },
   { t: '<b>Work out the month</b> treats a short account and an over account as one transfer only when money really moves between them (bank → cash, a card’s bill account → the card, or a regular or past transfer). Before, it could pair a card with an unrelated account.', priv: true },
   { t: '<b>Udhaar give (estimate)</b>: udhaar you really give that person now reduces the planned amount, rupee for rupee, from the month the plan item was made until 2 months after the planned month. Before, one entry near the month removed the whole estimate, and anything earlier was counted twice.', priv: true },
+  { t: '<b>👥 Who holds what</b>: each group now lists its accounts with their balances, then the group’s total.', priv: true },
   { t: '<b>Bank interest</b>: a bank or salary account can have an interest rate (or a fixed ₹), credited every month or every 3 months. The plan adds it as income from this month on, and the monthly check-up lists it to tick with the real amount.', priv: true },
   { t: '<b>Fixed</b>: opening Register from the decoy screen could show a blank yellowish screen (the app was still blurred from being in the background).' },
   { t: '<b>One clock for sync</b>: when the same item is changed on two devices, the newer change wins. That used to trust each device’s own clock; now every change is stamped in Google’s time, so a phone or PC with a wrong clock can no longer win or lose unfairly. Data health tells you if this device’s clock is off.' },

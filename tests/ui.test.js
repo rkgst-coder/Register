@@ -240,6 +240,17 @@ async function fresh(browser) {
     await page.locator('[data-it="int:a_sbi"] [data-done]').check(); await page.locator('#pshSave').click(); await page.waitForTimeout(400);
     const L = await page.evaluate(() => all('fin').filter(e => e.planRef && /int:a_sbi/.test(e.planRef)).map(e => ({ a: e.amount, cat: e.category, acct: e.acct })));
     T.ok('ticking writes Interest income into RK SBI', L.length === 1 && L[0].cat === 'Interest' && L[0].acct === 'a_sbi' && L[0].a === 300, JSON.stringify(L));
+
+    // Who holds what: each group lists its accounts, then its total
+    await page.evaluate(() => { const c = planCfg(); add_ = r => put(Object.assign({ deleted: false }, r), { render: false });
+      add_({ id: 'a_m1', type: 'acct', kind: 'bank', name: 'Moni ICICI', open: 700 }); add_({ id: 'a_m2', type: 'acct', kind: 'salary', name: 'Moni PNB', open: 300 });
+      c.holders = [{ id: 'h1', name: 'Moni', accts: ['a_m1', 'a_m2'] }, { id: 'h2', name: 'Rahul cash', accts: ['a_cash'] }]; put(c, { render: false }); holdersSheet(); });
+    await page.waitForTimeout(400);
+    { const t = await page.locator('#pshBody').innerText();
+      T.ok('Who holds what: Moni ICICI and Moni PNB listed under Moni', /MONI\s*\n[\s\S]*Moni ICICI[\s\S]*₹700[\s\S]*Moni PNB[\s\S]*₹300[\s\S]*Total · Moni/i.test(t), t.replace(/\n+/g, ' | ').slice(0, 300));
+      T.ok('…then “Total · Moni” ₹1,000', /Total · Moni\s*₹1,000/.test(t));
+      T.ok('a one-account group has no separate total', !/Total · Rahul cash/.test(t)); }
+    await shot(page, 'v237-holders');
     T.ok('no errors on the page (v2.37)', errs.length === 0, errs.join(' ; ').slice(0, 300));
     await ctx.close(); }
   await browser.close(); server.close();
