@@ -3996,14 +3996,14 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
     const bUse = budgetUse(items, fl, matchedIds);                            // v2.37: each estimate takes its own account's spending first
     // v2.26: udhaar you plan to give (estimate) — from this month on; real udhaar given this month replaces it
     if (!actual && ym >= cur) gives.forEach(r => {
-      if (!recurDue(r, ym) || giveDone.has(r.id + '|' + ym)) return;
-      const amt = recurAmt(r, ym), k = r.who.trim().toLowerCase();
+      if (!recurDue(r, ym)) return;
+      const got = giveDone.get(r.id + '|' + ym) || 0, amt = Math.round((recurAmt(r, ym) - got) * 100) / 100, k = r.who.trim().toLowerCase();   // v2.37: less what you already gave
       if (amt <= 0.005) return;
       if (!udhLeft.has(k)) udhLeft.set(k, udhOwedBy(r.who));
       udhLeft.set(k, udhLeft.get(k) + amt); udhGive += amt; planned = true;
       const F = acctById(r.from);
-      if (F && !(F.kind === 'loan' && loanSched(F))) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: `Udhaar to ${r.who.trim()} (estimate)`, amt: -amt, src: 'est', grp: 'udh' }); }
-      if (log) (log.udh[ym] = log.udh[ym] || []).push({ who: r.who.trim(), label: `Given to ${r.who.trim()} (estimate)`, amt, src: 'est' });
+      if (F && !(F.kind === 'loan' && loanSched(F))) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: `Udhaar to ${r.who.trim()} (estimate${got ? ', ' + fmtMoney(got) + ' already given' : ''})`, amt: -amt, src: 'est', grp: 'udh' }); }
+      if (log) (log.udh[ym] = log.udh[ym] || []).push({ who: r.who.trim(), label: `Given to ${r.who.trim()} (estimate${got ? ', ' + fmtMoney(got) + ' already given' : ''})`, amt, src: 'est' });
     });
     const closedPast = ym < cur && !!(pmGet(ym) || {}).closed;               // v2.37: a checked month — what you did not tick did not happen
     items.forEach(it => { if (!it.interest) return; if (it.rate && !it.changed && !it.done) it.a = Math.round(Math.max(0, bal0[it.to] || 0) * it.rate / 1200 * (it.every || 1)); intEst[it.to] = it.a; });
@@ -4122,20 +4122,29 @@ function overrideSheet(onlyKey) {
 /* v2.26.1: each real udhaar given to a person uses up the nearest planned "Udhaar give" to them within 2 months either side
    (whatever the amounts), so giving earlier, later, more or less never counts twice. Overflow from settling does not count. */
 const udhIsExtra = e => !!(e && (e.origin || /^Extra when settling/.test(e.desc || '')));
+/* v2.37: real udhaar given to the person reduces a planned give AMOUNT FOR AMOUNT (before: one entry within ±2 months
+   removed the whole estimate, and anything earlier was counted twice). An entry counts against the earliest planned give
+   for that person whose window holds it: from the month the plan item was made (or the month after that item's previous
+   give) to 2 months after the give. Returns Map "itemId|ym" → amount already given. */
 function udhGiveMatches(gives, toMonth) {
-  const done = new Set(), byP = {};
+  const cov = new Map(), byP = {};
   gives.forEach(r => { const k = udhKey(r.who); (byP[k] = byP[k] || []).push(r); });
   Object.keys(byP).forEach(k => {
     const occ = [], lim = monthAdd(toMonth, 2);
-    byP[k].forEach(r => { for (let ym = r.start, i = 0; ym && ym <= lim && (!r.end || ym <= r.end) && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) if (recurDue(r, ym)) occ.push({ key: r.id + '|' + ym, ym }); });
+    byP[k].forEach(r => {
+      let lo = r.createdAt ? isoMonth(new Date(+r.createdAt)) : r.start;
+      if (!lo || lo > r.start) lo = r.start;
+      for (let ym = r.start, i = 0; ym && ym <= lim && (!r.end || ym <= r.end) && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++)
+        if (recurDue(r, ym)) { occ.push({ key: r.id + '|' + ym, ym, lo, hi: monthAdd(ym, 2), left: recurAmt(r, ym) }); lo = monthAdd(ym, 1); }
+    });
     if (!occ.length) return;
-    all('fin').filter(e => e.kind === 'lent' && e.date && udhKey(e.who) === k && !udhIsExtra(e)).map(e => e.date.slice(0, 7)).sort().forEach(m => {
-      let best = null, bd = 3;
-      occ.forEach(o => { if (done.has(o.key)) return; const dd = Math.abs(monthsBetween(m, o.ym)); if (dd <= 2 && (dd < bd || (dd === bd && o.ym < best.ym))) { bd = dd; best = o; } });
-      if (best) done.add(best.key);
+    occ.sort((x, y) => x.ym.localeCompare(y.ym));
+    all('fin').filter(e => e.kind === 'lent' && e.date && udhKey(e.who) === k && !udhIsExtra(e)).sort((x, y) => x.date.localeCompare(y.date)).forEach(e => {
+      const m = e.date.slice(0, 7); let amt = +e.amount || 0;
+      occ.forEach(o => { if (amt <= 0.005 || o.left <= 0.005 || m < o.lo || m > o.hi) return; const t = Math.min(amt, o.left); o.left -= t; amt -= t; cov.set(o.key, (cov.get(o.key) || 0) + t); });
     });
   });
-  return done;
+  return cov;
 }
 /* v2.26: how the plan pays each credit card. Default: the whole bill from the default account. Off when a recurring transfer into the card exists. */
 function cardBillPlans(c) {
@@ -4709,7 +4718,7 @@ function recurSheet(id, preset) {
     <div class="field" id="rcWhoW"><label>Who is paying back</label><select id="rcWho">${(() => { const ps = udhPersons(); if (r.who && !ps.some(x => x[0] === r.who)) ps.unshift([r.who, 0]); return ps.length ? ps.map(([n, a]) => `<option value="${esc(n)}"${n === r.who ? ' selected' : ''}>${esc(n)} · owes ${rs(a)}</option>`).join('') : '<option value="">Nobody owes you in Udhaar</option>'; })()}</select>
       <p class="hint" style="margin:4px 0 0">Each instalment you tick in the check-up is recorded as money paid back in Udhaar: the account goes up and what they owe goes down. It is not counted as income. In the plan, instalments continue as long as they owe — including udhaar you plan to give them (Udhaar give).</p></div>
     <div class="field" id="rcGiveW"><label>Udhaar to (person)</label><input id="rcGiveWho" list="peopleDl" value="${esc(r.kind === 'udhgive' ? r.who || '' : '')}" placeholder="e.g. X" autocomplete="off">
-      <p class="hint" style="margin:4px 0 0"><b>An estimate for the plan only.</b> In the months set here the plan takes the amount out of the account and adds it to what this person owes, so their Udhaar back instalments can carry on. Nothing is written to the Ledger: when you really give the money, add it in Udhaar as usual — in the current month that replaces the estimate.</p></div>
+      <p class="hint" style="margin:4px 0 0"><b>An estimate for the plan only.</b> In the months set here the plan takes the amount out of the account and adds it to what this person owes, so their Udhaar back instalments can carry on. Nothing is written to the Ledger: when you really give the money, add it in Udhaar as usual — it is taken off this estimate, rupee for rupee (from the month you made this item until 2 months after the planned month).</p></div>
     <div class="grid2"><div class="field"><label>Amount ₹</label>${amtIn('rcAmt', r.amt)}</div><div class="field"><label>How often</label><select id="rcEvery">${(() => { const once = !!(id && r.start && r.end === r.start); return [[1, 'Every month'], [2, 'Every 2 months'], [3, 'Every 3 months'], [6, 'Every 6 months'], [12, 'Every year']].map(([v, l]) => `<option value="${v}"${!once && +r.every === v ? ' selected' : ''}>${l}</option>`).join('') + `<option value="once"${once ? ' selected' : ''}>Once (one month only)</option>`; })()}</select></div></div>
     <div class="grid2"><div class="field" id="rcFromW"><label>From account</label><select id="rcFrom">${acctOptions(r.from)}</select></div><div class="field" id="rcToW"><label>Into account</label><select id="rcTo">${acctOptions(r.to)}</select></div></div>
     <div class="grid2"><div class="field"><label id="rcStartLbl">First month</label>${monthIn('rcStart', r.start)}</div><div class="field" id="rcEndW"><label>Last month (optional)</label>${monthIn('rcEnd', r.end)}</div></div>
@@ -9834,6 +9843,7 @@ const WHATS_NEW = [
   { t: '<b>Fixed — a month that is over</b>: once a month is marked checked, a planned item you did not tick (e.g. an ATM withdrawal) is taken as not having happened. Before, the Plan and the account statement still counted it. In a month not yet checked, it now says “planned · not ticked”.', priv: true },
   { t: '<b>Fixed — monthly check-up</b>: each day-to-day estimate now shows how much of it was used, from its own account first. Before, every estimate showed the same total (e.g. “₹368 spent” three times).', priv: true },
   { t: '<b>Work out the month</b> treats a short account and an over account as one transfer only when money really moves between them (bank → cash, a card’s bill account → the card, or a regular or past transfer). Before, it could pair a card with an unrelated account.', priv: true },
+  { t: '<b>Udhaar give (estimate)</b>: udhaar you really give that person now reduces the planned amount, rupee for rupee, from the month the plan item was made until 2 months after the planned month. Before, one entry near the month removed the whole estimate, and anything earlier was counted twice.', priv: true },
   { t: '<b>Bank interest</b>: a bank or salary account can have an interest rate (or a fixed ₹), credited every month or every 3 months. The plan adds it as income from this month on, and the monthly check-up lists it to tick with the real amount.', priv: true },
   { t: '<b>Fixed</b>: opening Register from the decoy screen could show a blank yellowish screen (the app was still blurred from being in the background).' },
   { t: '<b>One clock for sync</b>: when the same item is changed on two devices, the newer change wins. That used to trust each device’s own clock; now every change is stamped in Google’s time, so a phone or PC with a wrong clock can no longer win or lose unfairly. Data health tells you if this device’s clock is off.' },

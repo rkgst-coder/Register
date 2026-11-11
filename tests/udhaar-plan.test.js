@@ -93,6 +93,24 @@ const res = JSON.parse(h.run(`(() => {
   ok('…paired once there is a past transfer between them', Q.moves.length === 1);
   Q = closePlan([{ a: A_('a_sbi'), d: -4700 }, { a: A_('a_cash'), d: 4000 }], true);
   ok('bank short + cash over: still a withdrawal', Q.moves.length === 1 && Q.moves[0].amt === 4000 && Q.spend[0].amt === 700);
+
+  /* v2.37: a planned udhaar give is reduced by what you really give, rupee for rupee */
+  add({ id: 'rg_rak', type: 'recur', kind: 'udhgive', who: 'Rakesh Delhi', amt: 28370, every: 1, start: '2027-05', end: '2027-05', from: 'a_cash', createdAt: new Date('2026-10-15').getTime() });
+  storeVer++;
+  const GO = () => { const r = udhGiveMatches(all('recur').filter(x => x.kind === 'udhgive' && !x.deleted), '2027-05'); return r.get('rg_rak|2027-05') || 0; };
+  ok('nothing given yet: full 28,370 planned', GO() === 0);
+  f({ kind: 'lent', who: 'Rakesh Delhi', amount: 4000, date: '2026-09-10', desc: 'before the plan item' }); storeVer++;
+  ok('udhaar from before the plan item was made does not count', GO() === 0);
+  f({ kind: 'lent', who: 'Rakesh Delhi', amount: 5000, date: '2026-11-05', desc: 'part' }); storeVer++;
+  ok('a ₹5,000 part now: 5,000 already given', GO() === 5000, String(GO()));
+  f({ kind: 'lent', who: 'rakesh delhi', amount: 3000, date: '2027-07-01', desc: 'late' }); storeVer++;
+  ok('…and ₹3,000 up to 2 months after counts too (name in any case)', GO() === 8000, String(GO()));
+  f({ kind: 'lent', who: 'Rakesh Delhi', amount: 3000, date: '2027-08-01', desc: 'too late' }); storeVer++;
+  ok('…but not 3 months after', GO() === 8000);
+  f({ kind: 'lent', who: 'Rakesh Delhi', amount: 99999, date: '2027-01-01', desc: 'more than planned' }); storeVer++;
+  ok('never more than the planned amount', GO() === 28370);
+  { const S = stmtData(c, 'a_cash', '2027-05', '2027-05'), L = (S.months[0].out || []).map(l => l.label).join(' | ');
+    ok('fully given: no estimate left in the RKC statement', !/Rakesh/.test(L), L); }
   return JSON.stringify(R);
 })()`));
 res.forEach(([n, v, d]) => T.ok(n, v, d));
