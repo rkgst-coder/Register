@@ -97,7 +97,7 @@ function offerLegacy() {
 }
 function hideDecoy() {
   if ($('alPin')) $('alPin').classList.add('hidden');
-  document.documentElement.classList.remove('decoy-on');
+  document.documentElement.classList.remove('decoy-on', 'app-hidden');   // v2.37: the background blur too — iPhone does not always say the app is back on screen
   $('decoy').classList.add('hidden'); $('decoy').setAttribute('aria-hidden', 'true');
   $('app').removeAttribute('aria-hidden');
   scheduleRender();
@@ -123,6 +123,9 @@ function flushEdits() {
 window.addEventListener('pagehide', flushEdits);
 ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true, capture: true }));
 setInterval(() => { if (finUnlocked() && document.visibilityState === 'visible' && Date.now() - Math.max(lastTouch, Fin.unlockedAt || 0) > (+prefs.moneyIdle || 5) * 60000) { lockFinance(); } }, 30000);   // idle 5 min → lock Money
+/* v2.37: an iPhone home-screen app can come back without a "visible" event; any of these also clears the blur */
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { if (document.visibilityState !== 'hidden') document.documentElement.classList.remove('app-hidden'); }));
+document.addEventListener('pointerdown', () => document.documentElement.classList.remove('app-hidden'), { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     hiddenAt = nowMs();

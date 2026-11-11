@@ -105,3 +105,13 @@ function invLinkSheet() {
       <select><option value="">Decide later</option>${F.map(a => `<option value="${a.id}"${a.id === g ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="-">Not in any fund</option></select></div>`; }).join('')}</div>`,
     () => { let n = 0; $$('[data-inv]', $('pshBody')).forEach(r => { const v = r.querySelector('select').value, e = records[r.dataset.inv]; if (v && e) { e.invTo = v; put(e, { render: false }); n++; } }); if (n) toast(`${n} entr${n === 1 ? 'y' : 'ies'} updated.`); return true; }, 'Save');
 }
+
+/* ==========================================================================
+   v2.37 — savings interest (estimate) and a few helpers
+   ======================================================================== */
+const acctInt = a => a && (a.kind === 'bank' || a.kind === 'salary') && a.int && (+a.int.rate > 0 || +a.int.amt > 0)
+  ? { rate: +a.int.rate || 0, amt: +a.int.amt || 0, every: +a.int.every === 3 ? 3 : 1, from: a.int.from || null } : null;
+/* the interest the plan expects in month ym, per account (what the engine works out from the balance at the start of the month) */
+function intEstimates(c, ym) {
+  try { const r = planCompute(c, ym, 'plan').slice(-1)[0]; return (r && r.ym === ym && r.intEst) || {}; } catch (e) { RLOG.warn('interest estimate', e.message); return {}; }
+}

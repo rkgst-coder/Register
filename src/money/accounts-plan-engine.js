@@ -245,6 +245,9 @@ function planItems(c, ym) {
       items.push({ key: 'sip:' + a.id, label: 'SIP · ' + a.name, kind: 'transfer', a: +a.sip.amt, from: a.sip.from, to: a.id });
     if (a.kind === 'loan' && +a.emi && a.start && ym >= a.start && (!a.end || ym <= a.end))
       items.push({ key: 'emi:' + a.id, label: 'EMI · ' + a.name, kind: 'transfer', a: +a.emi, from: a.payFrom, to: a.id });
+    const I = acctInt(a);                                                   // v2.37: savings interest, an estimate until it is in the Ledger
+    if (I && !a.archived && ym >= (I.from || c.startMonth) && (I.every === 1 || +ym.slice(5) % 3 === 0))
+      items.push({ key: 'int:' + a.id, label: 'Interest · ' + a.name, kind: 'income', a: I.amt || 0, rate: I.amt ? 0 : I.rate, every: I.every, to: a.id, cat: 'Interest', interest: true });
   });
   (pm ? pm.extra || [] : []).forEach(x => items.push({ key: 'x:' + x.id, label: x.label || 'One-off', kind: x.kind, a: +x.a || 0, from: x.from, to: x.to, extra: true, cat: x.cat || '' }));
   items.forEach(it => { const o = pm && pm.items && pm.items[it.key]; if (o) { if (!isBlank(o.a)) it.a = +o.a; it.done = !!o.done; it.ledgerId = o.ledgerId || null; it.changed = !isBlank(o.a); } });
@@ -263,6 +266,11 @@ function planItems(c, ym) {
   // an entry you typed into the Ledger yourself (same month, type, account and amount) counts as done
   const used = new Set(), dflt = (acctById(c.defAcct) || {}).id || defAcct(c), ac = e => e.acct || (e.kind !== 'transfer' ? dflt : null);   // untagged entries sit on the default account
   const mine = all('fin').filter(e => !e.planRef && (e.date || '').slice(0, 7) === ym && ac(e));                     // later dates this month count too — they are already in the balances
+  items.forEach(it => {                                                    // v2.37: interest you entered yourself (any amount) counts as done
+    if (it.done || !it.interest) return;
+    const m = mine.find(e => !used.has(e.id) && e.kind === 'income' && ac(e) === it.to && (e.category === 'Interest' || /interest/i.test(e.desc || '')));
+    if (m) { used.add(m.id); it.done = true; it.matched = m.id; it.a = +m.amount || 0; }
+  });
   items.forEach(it => {
     if (it.done || it.kind !== 'udhback' || !it.a) return;
     const hit = all('fin').some(e => e.kind === 'lent' && (e.who || '').trim().toLowerCase() === it.who.trim().toLowerCase() &&
@@ -291,13 +299,13 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
   list.forEach(a => { bal[a.id] = a.kind === 'loan' && loanSched(a) ? -loanOwed(a, monthAdd(c.startMonth, -1)) : isLiab(a.kind) ? -(+a.open || 0) : (+a.open || 0); });
   const flows = ledgerFlows(c), byYm = {};
   flows.forEach(f => { (byYm[f.ym] = byYm[f.ym] || []).push(f); });
-  const rows = [], udhLeft = new Map(); let udhBack = 0, udhGive = 0;
+  const rows = [], udhLeft = new Map(); let udhBack = 0, udhGive = 0, intEst = {};
   const gives = recurs().filter(r => r.kind === 'udhgive' && (r.who || '').trim()), cardPlans = cardBillPlans(c);   // v2.26
   const giveDone = udhGiveMatches(gives, toMonth);                         // v2.26.1: planned gives already covered by real udhaar
   const paidByYm = {}, pastUdh = {};                                       // v2.34
   all('fin').forEach(e => { if (isPaidBy(e) && e.category !== 'Investment') { const m = finDate(e).slice(0, 7); if (m >= c.startMonth) paidByYm[m] = (paidByYm[m] || 0) + (+e.amount || 0); } });
   for (let ym = c.startMonth, i = 0; ym <= toMonth && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) {
-    let inc = 0, exp = 0, invIn = 0, interest = 0, growth = 0, pending = 0, planned = false;
+    let inc = 0, exp = 0, invIn = 0, interest = 0, growth = 0, pending = 0, planned = false; intEst = {};
     const items = planItems(c, ym), fl = byYm[ym] || [], bal0 = { ...bal };
     if (log) log.open[ym] = bal0;
     // actual movements
@@ -327,8 +335,11 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
       if (F && !(F.kind === 'loan' && loanSched(F))) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: `Udhaar to ${r.who.trim()} (estimate)`, amt: -amt, src: 'est', grp: 'udh' }); }
       if (log) (log.udh[ym] = log.udh[ym] || []).push({ who: r.who.trim(), label: `Given to ${r.who.trim()} (estimate)`, amt, src: 'est' });
     });
+    const closedPast = ym < cur && !!(pmGet(ym) || {}).closed;               // v2.37: a checked month — what you did not tick did not happen
+    items.forEach(it => { if (!it.interest) return; if (it.rate && !it.changed && !it.done) it.a = Math.round(Math.max(0, bal0[it.to] || 0) * it.rate / 1200 * (it.every || 1)); intEst[it.to] = it.a; });
     if (!actual) items.forEach(it => {
       if (it.done) return;
+      if (!it.budget && closedPast) return;
       let amt = it.a;
       if (it.budget) { if (ym < cur) return; const use = ym === cur ? Math.min(spendLeft, it.a) : 0; spendLeft -= use; amt = it.a - use; }
       if (!amt) return;
@@ -344,12 +355,12 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
         return;
       }
       const free = x => x && !(x.kind === 'loan' && loanSched(x));
-      const est = it.budget ? ' (estimate)' : '';
-      if (it.kind === 'income') { if (free(T)) { bal[T.id] += amt; if (L) L(T.id, ym, { label: it.label, amt, src: 'plan' }); } inc += amt; }
-      else if (it.kind === 'expense') { if (free(F)) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: it.label + est, amt: -amt, src: it.budget ? 'est' : 'plan' }); } exp += amt; }
+      const est = it.budget || it.rate ? ' (estimate)' : '', nt = ym < cur ? ' (planned · not ticked)' : '';   // v2.37
+      if (it.kind === 'income') { if (free(T)) { bal[T.id] += amt; if (L) L(T.id, ym, { label: it.label + est + nt, amt, src: it.rate ? 'est' : 'plan' }); } inc += amt; }
+      else if (it.kind === 'expense') { if (free(F)) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: it.label + est + nt, amt: -amt, src: it.budget ? 'est' : 'plan' }); } exp += amt; }
       else {
-        if (free(F)) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: stmtXferLabel(it.label, T, '→'), amt: -amt, src: 'plan', peer: T ? T.id : null }); }
-        if (free(T)) { bal[T.id] += amt; if (L) L(T.id, ym, { label: stmtXferLabel(it.label, F, '←'), amt, src: 'plan', peer: F ? F.id : null }); }
+        if (free(F)) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: stmtXferLabel(it.label, T, '→') + nt, amt: -amt, src: 'plan', peer: T ? T.id : null }); }
+        if (free(T)) { bal[T.id] += amt; if (L) L(T.id, ym, { label: stmtXferLabel(it.label, F, '←') + nt, amt, src: 'plan', peer: F ? F.id : null }); }
         if (T && isInvest(T.kind)) invIn += amt;
         if (F && isInvest(F.kind)) invIn -= amt;
       }
@@ -394,7 +405,7 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
     const U = udhBase - udhBack + udhGive;                                  // v2.26: udhaar you plan to give is still your money, now owed to you
     rows.push({ ym, inc, exp, interest, invIn, growth, net: inc - exp, accts: { ...bal }, assets, liabs, cardDue, loanBal, liquid, invest, udh: U, udhBack, udhGive,
       worth: assets - cardDue + U, hand: liquid + cardPos - cardDue, afterLoans: assets - cardDue + U - loanBal,
-      pending, planned, closed: !!(pm && pm.closed), neg, ended: ym < cur, cur: ym === cur });
+      pending, planned, closed: !!(pm && pm.closed), neg, ended: ym < cur, cur: ym === cur, intEst });
   }
   return rows;
 }

@@ -3,6 +3,11 @@
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
+  { t: '<b>Fixed — a person’s ledger</b>: when part of a payment was “extra when settling” and that extra was later paid back, the ledger left the repayment out, so its total disagreed with the person’s screen. It is now listed.', priv: true },
+  { t: '<b>Settled udhaar</b>: people with nothing open now sit in the “Settled udhaar” fold, not at the bottom of the people list.', priv: true },
+  { t: '<b>Fixed — a month that is over</b>: once a month is marked checked, a planned item you did not tick (e.g. an ATM withdrawal) is taken as not having happened. Before, the Plan and the account statement still counted it. In a month not yet checked, it now says “planned · not ticked”.', priv: true },
+  { t: '<b>Bank interest</b>: a bank or salary account can have an interest rate (or a fixed ₹), credited every month or every 3 months. The plan adds it as income from this month on, and the monthly check-up lists it to tick with the real amount.', priv: true },
+  { t: '<b>Fixed</b>: opening Register from the decoy screen could show a blank yellowish screen (the app was still blurred from being in the background).' },
   { t: '<b>One clock for sync</b>: when the same item is changed on two devices, the newer change wins. That used to trust each device’s own clock; now every change is stamped in Google’s time, so a phone or PC with a wrong clock can no longer win or lose unfairly. Data health tells you if this device’s clock is off.' },
   { t: '<b>Backup outside Google</b>: the monthly reminder and Data health now watch for a backup file saved outside your Google account (iCloud Drive, On My iPhone, the PC). The weekly Drive backup no longer silences the reminder, and a copy saved on one device counts on all.' },
   { t: '<b>Udhaar payments have their own date</b>: Settle and Settle all now ask for the date the money moved. On a person’s screen, <b>＋ Payment</b> records one amount against the oldest open entries first. In an entry’s ledger, tap ✎ or “Set date” on a payment to correct or add its date.', priv: true },

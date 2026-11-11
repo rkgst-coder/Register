@@ -196,6 +196,52 @@ async function fresh(browser) {
     T.ok('Data health shows “Backup outside Google”', /Backup outside Google/.test(await page.locator('#shHealth').innerText()));
     T.ok('no errors on the page (udhaar)', errs.length === 0, errs.join(' ; ').slice(0, 300));
     await ctx.close(); }
+
+  /* ---- 4. v2.37: settled people in the fold, the decoy never leaves the app blurred, bank interest ---- */
+  { const { ctx, page, errs } = await fresh(browser);
+    await page.goto(BASE + '/index.html'); await page.waitForTimeout(2500);
+    await page.evaluate(async () => {
+      hideDecoy(); await setupFinance('test-code-1234');
+      const add = r => put(Object.assign({ deleted: false }, r), { render: false });
+      add({ id: 'plan-cfg', type: 'plancfg', startMonth: '2026-08', defAcct: 'a_sbi' });
+      add({ id: 'a_sbi', type: 'acct', kind: 'bank', name: 'RK SBI', open: 100000 });
+      add({ id: 'a_cash', type: 'acct', kind: 'cash', name: 'RKC', open: 5000 });
+      add({ id: 'u1', type: 'fin', kind: 'lent', who: 'Sam', amount: 500, date: '2026-09-01', paidAmount: 500, settled: true, pays: [{ date: '2026-09-10', amt: 500 }] });
+      add({ id: 'u2', type: 'fin', kind: 'lent', who: 'Raj', amount: 900, date: '2026-10-01', paidAmount: 0, settled: false });
+      setPref('moneySeg', 'udhaar'); showTab('money'); Udh.person = null; renderMoney();
+    });
+    await page.waitForTimeout(500);
+    T.ok('settled person is not in the people list', !/Sam/.test(await page.locator('#udList').innerText()) && /Raj/.test(await page.locator('#udList').innerText()));
+    { const F = await page.evaluate(() => ({ list: $('udSettled').textContent, n: $('udSettledN').textContent })); T.ok('…it is in the “Settled udhaar” fold, with a count', /Sam/.test(F.list) && F.n === '1 person', JSON.stringify(F).slice(0, 200)); }
+    await page.evaluate(() => { $('udSettledFold').open = true; }); await page.locator('#udSettled [data-udp="sam"]').click(); await page.waitForTimeout(300);
+    T.ok('tapping them opens their screen', /Sam/.test(await page.locator('#udList').innerText()) && await page.locator('#udSettledFold').isHidden());
+    await shot(page, 'v237-settled');
+    // the decoy: background blur left behind (iPhone did not say "visible") is cleared when the app is opened
+    const blur = await page.evaluate(() => { document.documentElement.classList.add('app-hidden'); showDecoy(); hideDecoy();
+      return { cls: document.documentElement.classList.contains('app-hidden'), filter: getComputedStyle($('app')).filter }; });
+    T.ok('opening from the decoy removes the blur', !blur.cls && (blur.filter === 'none' || !blur.filter), JSON.stringify(blur));
+    const tap = await page.evaluate(() => { document.documentElement.classList.add('app-hidden'); document.dispatchEvent(new Event('pointerdown')); return document.documentElement.classList.contains('app-hidden'); });
+    T.ok('a tap also removes a leftover blur', !tap);
+    await shot(page, 'v237-after-decoy');
+    // bank interest in the account editor and the check-up
+    await page.evaluate(() => { setPref('moneySeg', 'accts'); renderMoney(); acctSheet('a_sbi'); }); await page.waitForTimeout(400);
+    T.ok('bank account shows the Interest fields', await page.locator('#asIRate').isVisible() && await page.locator('#asIEvery').isVisible());
+    await page.fill('#asIRate', '3.6'); await page.locator('#pshSave').click(); await page.waitForTimeout(400);
+    const I = await page.evaluate(() => ({ ...records.a_sbi.int, now: isoMonth(new Date()) }));
+    T.ok('saved: 3.6% a year, every month, from this month', I && I.rate === 3.6 && I.every === 1 && I.from === I.now, JSON.stringify(I));
+    await page.evaluate(() => planMonthSheet(isoMonth(new Date()))); await page.waitForTimeout(400);
+    const row = await page.locator('[data-it="int:a_sbi"]').innerText().catch(() => '');
+    const est = await page.evaluate(() => $('mi_int_a_sbi') ? $('mi_int_a_sbi').value : '');
+    T.ok('check-up lists “Interest · RK SBI” with the estimate filled in', /Interest · RK SBI/.test(row) && +String(est).replace(/,/g, '') === Math.round(100000 * 0.003), row.replace(/\n+/g, ' | ') + ' / ' + est);
+    await shot(page, 'v237-checkup-interest');
+    await page.locator('#pshSave').click(); await page.waitForTimeout(300);
+    T.ok('saving the check-up unchanged does not freeze the estimate', await page.evaluate(() => { const p = pmGet(isoMonth(new Date())); return !(p && p.items && p.items['int:a_sbi'] && p.items['int:a_sbi'].a != null); }));
+    await page.evaluate(() => { planMonthSheet(isoMonth(new Date())); }); await page.waitForTimeout(300);
+    await page.locator('[data-it="int:a_sbi"] [data-done]').check(); await page.locator('#pshSave').click(); await page.waitForTimeout(400);
+    const L = await page.evaluate(() => all('fin').filter(e => e.planRef && /int:a_sbi/.test(e.planRef)).map(e => ({ a: e.amount, cat: e.category, acct: e.acct })));
+    T.ok('ticking writes Interest income into RK SBI', L.length === 1 && L[0].cat === 'Interest' && L[0].acct === 'a_sbi' && L[0].a === 300, JSON.stringify(L));
+    T.ok('no errors on the page (v2.37)', errs.length === 0, errs.join(' ; ').slice(0, 300));
+    await ctx.close(); }
   await browser.close(); server.close();
   T.done();
 })().catch(T.crash);

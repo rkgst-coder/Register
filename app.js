@@ -5,7 +5,7 @@
    Settings → Diagnostics → Download log as register-log-YYYY-MM-DD.txt.
    ======================================================================== */
 'use strict';
-const APP_VERSION = '2.36.0';
+const APP_VERSION = '2.37.0';
 /* index.html names the app.js it was built with; a mismatch means one of the two files was not updated */
 const PAGE_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
 const LOG_KEY = 'r2_log';
@@ -2176,7 +2176,7 @@ function openDuplicates() {
    A bill is the standing commitment; a billpay record exists only once a
    period is settled (paid or skipped) — any due period without one is pending.
    ======================================================================== */
-const FIN_CATS = ['Household', 'Bills', 'Travel', 'Food', 'Health', 'Education', 'Investment', 'Salary', 'Other'];
+const FIN_CATS = ['Household', 'Bills', 'Travel', 'Food', 'Health', 'Education', 'Investment', 'Salary', 'Interest', 'Other'];   // v2.37: Interest
 const FIN_COLORS = { Household: '#1B4B8F', Bills: '#9C2963', Travel: '#B8860B', Food: '#B45309', Health: '#2E7D50', Education: '#3F4F8C', Investment: '#6b3f5c', Salary: '#2E7D50', Other: '#77818E', '': '#77818E' };
 let billMonth = isoMonth(new Date());
 
@@ -3318,24 +3318,30 @@ function renderUdhaar() {
   $('udSettledFold').classList.toggle('hidden', !!cur);
   if (cur) renderUdhPerson(cur); else renderUdhPeople(G);
   const done = ud.filter(e => e.settled).sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 60);
-  $('udSettled').innerHTML = done.length ? done.map(e => finRow(e)).join('') : '<div class="empty">None yet.</div>';
+  const doneP = G.filter(g => !g.open.length).sort((a, b) => b.newest.localeCompare(a.newest));                 // v2.37: everyone fully settled
+  $('udSettled').innerHTML = !done.length && !doneP.length ? '<div class="empty">None yet.</div>'
+    : (doneP.length ? `<div class="udh-sh">People · all settled</div>${doneP.map(udhPeopleRow).join('')}` : '')
+    + (done.length ? `<div class="udh-sh">Settled entries</div>${done.map(e => finRow(e)).join('')}` : '');
+  if ($('udSettledN')) $('udSettledN').textContent = doneP.length ? `${doneP.length} ${doneP.length === 1 ? 'person' : 'people'}` : '';
   wireFinRows($('udSettled'));
+  $$('[data-udp]', $('udSettled')).forEach(b => b.addEventListener('click', () => { Udh.person = b.dataset.udp; $('udSettledFold').open = false; renderUdhaar(); window.scrollTo(0, 0); }));
   if (Sheets.isOpen('shUdhLed')) { if (UdhLed.person) renderUdhPersonLedger(UdhLed.person); else if (UdhLed.id) renderUdhLedger(UdhLed.id); }
 }
 function renderUdhPeople(G) {
   const act = G.filter(g => g.open.length).sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal) || a.name.localeCompare(b.name));
-  const done = G.filter(g => !g.open.length).sort((a, b) => b.newest.localeCompare(a.newest));
-  const row = g => {
+  const row = udhPeopleRow;
+  $('udList').innerHTML = act.length ? act.map(row).join('') : '<div class="empty"><b>No open udhaar</b>Nobody owes anything right now.</div>';   // v2.37: settled people are in the “Settled udhaar” fold
+  $$('[data-udp]', $('udList')).forEach(b => b.addEventListener('click', () => { Udh.person = b.dataset.udp; renderUdhaar(); window.scrollTo(0, 0); }));
+}
+function udhPeopleRow(g) {
+  {
     const n = g.open.length, settled = !n;
     const sub = settled ? `settled · ${g.done.length} entr${g.done.length === 1 ? 'y' : 'ies'}`
       : `${g.bal > 0.005 ? 'owes you' : g.bal < -0.005 ? 'you owe' : 'evens out'} · ${n} open entr${n === 1 ? 'y' : 'ies'}`;
     return `<button class="row udh-p${settled ? ' udh-done' : ''}" data-udp="${esc(g.k)}"><div class="avatar" aria-hidden="true">${esc(g.name.slice(0, 1).toUpperCase())}</div>
       <div class="row-main"><div class="row-title">${esc(g.name)}</div><div class="row-sub"><span>${sub}</span></div></div>
       <span class="amt ${settled || Math.abs(g.bal) < 0.005 ? '' : g.bal > 0 ? 'pos' : 'neg'}">${settled ? '₹0' : fmtMoney(g.bal)}</span><span class="chev" aria-hidden="true">›</span></button>`;
-  };
-  $('udList').innerHTML = (act.length ? act.map(row).join('') : '<div class="empty"><b>No open udhaar</b>Nobody owes anything right now.</div>')
-    + (done.length ? `<div class="udh-sh">Settled</div>${done.map(row).join('')}` : '');
-  $$('[data-udp]', $('udList')).forEach(b => b.addEventListener('click', () => { Udh.person = b.dataset.udp; renderUdhaar(); window.scrollTo(0, 0); }));
+  }
 }
 function renderUdhPerson(g) {
   const p = g.name, list = g.open.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')), bal = g.bal;
@@ -3450,13 +3456,14 @@ function udhPersonRows(k) {
   const merged = new Set();
   ents.forEach(e => {
     const s = udhSign(e), amt = +e.amount || 0, who = String(e.who || '').trim();
-    const o = udhOriginOf(e);
+    const o = udhOriginOf(e); let joined = false;
     if (o && udhKey(o.who) === k) {                                          // extra: joined to the payment it came from
       const p = (o.pays || []).filter(p => p.date === e.date);
-      if (p.length) { merged.add(e.id); const part = p.reduce((t, x) => t + (+x.amt || 0), 0);
-        ev.push({ date: e.date, ord: 2, ca: e.createdAt || 0, v: s * amt, what: `${o.kind === 'lent' ? 'Received back' : 'Paid back'} ${fmtMoney(part + amt)} (${fmtMoney(part)} settled · ${fmtMoney(amt)} extra${s > 0 ? ' — now owed to you' : ' — now you owe'})`, id: e.id, extra: part }); return; }
+      if (p.length) { merged.add(e.id); joined = true; const part = p.reduce((t, x) => t + (+x.amt || 0), 0);
+        ev.push({ date: e.date, ord: 2, ca: e.createdAt || 0, v: s * amt, what: `${o.kind === 'lent' ? 'Received back' : 'Paid back'} ${fmtMoney(part + amt)} (${fmtMoney(part)} settled · ${fmtMoney(amt)} extra${s > 0 ? ' — now owed to you' : ' — now you owe'})`, id: e.id, extra: part }); }
     }
-    ev.push({ date: e.date || '', ord: 0, ca: e.createdAt || 0, v: s * amt, what: (e.kind === 'lent' ? 'Given' : isPaidBy(e) ? `${who} paid for you` : 'Borrowed') + (e.desc && !udhIsExtra(e) ? ' — ' + e.desc : udhIsExtra(e) ? ' — extra when settling' : ''), id: e.id });
+    // v2.37: the extra entry's own repayments are still listed below (before, they were dropped, so the ledger disagreed with the person's total)
+    if (!joined) ev.push({ date: e.date || '', ord: 0, ca: e.createdAt || 0, v: s * amt, what: (e.kind === 'lent' ? 'Given' : isPaidBy(e) ? `${who} paid for you` : 'Borrowed') + (e.desc && !udhIsExtra(e) ? ' — ' + e.desc : udhIsExtra(e) ? ' — extra when settling' : ''), id: e.id });
     const pays = (e.pays || []).filter(p => +p.amt), back = e.kind === 'lent' ? 'Received back' : 'Paid back';
     pays.forEach(p => ev.push({ date: p.date || e.date || '', ord: 1, ca: e.createdAt || 0, v: -s * (+p.amt || 0), what: back + (p.planRef ? ' (instalment)' : ''), id: e.id, pay: p, of: e }));
     const rest = +((e.paidAmount || 0) - pays.reduce((t, p) => t + (+p.amt || 0), 0)).toFixed(2);
@@ -3909,6 +3916,9 @@ function planItems(c, ym) {
       items.push({ key: 'sip:' + a.id, label: 'SIP · ' + a.name, kind: 'transfer', a: +a.sip.amt, from: a.sip.from, to: a.id });
     if (a.kind === 'loan' && +a.emi && a.start && ym >= a.start && (!a.end || ym <= a.end))
       items.push({ key: 'emi:' + a.id, label: 'EMI · ' + a.name, kind: 'transfer', a: +a.emi, from: a.payFrom, to: a.id });
+    const I = acctInt(a);                                                   // v2.37: savings interest, an estimate until it is in the Ledger
+    if (I && !a.archived && ym >= (I.from || c.startMonth) && (I.every === 1 || +ym.slice(5) % 3 === 0))
+      items.push({ key: 'int:' + a.id, label: 'Interest · ' + a.name, kind: 'income', a: I.amt || 0, rate: I.amt ? 0 : I.rate, every: I.every, to: a.id, cat: 'Interest', interest: true });
   });
   (pm ? pm.extra || [] : []).forEach(x => items.push({ key: 'x:' + x.id, label: x.label || 'One-off', kind: x.kind, a: +x.a || 0, from: x.from, to: x.to, extra: true, cat: x.cat || '' }));
   items.forEach(it => { const o = pm && pm.items && pm.items[it.key]; if (o) { if (!isBlank(o.a)) it.a = +o.a; it.done = !!o.done; it.ledgerId = o.ledgerId || null; it.changed = !isBlank(o.a); } });
@@ -3927,6 +3937,11 @@ function planItems(c, ym) {
   // an entry you typed into the Ledger yourself (same month, type, account and amount) counts as done
   const used = new Set(), dflt = (acctById(c.defAcct) || {}).id || defAcct(c), ac = e => e.acct || (e.kind !== 'transfer' ? dflt : null);   // untagged entries sit on the default account
   const mine = all('fin').filter(e => !e.planRef && (e.date || '').slice(0, 7) === ym && ac(e));                     // later dates this month count too — they are already in the balances
+  items.forEach(it => {                                                    // v2.37: interest you entered yourself (any amount) counts as done
+    if (it.done || !it.interest) return;
+    const m = mine.find(e => !used.has(e.id) && e.kind === 'income' && ac(e) === it.to && (e.category === 'Interest' || /interest/i.test(e.desc || '')));
+    if (m) { used.add(m.id); it.done = true; it.matched = m.id; it.a = +m.amount || 0; }
+  });
   items.forEach(it => {
     if (it.done || it.kind !== 'udhback' || !it.a) return;
     const hit = all('fin').some(e => e.kind === 'lent' && (e.who || '').trim().toLowerCase() === it.who.trim().toLowerCase() &&
@@ -3955,13 +3970,13 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
   list.forEach(a => { bal[a.id] = a.kind === 'loan' && loanSched(a) ? -loanOwed(a, monthAdd(c.startMonth, -1)) : isLiab(a.kind) ? -(+a.open || 0) : (+a.open || 0); });
   const flows = ledgerFlows(c), byYm = {};
   flows.forEach(f => { (byYm[f.ym] = byYm[f.ym] || []).push(f); });
-  const rows = [], udhLeft = new Map(); let udhBack = 0, udhGive = 0;
+  const rows = [], udhLeft = new Map(); let udhBack = 0, udhGive = 0, intEst = {};
   const gives = recurs().filter(r => r.kind === 'udhgive' && (r.who || '').trim()), cardPlans = cardBillPlans(c);   // v2.26
   const giveDone = udhGiveMatches(gives, toMonth);                         // v2.26.1: planned gives already covered by real udhaar
   const paidByYm = {}, pastUdh = {};                                       // v2.34
   all('fin').forEach(e => { if (isPaidBy(e) && e.category !== 'Investment') { const m = finDate(e).slice(0, 7); if (m >= c.startMonth) paidByYm[m] = (paidByYm[m] || 0) + (+e.amount || 0); } });
   for (let ym = c.startMonth, i = 0; ym <= toMonth && i < PLAN_MAX_MONTHS; ym = monthAdd(ym, 1), i++) {
-    let inc = 0, exp = 0, invIn = 0, interest = 0, growth = 0, pending = 0, planned = false;
+    let inc = 0, exp = 0, invIn = 0, interest = 0, growth = 0, pending = 0, planned = false; intEst = {};
     const items = planItems(c, ym), fl = byYm[ym] || [], bal0 = { ...bal };
     if (log) log.open[ym] = bal0;
     // actual movements
@@ -3991,8 +4006,11 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
       if (F && !(F.kind === 'loan' && loanSched(F))) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: `Udhaar to ${r.who.trim()} (estimate)`, amt: -amt, src: 'est', grp: 'udh' }); }
       if (log) (log.udh[ym] = log.udh[ym] || []).push({ who: r.who.trim(), label: `Given to ${r.who.trim()} (estimate)`, amt, src: 'est' });
     });
+    const closedPast = ym < cur && !!(pmGet(ym) || {}).closed;               // v2.37: a checked month — what you did not tick did not happen
+    items.forEach(it => { if (!it.interest) return; if (it.rate && !it.changed && !it.done) it.a = Math.round(Math.max(0, bal0[it.to] || 0) * it.rate / 1200 * (it.every || 1)); intEst[it.to] = it.a; });
     if (!actual) items.forEach(it => {
       if (it.done) return;
+      if (!it.budget && closedPast) return;
       let amt = it.a;
       if (it.budget) { if (ym < cur) return; const use = ym === cur ? Math.min(spendLeft, it.a) : 0; spendLeft -= use; amt = it.a - use; }
       if (!amt) return;
@@ -4008,12 +4026,12 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
         return;
       }
       const free = x => x && !(x.kind === 'loan' && loanSched(x));
-      const est = it.budget ? ' (estimate)' : '';
-      if (it.kind === 'income') { if (free(T)) { bal[T.id] += amt; if (L) L(T.id, ym, { label: it.label, amt, src: 'plan' }); } inc += amt; }
-      else if (it.kind === 'expense') { if (free(F)) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: it.label + est, amt: -amt, src: it.budget ? 'est' : 'plan' }); } exp += amt; }
+      const est = it.budget || it.rate ? ' (estimate)' : '', nt = ym < cur ? ' (planned · not ticked)' : '';   // v2.37
+      if (it.kind === 'income') { if (free(T)) { bal[T.id] += amt; if (L) L(T.id, ym, { label: it.label + est + nt, amt, src: it.rate ? 'est' : 'plan' }); } inc += amt; }
+      else if (it.kind === 'expense') { if (free(F)) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: it.label + est + nt, amt: -amt, src: it.budget ? 'est' : 'plan' }); } exp += amt; }
       else {
-        if (free(F)) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: stmtXferLabel(it.label, T, '→'), amt: -amt, src: 'plan', peer: T ? T.id : null }); }
-        if (free(T)) { bal[T.id] += amt; if (L) L(T.id, ym, { label: stmtXferLabel(it.label, F, '←'), amt, src: 'plan', peer: F ? F.id : null }); }
+        if (free(F)) { bal[F.id] -= amt; if (L) L(F.id, ym, { label: stmtXferLabel(it.label, T, '→') + nt, amt: -amt, src: 'plan', peer: T ? T.id : null }); }
+        if (free(T)) { bal[T.id] += amt; if (L) L(T.id, ym, { label: stmtXferLabel(it.label, F, '←') + nt, amt, src: 'plan', peer: F ? F.id : null }); }
         if (T && isInvest(T.kind)) invIn += amt;
         if (F && isInvest(F.kind)) invIn -= amt;
       }
@@ -4058,7 +4076,7 @@ function planCompute(c, toMonth, mode, log) {          // v2.25: log (optional) 
     const U = udhBase - udhBack + udhGive;                                  // v2.26: udhaar you plan to give is still your money, now owed to you
     rows.push({ ym, inc, exp, interest, invIn, growth, net: inc - exp, accts: { ...bal }, assets, liabs, cardDue, loanBal, liquid, invest, udh: U, udhBack, udhGive,
       worth: assets - cardDue + U, hand: liquid + cardPos - cardDue, afterLoans: assets - cardDue + U - loanBal,
-      pending, planned, closed: !!(pm && pm.closed), neg, ended: ym < cur, cur: ym === cur });
+      pending, planned, closed: !!(pm && pm.closed), neg, ended: ym < cur, cur: ym === cur, intEst });
   }
   return rows;
 }
@@ -4601,6 +4619,11 @@ function acctSheet(id) {
           rec.billPlan = { mode: bm, from: bm === 'off' ? null : $('asBillFrom').value || null, amt: bamt || null }; }
       } else { delete rec.stmtDay; delete rec.dueDay; delete rec.billPlan; }
       if (kind === 'fd') { const m = $('asMat').value; rec.matures = ISO_DATE_RX.test(m) ? m : null; rec.remind = $('asRemind').checked; } else delete rec.matures;
+      if ((kind === 'bank' || kind === 'salary') && $('asIRate')) {           // v2.37: savings interest
+        const r = readAmt('asIRate', 'Interest rate') || 0, amt = readAmt('asIAmt', 'Interest each time') || 0, every = +($('asIEvery').querySelector('.on') || {}).dataset.ie || 1;
+        if (r > 15) throw new Error('Interest above 15% a year on a bank account looks like a typo.');
+        if (r || amt) rec.int = { rate: r || 0, amt: amt || 0, every: every === 3 ? 3 : 1, from: rec.int && rec.int.from ? rec.int.from : isoMonth(new Date()) }; else delete rec.int;
+      } else delete rec.int;
       if (kind !== 'card' && kind !== 'fd') delete rec.remind;
       put(rec, { render: false }); syncAcctDates(rec, true);
       toast((kind === 'card' && rec.remind && (rec.stmtDay || rec.dueDay)) || (kind === 'fd' && rec.remind && rec.matures) ? 'Account saved — the dates are in Dates too.' : 'Account saved.'); return true;
@@ -4628,6 +4651,11 @@ function acctSheet(id) {
         <div class="grid2"><div class="field"><label>Loan amount ₹ (optional)</label>${amtIn('asAmt', a.amount || '')}</div><div class="field"><label>Interest % (optional)</label>${amtIn('asRate', a.rate || '', 'worked out if blank')}</div></div>
         <div class="group pl-group" id="asLoanInfo"></div>
         <p class="hint">With EMI and dates filled, the amount owed follows the loan schedule; the opening figure above is only used if they are blank.</p>`;
+    } else if (k === 'bank' || k === 'salary') { const I = a.int || {};   // v2.37
+      h = `<h4 class="plan-sub">Interest <small>an estimate in the plan, until it is in the Ledger</small></h4>
+        <div class="grid2"><div class="field"><label>Interest % a year</label>${amtIn('asIRate', I.rate || '', 'e.g. 2.7')}</div><div class="field"><label>or ₹ each time (fixed)</label>${amtIn('asIAmt', I.amt || '', 'optional')}</div></div>
+        <div class="seg" id="asIEvery" style="margin:0 0 8px">${[[1, 'Credited every month'], [3, 'Every 3 months (Mar, Jun, Sep, Dec)']].map(([v, l]) => `<button type="button" data-ie="${v}" class="${(I.every || 1) === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <p class="hint">From this month on the plan adds the interest as income into this account: the fixed ₹ if you give one, otherwise the balance at the start of the month × rate. It shows in the monthly check-up as “Interest · ${esc(a.name || 'this account')}” — tick it with the real amount from your passbook. Interest you enter in the Ledger yourself (category Interest) counts too.</p>`;
     } else if (k === 'card') h = `<p class="hint">Spending on the card adds to what you owe. Paying the bill is a Transfer from your bank to this card (add it under Recurring or in the Ledger).</p>
       <h4 class="plan-sub">Statement and due date</h4>
       <div class="grid2"><div class="field"><label>Statement day</label><input id="asStmt" inputmode="numeric" placeholder="1–31" value="${esc(String(a.stmtDay || ''))}"></div><div class="field"><label>Payment due day</label><input id="asDue" inputmode="numeric" placeholder="1–31" value="${esc(String(a.dueDay || ''))}"></div></div>
@@ -4642,6 +4670,7 @@ function acctSheet(id) {
     if ($('asBillMode')) { const bs = () => { const v = $('asBillMode').querySelector('.on').dataset.bm; $('asBillFromW').classList.toggle('hidden', v === 'off'); $('asBillAmtW').classList.toggle('hidden', v !== 'fixed'); };
       $$('#asBillMode button').forEach(b => b.addEventListener('click', () => { $$('#asBillMode button').forEach(x => x.classList.toggle('on', x === b)); bs(); })); bs(); }   // v2.26
     if (isInvest(k)) wireMonthRows('asVals');
+    if ($('asIEvery')) $$('#asIEvery button').forEach(b => b.addEventListener('click', () => $$('#asIEvery button').forEach(x => x.classList.toggle('on', x === b))));   // v2.37
     if (k === 'loan') {
       const info = () => {
         const d = { emi: num($('asEmi').value), amount: num($('asAmt').value), rate: num($('asRate').value), start: $('asStart').value, end: $('asEnd').value };
@@ -4902,7 +4931,7 @@ function writeTick(c, ym, it, amt) {
   const same = it.fixedId && records[it.fixedId];                     // auto-record uses one id per month on every device
   if (same && !same.deleted) return same.id;
   const rec = { id: it.fixedId || uid('f'), type: 'fin', who: '', recurring: false, paidAmount: 0, settled: false, deleted: false };
-  Object.assign(rec, { desc: it.label, amount: amt, kind: it.kind, category: it.kind === 'income' ? (/salary/i.test(it.label) ? 'Salary' : '') : (it.cat || ''),
+  Object.assign(rec, { desc: it.label, amount: amt, kind: it.kind, category: it.kind === 'income' ? (it.cat || (/salary/i.test(it.label) ? 'Salary' : '')) : (it.cat || ''),
     acct: it.kind === 'income' ? it.to : it.from, to: it.kind === 'transfer' ? it.to : undefined, date: it.date || (ym === cur ? todayISO() : monthEnd(ym)), planRef: ym + '|' + it.key });
   put(rec, { render: false });
   return rec.id;
@@ -4912,6 +4941,7 @@ function planMonthSheet(ym) {
   if (!accts().length) { toast('Add your accounts first (Money → Accounts).'); return; }
   if (ym < c.startMonth) ym = c.startMonth;
   const cur = isoMonth(new Date()), items = planItems(c, ym), pm = pmGet(ym) || pmNew(ym);
+  if (items.some(it => it.rate && !it.changed && !it.done)) { const E = intEstimates(c, ym); items.forEach(it => { if (it.rate && !it.changed && !it.done) it.a = E[it.to] || 0; }); }   // v2.37
   const canTick = ym <= cur;
   const matchedIds = new Set(items.filter(i => i.matched).map(i => i.matched));
   const flows = ledgerFlows(c).filter(f => f.ym === ym && f.cat === 'exp' && !(f.e && (f.e.planRef || matchedIds.has(f.e.id) || f.e.category === 'Investment')));   // v2.34: same rule as the engine
@@ -4931,7 +4961,7 @@ function planMonthSheet(ym) {
     return `<div class="pl-row src" data-val="${a.id}"><span class="r-name">${esc(a.name)}<small class="dq-sub">value at month end</small></span>${amtIn('cv_' + a.id, v ? v.a : '', 'statement value')}</div>`;
   }).join('') : '';
   const html = `<div class="month-nav" style="margin-bottom:10px"><button id="pmPrev" aria-label="Previous month">‹</button><span class="mj"><b>${monthLong(ym)}</b><input type="month" class="mj-in" id="pmPick" value="${ym}" min="${c.startMonth}" aria-label="Pick a month"></span><button id="pmNext" aria-label="Next month">›</button></div>
-    <p class="hint" style="margin:0 4px 6px">${ym < cur ? 'Monthly check-up: tick what actually came in and went out, correcting amounts if they differed. Each tick is written into the Ledger.' : ym === cur ? 'This month: tick items as they happen. Unticked items still count in the plan. The balance check opens after the month ends.' : 'Future month: change amounts for this month only. Ticking opens when the month arrives.'}</p>
+    <p class="hint" style="margin:0 4px 6px">${ym < cur ? 'Monthly check-up: tick what actually came in and went out, correcting amounts if they differed. Each tick is written into the Ledger. Once the month is marked checked, anything left unticked is taken as not having happened.' : ym === cur ? 'This month: tick items as they happen. Unticked items still count in the plan. The balance check opens after the month ends.' : 'Future month: change amounts for this month only. Ticking opens when the month arrives.'}</p>
     ${grp('Income', items.filter(i => i.kind === 'income'))}
     ${grp('Udhaar coming back', items.filter(i => i.kind === 'udhback'))}
     ${grp('Payments, SIPs, EMIs and transfers', items.filter(i => i.kind !== 'income' && i.kind !== 'udhback' && !i.budget))}
@@ -4986,6 +5016,7 @@ function planMonthSave(ym, quiet) {
     const items = planItems(c, ym), base = {}; items.forEach(it => { base[it.key] = it; });
     p = pmGet(ym) ? { ...pmGet(ym), items: { ...(pmGet(ym).items || {}) }, extra: (pmGet(ym).extra || []).map(x => ({ ...x })), checked: { ...(pmGet(ym).checked || {}) } } : pmNew(ym);
     const orig = {}; recurs().forEach(r => { orig['r:' + r.id] = recurAmt(r, ym); }); accts().forEach(a => { if (a.sip) orig['sip:' + a.id] = +a.sip.amt || 0; if (a.kind === 'loan') orig['emi:' + a.id] = +a.emi || 0; });
+    { const E = accts().some(a => acctInt(a) && !acctInt(a).amt) ? intEstimates(c, ym) : {}; accts().forEach(a => { const I = acctInt(a); if (I) orig['int:' + a.id] = I.amt || E[a.id] || 0; }); }   // v2.37
     // 1) read and check every row; nothing is written yet
     const rows = [], udhWant = new Map();
     for (const row of $$('[data-it]', root)) {
@@ -7725,7 +7756,7 @@ function offerLegacy() {
 }
 function hideDecoy() {
   if ($('alPin')) $('alPin').classList.add('hidden');
-  document.documentElement.classList.remove('decoy-on');
+  document.documentElement.classList.remove('decoy-on', 'app-hidden');   // v2.37: the background blur too — iPhone does not always say the app is back on screen
   $('decoy').classList.add('hidden'); $('decoy').setAttribute('aria-hidden', 'true');
   $('app').removeAttribute('aria-hidden');
   scheduleRender();
@@ -7751,6 +7782,9 @@ function flushEdits() {
 window.addEventListener('pagehide', flushEdits);
 ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true, capture: true }));
 setInterval(() => { if (finUnlocked() && document.visibilityState === 'visible' && Date.now() - Math.max(lastTouch, Fin.unlockedAt || 0) > (+prefs.moneyIdle || 5) * 60000) { lockFinance(); } }, 30000);   // idle 5 min → lock Money
+/* v2.37: an iPhone home-screen app can come back without a "visible" event; any of these also clears the blur */
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { if (document.visibilityState !== 'hidden') document.documentElement.classList.remove('app-hidden'); }));
+document.addEventListener('pointerdown', () => document.documentElement.classList.remove('app-hidden'), { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     hiddenAt = nowMs();
@@ -9795,6 +9829,11 @@ function savedSearchUI(q, box) {
    ======================================================================== */
 /* v2.20: items marked priv are shown only while Money is open */
 const WHATS_NEW = [
+  { t: '<b>Fixed — a person’s ledger</b>: when part of a payment was “extra when settling” and that extra was later paid back, the ledger left the repayment out, so its total disagreed with the person’s screen. It is now listed.', priv: true },
+  { t: '<b>Settled udhaar</b>: people with nothing open now sit in the “Settled udhaar” fold, not at the bottom of the people list.', priv: true },
+  { t: '<b>Fixed — a month that is over</b>: once a month is marked checked, a planned item you did not tick (e.g. an ATM withdrawal) is taken as not having happened. Before, the Plan and the account statement still counted it. In a month not yet checked, it now says “planned · not ticked”.', priv: true },
+  { t: '<b>Bank interest</b>: a bank or salary account can have an interest rate (or a fixed ₹), credited every month or every 3 months. The plan adds it as income from this month on, and the monthly check-up lists it to tick with the real amount.', priv: true },
+  { t: '<b>Fixed</b>: opening Register from the decoy screen could show a blank yellowish screen (the app was still blurred from being in the background).' },
   { t: '<b>One clock for sync</b>: when the same item is changed on two devices, the newer change wins. That used to trust each device’s own clock; now every change is stamped in Google’s time, so a phone or PC with a wrong clock can no longer win or lose unfairly. Data health tells you if this device’s clock is off.' },
   { t: '<b>Backup outside Google</b>: the monthly reminder and Data health now watch for a backup file saved outside your Google account (iCloud Drive, On My iPhone, the PC). The weekly Drive backup no longer silences the reminder, and a copy saved on one device counts on all.' },
   { t: '<b>Udhaar payments have their own date</b>: Settle and Settle all now ask for the date the money moved. On a person’s screen, <b>＋ Payment</b> records one amount against the oldest open entries first. In an entry’s ledger, tap ✎ or “Set date” on a payment to correct or add its date.', priv: true },
@@ -11904,4 +11943,14 @@ function invLinkSheet() {
     <div class="group pl-group">${L.map(e => { const g = guess(e); return `<div class="pl-row" data-inv="${e.id}"><span class="r-name">${esc(e.desc || 'Investment')}<small class="dq-sub">${fmtDate(e.date, true)} · ${rs(e.amount)}${e.acct && acctById(e.acct) ? ' · from ' + esc(acctName(e.acct)) : ''}</small></span>
       <select><option value="">Decide later</option>${F.map(a => `<option value="${a.id}"${a.id === g ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="-">Not in any fund</option></select></div>`; }).join('')}</div>`,
     () => { let n = 0; $$('[data-inv]', $('pshBody')).forEach(r => { const v = r.querySelector('select').value, e = records[r.dataset.inv]; if (v && e) { e.invTo = v; put(e, { render: false }); n++; } }); if (n) toast(`${n} entr${n === 1 ? 'y' : 'ies'} updated.`); return true; }, 'Save');
+}
+
+/* ==========================================================================
+   v2.37 — savings interest (estimate) and a few helpers
+   ======================================================================== */
+const acctInt = a => a && (a.kind === 'bank' || a.kind === 'salary') && a.int && (+a.int.rate > 0 || +a.int.amt > 0)
+  ? { rate: +a.int.rate || 0, amt: +a.int.amt || 0, every: +a.int.every === 3 ? 3 : 1, from: a.int.from || null } : null;
+/* the interest the plan expects in month ym, per account (what the engine works out from the balance at the start of the month) */
+function intEstimates(c, ym) {
+  try { const r = planCompute(c, ym, 'plan').slice(-1)[0]; return (r && r.ym === ym && r.intEst) || {}; } catch (e) { RLOG.warn('interest estimate', e.message); return {}; }
 }

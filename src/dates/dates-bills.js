@@ -3,7 +3,7 @@
    A bill is the standing commitment; a billpay record exists only once a
    period is settled (paid or skipped) — any due period without one is pending.
    ======================================================================== */
-const FIN_CATS = ['Household', 'Bills', 'Travel', 'Food', 'Health', 'Education', 'Investment', 'Salary', 'Other'];
+const FIN_CATS = ['Household', 'Bills', 'Travel', 'Food', 'Health', 'Education', 'Investment', 'Salary', 'Interest', 'Other'];   // v2.37: Interest
 const FIN_COLORS = { Household: '#1B4B8F', Bills: '#9C2963', Travel: '#B8860B', Food: '#B45309', Health: '#2E7D50', Education: '#3F4F8C', Investment: '#6b3f5c', Salary: '#2E7D50', Other: '#77818E', '': '#77818E' };
 let billMonth = isoMonth(new Date());
 
